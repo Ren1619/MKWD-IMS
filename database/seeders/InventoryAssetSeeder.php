@@ -1,0 +1,256 @@
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\InventoryAsset;
+use App\Models\InventoryAssetCategory;
+use Illuminate\Database\Seeder;
+
+class InventoryAssetSeeder extends Seeder
+{
+    /**
+     * Run the database seeds.
+     */
+    public function run(): void
+    {
+        $this->callSilent(InventoryCategorySeeder::class);
+
+        /** @var array<string, int> $categoryIds */
+        $categoryIds = InventoryAssetCategory::query()
+            ->whereIn('code', ['AST-ICT', 'AST-OFF', 'AST-FNF', 'AST-MCH', 'AST-TRN'])
+            ->pluck('inv_asset_cat_id', 'code')
+            ->all();
+
+        foreach ($this->assets() as $assetData) {
+            $categoryCode = (string) $assetData['category_code'];
+            unset($assetData['category_code']);
+
+            InventoryAsset::query()->updateOrCreate(
+                ['serial_number' => $assetData['serial_number']],
+                [
+                    ...$assetData,
+                    'category_id' => $categoryIds[$categoryCode],
+                ],
+            );
+        }
+    }
+
+    /** @return array<int, array<string, int|float|string|null>> */
+    private function assets(): array
+    {
+        return [
+            [
+                'category_code' => 'AST-FNF',
+                'serial_number' => 'MKWD-PROP-0001',
+                'property_number' => 'PROP-2021-001',
+                'name' => 'Executive Office Table',
+                'type' => 'Property',
+                'unit_of_measure' => 'unit',
+                'fund_cluster' => 'Corporate Fund',
+                'brand' => 'Mandaue Foam',
+                'model' => 'Executive 1800',
+                'description' => 'Hardwood executive desk with lockable drawers.',
+                'location' => 'Administration Building - Executive Office',
+                'nature_of_occupancy' => 'Owned',
+                'acquisition_date' => '2021-02-15',
+                'acquisition_cost' => 28500.00,
+                'depreciation_useful_life_months' => 120,
+                'appraised_value' => 20500.00,
+                'appraisal_date' => '2025-01-15',
+                'impairment_losses' => 0,
+                'physical_count_remarks' => 'Verified during the 2025 annual physical count.',
+                'status' => 'assigned',
+            ],
+            [
+                'category_code' => 'AST-FNF',
+                'serial_number' => 'MKWD-PROP-0002',
+                'property_number' => 'PROP-2022-014',
+                'name' => 'Steel Filing Cabinet',
+                'type' => 'Property',
+                'unit_of_measure' => 'unit',
+                'fund_cluster' => 'Corporate Fund',
+                'brand' => 'OfficeWorks',
+                'model' => 'FC-04D',
+                'description' => 'Four-drawer lateral steel filing cabinet.',
+                'location' => 'Records Section',
+                'nature_of_occupancy' => 'Owned',
+                'acquisition_date' => '2022-07-08',
+                'acquisition_cost' => 12750.00,
+                'depreciation_useful_life_months' => 120,
+                'impairment_losses' => 0,
+                'physical_count_remarks' => 'Serviceable with minor surface scratches.',
+                'status' => 'available',
+            ],
+            [
+                'category_code' => 'AST-OFF',
+                'serial_number' => 'MKWD-PROP-0003',
+                'property_number' => 'PROP-2020-009',
+                'name' => 'Heavy-duty Paper Shredder',
+                'type' => 'Property',
+                'unit_of_measure' => 'unit',
+                'fund_cluster' => 'Corporate Fund',
+                'brand' => 'Fellowes',
+                'model' => 'Powershred 225Ci',
+                'description' => 'Cross-cut shredder used for confidential records.',
+                'location' => 'General Services Office',
+                'nature_of_occupancy' => 'Owned',
+                'acquisition_date' => '2020-11-23',
+                'acquisition_cost' => 48500.00,
+                'depreciation_useful_life_months' => 60,
+                'appraised_value' => 8500.00,
+                'appraisal_date' => '2025-06-30',
+                'impairment_losses' => 3000.00,
+                'physical_count_remarks' => 'For blade replacement and preventive maintenance.',
+                'status' => 'maintenance',
+            ],
+            [
+                'category_code' => 'AST-MCH',
+                'serial_number' => 'MKWD-PROP-0004',
+                'property_number' => 'PROP-2019-021',
+                'name' => 'Portable Water Pump',
+                'type' => 'Property',
+                'unit_of_measure' => 'unit',
+                'fund_cluster' => 'Corporate Fund',
+                'brand' => 'Honda',
+                'model' => 'WB30XT',
+                'description' => 'Three-inch portable pump for emergency dewatering.',
+                'location' => 'Operations Warehouse',
+                'nature_of_occupancy' => 'Owned',
+                'acquisition_date' => '2019-05-06',
+                'acquisition_cost' => 36900.00,
+                'depreciation_useful_life_months' => 84,
+                'appraised_value' => 12000.00,
+                'appraisal_date' => '2024-12-12',
+                'impairment_losses' => 1500.00,
+                'physical_count_remarks' => 'Operational after engine servicing.',
+                'status' => 'available',
+            ],
+            [
+                'category_code' => 'AST-TRN',
+                'serial_number' => 'MKWD-PROP-0005',
+                'property_number' => 'PROP-2018-003',
+                'name' => 'Utility Motorcycle',
+                'type' => 'Property',
+                'unit_of_measure' => 'unit',
+                'fund_cluster' => 'Corporate Fund',
+                'brand' => 'Honda',
+                'model' => 'XR150L',
+                'description' => 'Field service motorcycle formerly used for meter inspections.',
+                'location' => 'Motor Pool',
+                'nature_of_occupancy' => 'Owned',
+                'acquisition_date' => '2018-03-19',
+                'acquisition_cost' => 89900.00,
+                'depreciation_useful_life_months' => 84,
+                'impairment_losses' => 12000.00,
+                'physical_count_remarks' => 'Beyond economical repair.',
+                'disposal_method' => 'Public auction',
+                'disposal_value' => 9500.00,
+                'status' => 'disposed',
+            ],
+            [
+                'category_code' => 'AST-ICT',
+                'serial_number' => 'MKWD-EQP-0001',
+                'property_number' => 'EQP-2025-031',
+                'name' => 'Business Laptop Computer',
+                'type' => 'Equipment',
+                'unit_of_measure' => 'unit',
+                'fund_cluster' => 'Corporate Fund',
+                'brand' => 'Lenovo',
+                'model' => 'ThinkPad E14 Gen 6',
+                'description' => '14-inch laptop with docking station for administrative work.',
+                'location' => 'Finance Department',
+                'nature_of_occupancy' => 'Owned',
+                'acquisition_date' => '2025-01-20',
+                'acquisition_cost' => 68950.00,
+                'depreciation_useful_life_months' => 60,
+                'impairment_losses' => 0,
+                'physical_count_remarks' => 'In good working condition.',
+                'status' => 'assigned',
+            ],
+            [
+                'category_code' => 'AST-ICT',
+                'serial_number' => 'MKWD-EQP-0002',
+                'property_number' => 'EQP-2024-018',
+                'name' => 'Network Laser Printer',
+                'type' => 'Equipment',
+                'unit_of_measure' => 'unit',
+                'fund_cluster' => 'Corporate Fund',
+                'brand' => 'Brother',
+                'model' => 'MFC-L8900CDW',
+                'description' => 'Color multifunction printer connected to the office network.',
+                'location' => 'Billing Section',
+                'nature_of_occupancy' => 'Owned',
+                'acquisition_date' => '2024-06-11',
+                'acquisition_cost' => 52300.00,
+                'depreciation_useful_life_months' => 60,
+                'impairment_losses' => 0,
+                'physical_count_remarks' => 'Serviceable; toner replacement due soon.',
+                'status' => 'available',
+            ],
+            [
+                'category_code' => 'AST-OFF',
+                'serial_number' => 'MKWD-EQP-0003',
+                'property_number' => 'EQP-2023-026',
+                'name' => 'Digital Photocopier',
+                'type' => 'Equipment',
+                'unit_of_measure' => 'unit',
+                'fund_cluster' => 'Corporate Fund',
+                'brand' => 'Ricoh',
+                'model' => 'IM 2702',
+                'description' => 'A3 monochrome copier with scan and network printing functions.',
+                'location' => 'Administration Building - Second Floor',
+                'nature_of_occupancy' => 'Owned',
+                'acquisition_date' => '2023-09-05',
+                'acquisition_cost' => 148000.00,
+                'depreciation_useful_life_months' => 60,
+                'appraised_value' => 98000.00,
+                'appraisal_date' => '2025-09-05',
+                'impairment_losses' => 0,
+                'physical_count_remarks' => 'Covered by preventive maintenance agreement.',
+                'status' => 'assigned',
+            ],
+            [
+                'category_code' => 'AST-MCH',
+                'serial_number' => 'MKWD-EQP-0004',
+                'property_number' => 'EQP-2022-011',
+                'name' => 'Electromagnetic Flow Meter',
+                'type' => 'Equipment',
+                'unit_of_measure' => 'unit',
+                'fund_cluster' => 'Corporate Fund',
+                'brand' => 'Endress+Hauser',
+                'model' => 'Promag W 400',
+                'description' => 'Portable verification meter used for distribution monitoring.',
+                'location' => 'Engineering Division',
+                'nature_of_occupancy' => 'Owned',
+                'acquisition_date' => '2022-04-27',
+                'acquisition_cost' => 325000.00,
+                'depreciation_useful_life_months' => 84,
+                'appraised_value' => 240000.00,
+                'appraisal_date' => '2025-04-30',
+                'impairment_losses' => 0,
+                'physical_count_remarks' => 'Calibration certificate valid through April 2027.',
+                'status' => 'borrowed',
+            ],
+            [
+                'category_code' => 'AST-TRN',
+                'serial_number' => 'MKWD-EQP-0005',
+                'property_number' => 'EQP-2021-007',
+                'name' => 'Vehicle Diagnostic Scanner',
+                'type' => 'Equipment',
+                'unit_of_measure' => 'unit',
+                'fund_cluster' => 'Corporate Fund',
+                'brand' => 'Autel',
+                'model' => 'MaxiSys MS906',
+                'description' => 'Diagnostic scanner for service vehicles and heavy equipment.',
+                'location' => 'Motor Pool Workshop',
+                'nature_of_occupancy' => 'Owned',
+                'acquisition_date' => '2021-12-02',
+                'acquisition_cost' => 78500.00,
+                'depreciation_useful_life_months' => 60,
+                'impairment_losses' => 5000.00,
+                'physical_count_remarks' => 'Unit powers on but requires software renewal.',
+                'status' => 'defective',
+            ],
+        ];
+    }
+}
