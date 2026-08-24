@@ -24,6 +24,8 @@ type Metrics = {
     item_types: number;
     stock_on_hand: number;
     low_stock: number;
+    expired_batches: number;
+    expiring_batches: number;
     assets: number;
     asset_cost: number;
     borrowed_assets: number;
@@ -48,6 +50,7 @@ type StockOut = {
     quantity: number;
     recipient_name: string | null;
     stocked_out_at: string;
+    total_cost: string;
     item: { name: string; unit_of_measure: string };
     recipient_reference: { name: string; type: string } | null;
 };
@@ -261,9 +264,26 @@ export default function InventoryDashboard({
                                     <div className="font-semibold">
                                         {metrics.stock_on_hand.toLocaleString()}
                                     </div>
-                                    <Badge variant="outline">
-                                        {metrics.low_stock} low stock
-                                    </Badge>
+                                    <div className="mt-1 flex flex-wrap justify-end gap-1">
+                                        <Badge variant="outline">
+                                            {metrics.low_stock} low stock
+                                        </Badge>
+                                        {metrics.expiring_batches > 0 && (
+                                            <Badge
+                                                variant="outline"
+                                                className="border-amber-500/50 text-amber-700 dark:text-amber-400"
+                                            >
+                                                {metrics.expiring_batches}{' '}
+                                                expiring
+                                            </Badge>
+                                        )}
+                                        {metrics.expired_batches > 0 && (
+                                            <Badge variant="destructive">
+                                                {metrics.expired_batches}{' '}
+                                                expired
+                                            </Badge>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex items-center justify-between rounded-lg border p-3">
@@ -325,6 +345,9 @@ export default function InventoryDashboard({
                                         <th className="pb-3 text-right">
                                             Quantity
                                         </th>
+                                        <th className="pb-3 text-right">
+                                            Issue value
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y">
@@ -353,12 +376,17 @@ export default function InventoryDashboard({
                                                 {release.quantity}{' '}
                                                 {release.item.unit_of_measure}
                                             </td>
+                                            <td className="py-3 text-right">
+                                                {currency.format(
+                                                    Number(release.total_cost),
+                                                )}
+                                            </td>
                                         </tr>
                                     ))}
                                     {recentStockOuts.length === 0 && (
                                         <tr>
                                             <td
-                                                colSpan={4}
+                                                colSpan={5}
                                                 className="py-8 text-center text-muted-foreground"
                                             >
                                                 No stock releases recorded.

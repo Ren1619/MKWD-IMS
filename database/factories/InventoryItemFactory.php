@@ -24,7 +24,8 @@ class InventoryItemFactory extends Factory
             'stock_number' => fake()->unique()->bothify('STK-#####'),
             'unit_of_measure' => fake()->randomElement(['pc', 'box', 'ream']),
             'quantity' => 0,
-            'price' => fake()->randomFloat(2, 1, 5000),
+            'reorder_point' => 10,
+            'reorder_quantity' => 25,
             'status' => 'active',
         ];
     }

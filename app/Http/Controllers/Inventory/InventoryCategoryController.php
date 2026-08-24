@@ -10,7 +10,6 @@ use App\InventoryCategoryType;
 use App\Models\InventoryAssetCategory;
 use App\Models\InventoryMajorCategory;
 use App\Services\InventoryCategoryManager;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -24,9 +23,9 @@ class InventoryCategoryController extends Controller
         return Inertia::render('Inventory/Categories/Index', [
             'majorCategories' => InventoryMajorCategory::query()
                 ->withCount('classCategories')
-                ->with(['classCategories' => fn (HasMany $query) => $query
+                ->with(['classCategories' => fn ($query) => $query
                     ->withCount('seriesCategories')
-                    ->with(['seriesCategories' => fn (HasMany $seriesQuery) => $seriesQuery->withCount('items')->orderBy('name')])
+                    ->with(['seriesCategories' => fn ($seriesQuery) => $seriesQuery->withCount('items')->orderBy('name')])
                     ->orderBy('name')])
                 ->orderBy('name')
                 ->get(),

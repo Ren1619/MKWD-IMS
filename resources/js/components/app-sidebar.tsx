@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 import {
     Boxes,
+    ChartNoAxesCombined,
     LayoutGrid,
     PackageCheck,
     ScrollText,
@@ -27,6 +28,7 @@ import { index as usersIndex } from '@/routes/admin/users';
 import { index as assetsIndex } from '@/routes/inventory/assets';
 import { index as categoriesIndex } from '@/routes/inventory/categories';
 import { index as itemsIndex } from '@/routes/inventory/items';
+import { index as reportsIndex } from '@/routes/inventory/reports';
 import type { NavItem } from '@/types';
 
 const inventoryNavItems: NavItem[] = [
@@ -49,6 +51,11 @@ const inventoryNavItems: NavItem[] = [
         title: 'Categories',
         href: categoriesIndex(),
         icon: Tags,
+    },
+    {
+        title: 'Reports',
+        href: reportsIndex(),
+        icon: ChartNoAxesCombined,
     },
 ];
 

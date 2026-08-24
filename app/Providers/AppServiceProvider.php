@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Contracts\HrisReferenceSource;
 use App\Integrations\Hris\HrisApiClient;
+use App\Models\HrisIntegrationSetting;
 use App\Models\InventoryAsset;
 use App\Models\InventoryAssetBorrowing;
 use App\Models\InventoryAssetCategory;
@@ -12,6 +13,7 @@ use App\Models\InventoryClassCategory;
 use App\Models\InventoryItem;
 use App\Models\InventoryItemBatch;
 use App\Models\InventoryItemStockOut;
+use App\Models\InventoryItemStockOutAllocation;
 use App\Models\InventoryMajorCategory;
 use App\Models\InventorySeriesCategory;
 use App\Models\User;
@@ -46,6 +48,7 @@ class AppServiceProvider extends ServiceProvider
     protected function configureAuthorization(): void
     {
         Gate::define('manage-users', fn (User $user): bool => $user->isSuperAdmin());
+        Gate::define('manage-integrations', fn (User $user): bool => $user->isSuperAdmin());
         Gate::define('view-audit-logs', fn (User $user): bool => $user->isSuperAdmin());
         Gate::define('manage-inventory', fn (User $user): bool => $user->canManageInventory());
     }
@@ -54,9 +57,11 @@ class AppServiceProvider extends ServiceProvider
     {
         foreach ([
             User::class,
+            HrisIntegrationSetting::class,
             InventoryItem::class,
             InventoryItemBatch::class,
             InventoryItemStockOut::class,
+            InventoryItemStockOutAllocation::class,
             InventoryAsset::class,
             InventoryAssetCustodian::class,
             InventoryAssetBorrowing::class,

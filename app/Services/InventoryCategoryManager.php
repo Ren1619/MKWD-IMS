@@ -3,12 +3,14 @@
 namespace App\Services;
 
 use App\InventoryCategoryType;
+use App\Models\InventoryAssetCategory;
 use App\Models\InventoryClassCategory;
 use App\Models\InventoryMajorCategory;
 use App\Models\InventorySeriesCategory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 class InventoryCategoryManager
 {
@@ -39,16 +41,16 @@ class InventoryCategoryManager
     public function deletionBlockReason(InventoryCategoryType $type, Model $category): ?string
     {
         return match ($type) {
-            InventoryCategoryType::Major => $category->classCategories()->exists()
+            InventoryCategoryType::Major => $this->majorCategory($category)->classCategories()->exists()
                 ? 'Archive this major category instead. It still contains class categories.'
                 : null,
-            InventoryCategoryType::ClassCategory => $category->seriesCategories()->exists()
+            InventoryCategoryType::ClassCategory => $this->classCategory($category)->seriesCategories()->exists()
                 ? 'Archive this class category instead. It still contains series categories.'
                 : null,
-            InventoryCategoryType::Series => $category->items()->exists()
+            InventoryCategoryType::Series => $this->seriesCategory($category)->items()->exists()
                 ? 'Archive this series category instead. Inventory items still use it.'
                 : null,
-            InventoryCategoryType::Asset => $category->assets()->exists()
+            InventoryCategoryType::Asset => $this->assetCategory($category)->assets()->exists()
                 ? 'Archive this asset category instead. Assets still use it.'
                 : null,
         };
@@ -60,9 +62,9 @@ class InventoryCategoryManager
             $category = $this->find($type, $categoryId);
 
             match ($type) {
-                InventoryCategoryType::Major => $this->updateMajorStatus($category, $isActive),
-                InventoryCategoryType::ClassCategory => $this->updateClassStatus($category, $isActive),
-                InventoryCategoryType::Series => $this->updateSeriesStatus($category, $isActive),
+                InventoryCategoryType::Major => $this->updateMajorStatus($this->majorCategory($category), $isActive),
+                InventoryCategoryType::ClassCategory => $this->updateClassStatus($this->classCategory($category), $isActive),
+                InventoryCategoryType::Series => $this->updateSeriesStatus($this->seriesCategory($category), $isActive),
                 InventoryCategoryType::Asset => $this->setStatus($category, $isActive),
             };
         });
@@ -118,5 +120,41 @@ class InventoryCategoryManager
         if ((bool) $category->getAttribute('is_active') !== $isActive) {
             $category->update(['is_active' => $isActive]);
         }
+    }
+
+    private function majorCategory(Model $category): InventoryMajorCategory
+    {
+        if (! $category instanceof InventoryMajorCategory) {
+            throw new LogicException('The resolved category is not a major category.');
+        }
+
+        return $category;
+    }
+
+    private function classCategory(Model $category): InventoryClassCategory
+    {
+        if (! $category instanceof InventoryClassCategory) {
+            throw new LogicException('The resolved category is not a class category.');
+        }
+
+        return $category;
+    }
+
+    private function seriesCategory(Model $category): InventorySeriesCategory
+    {
+        if (! $category instanceof InventorySeriesCategory) {
+            throw new LogicException('The resolved category is not a series category.');
+        }
+
+        return $category;
+    }
+
+    private function assetCategory(Model $category): InventoryAssetCategory
+    {
+        if (! $category instanceof InventoryAssetCategory) {
+            throw new LogicException('The resolved category is not an asset category.');
+        }
+
+        return $category;
     }
 }

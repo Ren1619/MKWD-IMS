@@ -28,6 +28,10 @@ class InventoryClassCategory extends Model
         return ['is_active' => 'boolean'];
     }
 
+    /**
+     * @param  Builder<InventoryClassCategory>  $query
+     * @return Builder<InventoryClassCategory>
+     */
     #[Scope]
     protected function active(Builder $query): Builder
     {

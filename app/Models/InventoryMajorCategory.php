@@ -27,6 +27,10 @@ class InventoryMajorCategory extends Model
         return ['is_active' => 'boolean'];
     }
 
+    /**
+     * @param  Builder<InventoryMajorCategory>  $query
+     * @return Builder<InventoryMajorCategory>
+     */
     #[Scope]
     protected function active(Builder $query): Builder
     {

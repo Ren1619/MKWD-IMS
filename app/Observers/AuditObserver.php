@@ -15,6 +15,8 @@ class AuditObserver
         'remember_token',
         'two_factor_secret',
         'two_factor_recovery_codes',
+        'base_url',
+        'deleted_at',
         'created_at',
         'updated_at',
     ];
@@ -62,11 +64,27 @@ class AuditObserver
             return;
         }
 
+        $isArchived = method_exists($model, 'trashed') && $model->trashed();
+
         $this->auditLogger->record(
-            'deleted',
-            "Deleted {$this->subjectDescription($model)}.",
+            $isArchived ? 'archived' : 'deleted',
+            ($isArchived ? 'Archived ' : 'Deleted ').$this->subjectDescription($model).'.',
             $model,
             oldValues: $this->safeValues($model->getAttributes()),
+        );
+    }
+
+    public function restored(Model $model): void
+    {
+        if (! auth()->check()) {
+            return;
+        }
+
+        $this->auditLogger->record(
+            'restored',
+            "Restored {$this->subjectDescription($model)}.",
+            $model,
+            newValues: $this->safeValues($model->getAttributes()),
         );
     }
 

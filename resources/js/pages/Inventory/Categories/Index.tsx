@@ -378,7 +378,7 @@ export default function CategoriesIndex({
                             type="button"
                             size="sm"
                             variant={
-                                workspace === 'items' ? 'secondary' : 'ghost'
+                                workspace === 'items' ? 'default' : 'ghost'
                             }
                             onClick={() => setWorkspace('items')}
                         >
@@ -389,7 +389,7 @@ export default function CategoriesIndex({
                             type="button"
                             size="sm"
                             variant={
-                                workspace === 'assets' ? 'secondary' : 'ghost'
+                                workspace === 'assets' ? 'default' : 'ghost'
                             }
                             onClick={() => setWorkspace('assets')}
                         >

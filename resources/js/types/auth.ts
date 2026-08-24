@@ -20,6 +20,7 @@ export type Auth = {
     permissions: {
         manage_inventory: boolean;
         manage_users: boolean;
+        manage_integrations: boolean;
         view_audit_logs: boolean;
     };
 };

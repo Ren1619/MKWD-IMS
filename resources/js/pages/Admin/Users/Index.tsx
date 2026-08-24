@@ -289,11 +289,11 @@ function EditUserDialog({
     return (
         <Dialog>
             <DialogTrigger render={<Button size="sm" variant="outline" />}>
-                <Pencil /> Manage
+                <Pencil /> Edit
             </DialogTrigger>
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
                 <DialogHeader>
-                    <DialogTitle>Manage {user.name}</DialogTitle>
+                    <DialogTitle>Edit {user.name}</DialogTitle>
                     <DialogDescription>
                         Update access, employee link, or password.
                     </DialogDescription>

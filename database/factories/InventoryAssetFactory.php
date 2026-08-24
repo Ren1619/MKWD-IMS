@@ -30,7 +30,8 @@ class InventoryAssetFactory extends Factory
             'acquisition_date' => fake()->dateTimeBetween('-5 years'),
             'acquisition_cost' => fake()->randomFloat(2, 1000, 100000),
             'depreciation_useful_life_months' => 60,
-            'status' => 'available',
+            'lifecycle_status' => 'active',
+            'condition_status' => 'good',
         ];
     }
 }

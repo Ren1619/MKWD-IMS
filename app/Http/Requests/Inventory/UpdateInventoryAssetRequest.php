@@ -38,7 +38,6 @@ class UpdateInventoryAssetRequest extends FormRequest
             'acquisition_date' => ['required', 'date'],
             'acquisition_cost' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
             'depreciation_useful_life_months' => ['required', 'integer', 'min:1', 'max:1200'],
-            'status' => ['required', Rule::in(['available', 'assigned', 'borrowed', 'maintenance', 'non-usable', 'disposed', 'defective', 'lost'])],
         ];
     }
 }

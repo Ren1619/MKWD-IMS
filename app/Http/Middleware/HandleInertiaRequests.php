@@ -43,6 +43,7 @@ class HandleInertiaRequests extends Middleware
                 'permissions' => [
                     'manage_inventory' => $request->user()?->can('manage-inventory') ?? false,
                     'manage_users' => $request->user()?->can('manage-users') ?? false,
+                    'manage_integrations' => $request->user()?->can('manage-integrations') ?? false,
                     'view_audit_logs' => $request->user()?->can('view-audit-logs') ?? false,
                 ],
             ],

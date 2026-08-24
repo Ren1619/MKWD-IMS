@@ -2,6 +2,9 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\AssetConditionStatus;
+use App\AssetCustodyStatus;
+use App\AssetLifecycleStatus;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -25,19 +28,10 @@ class InventoryAssetIndexRequest extends FormRequest
     {
         return [
             'search' => ['nullable', 'string', 'max:100'],
-            'status' => [
-                'nullable',
-                Rule::in([
-                    'available',
-                    'assigned',
-                    'borrowed',
-                    'maintenance',
-                    'non-usable',
-                    'disposed',
-                    'defective',
-                    'lost',
-                ]),
-            ],
+            'records' => ['nullable', Rule::in(['active', 'archived'])],
+            'lifecycle_status' => ['nullable', Rule::enum(AssetLifecycleStatus::class)],
+            'condition_status' => ['nullable', Rule::enum(AssetConditionStatus::class)],
+            'custody_status' => ['nullable', Rule::enum(AssetCustodyStatus::class)],
         ];
     }
 }

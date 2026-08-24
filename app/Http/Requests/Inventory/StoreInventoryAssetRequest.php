@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\AssetConditionStatus;
+use App\AssetLifecycleStatus;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -38,7 +40,8 @@ class StoreInventoryAssetRequest extends FormRequest
             'acquisition_date' => ['required', 'date'],
             'acquisition_cost' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
             'depreciation_useful_life_months' => ['required', 'integer', 'min:1', 'max:1200'],
-            'status' => ['required', Rule::in(['available', 'assigned', 'borrowed', 'maintenance', 'non-usable', 'disposed', 'defective', 'lost'])],
+            'lifecycle_status' => ['required', Rule::enum(AssetLifecycleStatus::class)],
+            'condition_status' => ['required', Rule::enum(AssetConditionStatus::class)],
         ];
     }
 }

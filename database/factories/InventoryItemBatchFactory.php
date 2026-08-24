@@ -23,7 +23,11 @@ class InventoryItemBatchFactory extends Factory
             'batch_number' => 1,
             'quantity_in' => 10,
             'quantity_remaining' => 10,
+            'unit_cost' => fake()->randomFloat(2, 1, 5000),
             'received_at' => today(),
+            'expiration_date' => null,
+            'source' => fake()->company(),
+            'reference_no' => fake()->unique()->bothify('DR-#####'),
         ];
     }
 }

@@ -26,6 +26,8 @@ class InventoryItemIndexRequest extends FormRequest
         return [
             'search' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', Rule::in(['active', 'inactive', 'disposed'])],
+            'records' => ['nullable', Rule::in(['active', 'archived'])],
+            'alert' => ['nullable', Rule::in(['low_stock', 'expiring', 'expired'])],
         ];
     }
 }

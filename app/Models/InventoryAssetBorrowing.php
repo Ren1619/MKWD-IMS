@@ -8,6 +8,10 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int|null $borrower_reference_id
+ * @property string|null $borrower_name
+ */
 #[Fillable([
     'inventory_asset_id',
     'borrower_reference_id',

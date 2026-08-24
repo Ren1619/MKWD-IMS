@@ -23,7 +23,7 @@ class InventoryDashboardController extends Controller
      */
     public function __invoke(Request $request): Response
     {
-        $assets = InventoryAsset::query()->get(['inventory_asset_id', 'status', 'acquisition_cost']);
+        $assets = InventoryAsset::query()->get(['inventory_asset_id', 'acquisition_cost']);
         $today = Carbon::today();
         $startDate = $today->copy()->subDays(6);
         $stockIns = InventoryItemBatch::query()
@@ -41,10 +41,20 @@ class InventoryDashboardController extends Controller
             'metrics' => [
                 'item_types' => InventoryItem::query()->count(),
                 'stock_on_hand' => (int) InventoryItem::query()->sum('quantity'),
-                'low_stock' => InventoryItem::query()->where('status', 'active')->where('quantity', '<=', 10)->count(),
+                'low_stock' => InventoryItem::query()->lowStock()->count(),
+                'expired_batches' => InventoryItemBatch::query()
+                    ->where('quantity_remaining', '>', 0)
+                    ->whereDate('expiration_date', '<', $today)
+                    ->whereHas('item', fn ($query) => $query->where('status', 'active'))
+                    ->count(),
+                'expiring_batches' => InventoryItemBatch::query()
+                    ->where('quantity_remaining', '>', 0)
+                    ->whereBetween('expiration_date', [$today, $today->copy()->addDays(InventoryItem::EXPIRATION_WARNING_DAYS)])
+                    ->whereHas('item', fn ($query) => $query->where('status', 'active'))
+                    ->count(),
                 'assets' => $assets->count(),
                 'asset_cost' => round((float) $assets->sum('acquisition_cost'), 2),
-                'borrowed_assets' => $assets->where('status', 'borrowed')->count(),
+                'borrowed_assets' => InventoryAsset::query()->whereHas('activeBorrowing')->count(),
                 'unassigned_assets' => InventoryAsset::query()->whereNull('current_custodian_reference_id')->count(),
                 'overdue_borrowings' => InventoryAssetBorrowing::query()
                     ->where('status', 'borrowed')
@@ -72,7 +82,7 @@ class InventoryDashboardController extends Controller
                 ];
             }),
             'recentStockOuts' => InventoryItemStockOut::query()
-                ->with(['item:inventory_item_id,name,unit_of_measure', 'recipientReference:id,name,type'])
+                ->with(['item:inventory_item_id,name,unit_of_measure', 'recipientReference:id,name,type', 'allocations'])
                 ->latest('stocked_out_at')
                 ->limit(8)
                 ->get(),

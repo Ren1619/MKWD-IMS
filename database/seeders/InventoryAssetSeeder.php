@@ -25,13 +25,24 @@ class InventoryAssetSeeder extends Seeder
             $categoryCode = (string) $assetData['category_code'];
             unset($assetData['category_code']);
 
-            InventoryAsset::query()->updateOrCreate(
+            $asset = InventoryAsset::query()->updateOrCreate(
                 ['serial_number' => $assetData['serial_number']],
                 [
                     ...$assetData,
                     'category_id' => $categoryIds[$categoryCode],
                 ],
             );
+
+            if ($asset->serial_number === 'MKWD-EQP-0004') {
+                $asset->borrowings()->updateOrCreate(
+                    ['borrower_name' => 'Engineering field team', 'status' => 'borrowed'],
+                    [
+                        'borrowed_at' => '2026-08-10 08:00:00',
+                        'due_at' => '2026-08-20 17:00:00',
+                        'notes' => 'Distribution monitoring and calibration verification.',
+                    ],
+                );
+            }
         }
     }
 
@@ -59,7 +70,8 @@ class InventoryAssetSeeder extends Seeder
                 'appraisal_date' => '2025-01-15',
                 'impairment_losses' => 0,
                 'physical_count_remarks' => 'Verified during the 2025 annual physical count.',
-                'status' => 'assigned',
+                'lifecycle_status' => 'active',
+                'condition_status' => 'good',
             ],
             [
                 'category_code' => 'AST-FNF',
@@ -79,7 +91,8 @@ class InventoryAssetSeeder extends Seeder
                 'depreciation_useful_life_months' => 120,
                 'impairment_losses' => 0,
                 'physical_count_remarks' => 'Serviceable with minor surface scratches.',
-                'status' => 'available',
+                'lifecycle_status' => 'active',
+                'condition_status' => 'fair',
             ],
             [
                 'category_code' => 'AST-OFF',
@@ -101,7 +114,8 @@ class InventoryAssetSeeder extends Seeder
                 'appraisal_date' => '2025-06-30',
                 'impairment_losses' => 3000.00,
                 'physical_count_remarks' => 'For blade replacement and preventive maintenance.',
-                'status' => 'maintenance',
+                'lifecycle_status' => 'under_maintenance',
+                'condition_status' => 'needs_repair',
             ],
             [
                 'category_code' => 'AST-MCH',
@@ -123,7 +137,8 @@ class InventoryAssetSeeder extends Seeder
                 'appraisal_date' => '2024-12-12',
                 'impairment_losses' => 1500.00,
                 'physical_count_remarks' => 'Operational after engine servicing.',
-                'status' => 'available',
+                'lifecycle_status' => 'active',
+                'condition_status' => 'good',
             ],
             [
                 'category_code' => 'AST-TRN',
@@ -145,7 +160,8 @@ class InventoryAssetSeeder extends Seeder
                 'physical_count_remarks' => 'Beyond economical repair.',
                 'disposal_method' => 'Public auction',
                 'disposal_value' => 9500.00,
-                'status' => 'disposed',
+                'lifecycle_status' => 'disposed',
+                'condition_status' => 'non_usable',
             ],
             [
                 'category_code' => 'AST-ICT',
@@ -165,7 +181,8 @@ class InventoryAssetSeeder extends Seeder
                 'depreciation_useful_life_months' => 60,
                 'impairment_losses' => 0,
                 'physical_count_remarks' => 'In good working condition.',
-                'status' => 'assigned',
+                'lifecycle_status' => 'active',
+                'condition_status' => 'good',
             ],
             [
                 'category_code' => 'AST-ICT',
@@ -185,7 +202,8 @@ class InventoryAssetSeeder extends Seeder
                 'depreciation_useful_life_months' => 60,
                 'impairment_losses' => 0,
                 'physical_count_remarks' => 'Serviceable; toner replacement due soon.',
-                'status' => 'available',
+                'lifecycle_status' => 'active',
+                'condition_status' => 'fair',
             ],
             [
                 'category_code' => 'AST-OFF',
@@ -207,7 +225,8 @@ class InventoryAssetSeeder extends Seeder
                 'appraisal_date' => '2025-09-05',
                 'impairment_losses' => 0,
                 'physical_count_remarks' => 'Covered by preventive maintenance agreement.',
-                'status' => 'assigned',
+                'lifecycle_status' => 'active',
+                'condition_status' => 'good',
             ],
             [
                 'category_code' => 'AST-MCH',
@@ -229,7 +248,8 @@ class InventoryAssetSeeder extends Seeder
                 'appraisal_date' => '2025-04-30',
                 'impairment_losses' => 0,
                 'physical_count_remarks' => 'Calibration certificate valid through April 2027.',
-                'status' => 'borrowed',
+                'lifecycle_status' => 'active',
+                'condition_status' => 'good',
             ],
             [
                 'category_code' => 'AST-TRN',
@@ -249,7 +269,8 @@ class InventoryAssetSeeder extends Seeder
                 'depreciation_useful_life_months' => 60,
                 'impairment_losses' => 5000.00,
                 'physical_count_remarks' => 'Unit powers on but requires software renewal.',
-                'status' => 'defective',
+                'lifecycle_status' => 'under_maintenance',
+                'condition_status' => 'defective',
             ],
         ];
     }

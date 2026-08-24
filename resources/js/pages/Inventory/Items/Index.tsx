@@ -1,7 +1,16 @@
-import { Form, Head, router } from '@inertiajs/react';
-import { ArrowDownToLine, ArrowUpFromLine, Plus, Trash2 } from 'lucide-react';
+import { Form, Head } from '@inertiajs/react';
+import {
+    ArrowDownToLine,
+    ArrowUpFromLine,
+    Plus,
+    RotateCcw,
+    SlidersHorizontal,
+} from 'lucide-react';
+import { useState } from 'react';
+import { ArchiveRecordDialog } from '@/components/archive-record-dialog';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
+import { InventoryItemDetailsDialog } from '@/components/inventory-item-details-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,17 +29,25 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useAppPage } from '@/hooks/use-app-page';
 import { useFilterSubmit } from '@/hooks/use-filter-submit';
 import {
     destroy,
     index,
+    restore,
     stock_in,
     stock_out,
     store,
+    update_replenishment,
 } from '@/routes/inventory/items';
 import type {
     HrisReference,
+    InventoryItem,
     Paginated,
     SeriesCategory,
 } from '@/types/inventory';
@@ -38,18 +55,18 @@ import type {
 const selectClass =
     'border-input bg-background h-9 w-full rounded-md border px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
-type InventoryItem = {
-    inventory_item_id: number;
-    name: string;
-    stock_number: string | null;
-    unit_of_measure: string;
-    quantity: number;
-    price: string;
-    status: string;
-    series_category: SeriesCategory;
-    accountable_reference: HrisReference | null;
-    batches: { inventory_item_batch_id: number; quantity_remaining: number }[];
-};
+const currency = new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+});
+
+function isInteractiveRowTarget(target: EventTarget | null): boolean {
+    return (
+        target instanceof Element &&
+        target.closest('button, a, input, select, textarea') !== null
+    );
+}
 
 function StockInDialog({ item }: { item: InventoryItem }) {
     return (
@@ -57,14 +74,19 @@ function StockInDialog({ item }: { item: InventoryItem }) {
             <DialogTrigger render={<Button size="sm" variant="outline" />}>
                 <ArrowDownToLine /> Receive
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
                 <DialogHeader>
                     <DialogTitle>Receive {item.name}</DialogTitle>
                     <DialogDescription>
-                        Add a new FIFO stock batch.
+                        Record the cost and traceability details for this FIFO
+                        batch.
                     </DialogDescription>
                 </DialogHeader>
-                <Form action={stock_in(item)} className="grid gap-4">
+                <Form
+                    action={stock_in(item)}
+                    resetOnSuccess
+                    className="grid gap-4 sm:grid-cols-2"
+                >
                     {({ errors, processing }) => (
                         <>
                             <div>
@@ -86,6 +108,24 @@ function StockInDialog({ item }: { item: InventoryItem }) {
                             </div>
                             <div>
                                 <label
+                                    htmlFor={`stock-in-unit-cost-${item.inventory_item_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Unit cost
+                                </label>
+                                <Input
+                                    id={`stock-in-unit-cost-${item.inventory_item_id}`}
+                                    name="unit_cost"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="e.g. 245.50"
+                                    required
+                                />
+                                <InputError message={errors.unit_cost} />
+                            </div>
+                            <div>
+                                <label
                                     htmlFor={`received-at-${item.inventory_item_id}`}
                                     className="mb-1.5 block text-sm font-medium"
                                 >
@@ -101,7 +141,71 @@ function StockInDialog({ item }: { item: InventoryItem }) {
                                 />
                                 <InputError message={errors.received_at} />
                             </div>
-                            <Button disabled={processing}>
+                            <div>
+                                <label
+                                    htmlFor={`stock-in-expiration-${item.inventory_item_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Expiration date
+                                </label>
+                                <Input
+                                    id={`stock-in-expiration-${item.inventory_item_id}`}
+                                    name="expiration_date"
+                                    type="date"
+                                />
+                                <InputError message={errors.expiration_date} />
+                            </div>
+                            <div>
+                                <label
+                                    htmlFor={`stock-in-source-${item.inventory_item_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Supplier / source
+                                </label>
+                                <Input
+                                    id={`stock-in-source-${item.inventory_item_id}`}
+                                    name="source"
+                                    placeholder="e.g. ABC Office Supplies"
+                                    maxLength={255}
+                                />
+                                <InputError message={errors.source} />
+                            </div>
+                            <div>
+                                <label
+                                    htmlFor={`stock-in-reference-${item.inventory_item_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Receipt reference
+                                </label>
+                                <Input
+                                    id={`stock-in-reference-${item.inventory_item_id}`}
+                                    name="reference_no"
+                                    placeholder="e.g. DR-2026-001"
+                                    maxLength={100}
+                                />
+                                <InputError message={errors.reference_no} />
+                            </div>
+                            <div className="sm:col-span-2">
+                                <label
+                                    htmlFor={`stock-in-notes-${item.inventory_item_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Batch notes
+                                </label>
+                                <textarea
+                                    id={`stock-in-notes-${item.inventory_item_id}`}
+                                    name="batch_notes"
+                                    rows={3}
+                                    maxLength={2000}
+                                    className={`${selectClass} h-auto py-2`}
+                                    placeholder="Optional receipt or batch details"
+                                />
+                                <InputError message={errors.batch_notes} />
+                            </div>
+                            <Button
+                                disabled={processing}
+                                className="sm:col-span-2"
+                            >
                                 {processing ? 'Receiving…' : 'Receive stock'}
                             </Button>
                         </>
@@ -261,6 +365,87 @@ function StockOutDialog({
     );
 }
 
+function ReplenishmentDialog({ item }: { item: InventoryItem }) {
+    return (
+        <Dialog>
+            <DialogTrigger
+                render={
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label={`Configure replenishment for ${item.name}`}
+                    />
+                }
+            >
+                <SlidersHorizontal />
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Replenishment settings</DialogTitle>
+                    <DialogDescription>
+                        Set when {item.name} should be flagged and the suggested
+                        quantity to order.
+                    </DialogDescription>
+                </DialogHeader>
+                <Form
+                    action={update_replenishment(item)}
+                    options={{ preserveScroll: true }}
+                    className="grid gap-4"
+                >
+                    {({ errors, processing }) => (
+                        <>
+                            <div>
+                                <label
+                                    htmlFor={`reorder-point-${item.inventory_item_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Reorder point
+                                </label>
+                                <Input
+                                    id={`reorder-point-${item.inventory_item_id}`}
+                                    name="reorder_point"
+                                    type="number"
+                                    min="0"
+                                    max="1000000"
+                                    defaultValue={item.reorder_point}
+                                    required
+                                />
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    Alert when on-hand stock reaches this level.
+                                </p>
+                                <InputError message={errors.reorder_point} />
+                            </div>
+                            <div>
+                                <label
+                                    htmlFor={`reorder-quantity-${item.inventory_item_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Suggested order quantity
+                                </label>
+                                <Input
+                                    id={`reorder-quantity-${item.inventory_item_id}`}
+                                    name="reorder_quantity"
+                                    type="number"
+                                    min="1"
+                                    max="1000000"
+                                    defaultValue={
+                                        item.reorder_quantity ?? undefined
+                                    }
+                                    placeholder="Optional"
+                                />
+                                <InputError message={errors.reorder_quantity} />
+                            </div>
+                            <Button disabled={processing}>
+                                {processing ? 'Saving…' : 'Save settings'}
+                            </Button>
+                        </>
+                    )}
+                </Form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 export default function ItemsIndex({
     items,
     seriesCategories,
@@ -270,11 +455,20 @@ export default function ItemsIndex({
     items: Paginated<InventoryItem>;
     seriesCategories: SeriesCategory[];
     references: HrisReference[];
-    filters: { search?: string; status?: string };
+    filters: {
+        search?: string;
+        status?: string;
+        records?: string;
+        alert?: string;
+    };
 }) {
     const { submitAfterDelay, submitImmediately } = useFilterSubmit();
     const { auth } = useAppPage().props;
     const canManageInventory = auth.permissions.manage_inventory;
+    const showingArchived = filters.records === 'archived';
+    const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(
+        null,
+    );
 
     return (
         <>
@@ -421,14 +615,57 @@ export default function ItemsIndex({
                                             </div>
                                             <div>
                                                 <label
-                                                    htmlFor="unit-price"
+                                                    htmlFor="reorder-point"
                                                     className="mb-1.5 block text-sm font-medium"
                                                 >
-                                                    Unit price
+                                                    Reorder point
                                                 </label>
                                                 <Input
-                                                    id="unit-price"
-                                                    name="price"
+                                                    id="reorder-point"
+                                                    name="reorder_point"
+                                                    type="number"
+                                                    min="0"
+                                                    max="1000000"
+                                                    defaultValue="10"
+                                                    required
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.reorder_point
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    htmlFor="reorder-quantity"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Suggested order quantity
+                                                </label>
+                                                <Input
+                                                    id="reorder-quantity"
+                                                    name="reorder_quantity"
+                                                    type="number"
+                                                    min="1"
+                                                    max="1000000"
+                                                    placeholder="Optional"
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.reorder_quantity
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    htmlFor="opening-unit-cost"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Opening unit cost
+                                                </label>
+                                                <Input
+                                                    id="opening-unit-cost"
+                                                    name="unit_cost"
                                                     type="number"
                                                     min="0"
                                                     step="0.01"
@@ -437,7 +674,7 @@ export default function ItemsIndex({
                                                     required
                                                 />
                                                 <InputError
-                                                    message={errors.price}
+                                                    message={errors.unit_cost}
                                                 />
                                             </div>
                                             <div>
@@ -500,6 +737,25 @@ export default function ItemsIndex({
                                             </div>
                                             <div>
                                                 <label
+                                                    htmlFor="opening-received-at"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Date received
+                                                </label>
+                                                <Input
+                                                    id="opening-received-at"
+                                                    name="received_at"
+                                                    type="date"
+                                                    defaultValue={new Date()
+                                                        .toISOString()
+                                                        .slice(0, 10)}
+                                                />
+                                                <InputError
+                                                    message={errors.received_at}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label
                                                     htmlFor="item-status"
                                                     className="mb-1.5 block text-sm font-medium"
                                                 >
@@ -524,6 +780,61 @@ export default function ItemsIndex({
                                                 </select>
                                                 <InputError
                                                     message={errors.status}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    htmlFor="opening-source"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Supplier / source
+                                                </label>
+                                                <Input
+                                                    id="opening-source"
+                                                    name="source"
+                                                    placeholder="e.g. ABC Office Supplies"
+                                                    maxLength={255}
+                                                />
+                                                <InputError
+                                                    message={errors.source}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    htmlFor="opening-reference"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Receipt reference
+                                                </label>
+                                                <Input
+                                                    id="opening-reference"
+                                                    name="reference_no"
+                                                    placeholder="e.g. DR-2026-001"
+                                                    maxLength={100}
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.reference_no
+                                                    }
+                                                />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label
+                                                    htmlFor="opening-batch-notes"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Opening batch notes
+                                                </label>
+                                                <textarea
+                                                    id="opening-batch-notes"
+                                                    name="batch_notes"
+                                                    rows={3}
+                                                    maxLength={2000}
+                                                    className={`${selectClass} h-auto py-2`}
+                                                    placeholder="Optional receipt or batch details"
+                                                />
+                                                <InputError
+                                                    message={errors.batch_notes}
                                                 />
                                             </div>
                                             <div className="md:col-span-2">
@@ -585,9 +896,16 @@ export default function ItemsIndex({
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Stock ledger</CardTitle>
+                        <CardTitle>
+                            {showingArchived
+                                ? 'Archived stock records'
+                                : 'Stock ledger'}
+                        </CardTitle>
                         <CardDescription>
-                            {items.total} item types.
+                            {items.total}{' '}
+                            {showingArchived
+                                ? 'archived item types.'
+                                : 'item types.'}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-4">
@@ -644,6 +962,58 @@ export default function ItemsIndex({
                                         </select>
                                         <InputError message={errors.status} />
                                     </div>
+                                    <div className="grid w-full gap-1.5 sm:w-44">
+                                        <label
+                                            htmlFor="item-alert-filter"
+                                            className="text-sm font-medium"
+                                        >
+                                            Attention
+                                        </label>
+                                        <select
+                                            id="item-alert-filter"
+                                            name="alert"
+                                            defaultValue={filters.alert ?? ''}
+                                            className={selectClass}
+                                            onChange={submitImmediately}
+                                        >
+                                            <option value="">All items</option>
+                                            <option value="low_stock">
+                                                Low stock
+                                            </option>
+                                            <option value="expiring">
+                                                Expiring within 30 days
+                                            </option>
+                                            <option value="expired">
+                                                Expired stock
+                                            </option>
+                                        </select>
+                                        <InputError message={errors.alert} />
+                                    </div>
+                                    <div className="grid w-full gap-1.5 sm:w-44">
+                                        <label
+                                            htmlFor="item-records-filter"
+                                            className="text-sm font-medium"
+                                        >
+                                            Records
+                                        </label>
+                                        <select
+                                            id="item-records-filter"
+                                            name="records"
+                                            defaultValue={
+                                                filters.records ?? 'active'
+                                            }
+                                            className={selectClass}
+                                            onChange={submitImmediately}
+                                        >
+                                            <option value="active">
+                                                Active records
+                                            </option>
+                                            <option value="archived">
+                                                Archived records
+                                            </option>
+                                        </select>
+                                        <InputError message={errors.records} />
+                                    </div>
                                 </>
                             )}
                         </Form>
@@ -658,8 +1028,9 @@ export default function ItemsIndex({
                                             On hand
                                         </th>
                                         <th className="pb-3 text-right">
-                                            Unit price
+                                            Stock value
                                         </th>
+                                        <th className="pb-3">Next expiry</th>
                                         <th className="pb-3">Status</th>
                                         {canManageInventory && (
                                             <th className="pb-3 text-right">
@@ -670,91 +1041,205 @@ export default function ItemsIndex({
                                 </thead>
                                 <tbody className="divide-y">
                                     {items.data.map((item) => (
-                                        <tr key={item.inventory_item_id}>
-                                            <td className="py-3 font-mono text-xs">
-                                                {item.stock_number ?? '—'}
-                                            </td>
-                                            <td className="py-3">
-                                                <div className="font-medium">
-                                                    {item.name}
-                                                </div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    {item.accountable_reference
-                                                        ?.name ??
-                                                        'No accountable person'}
-                                                </div>
-                                            </td>
-                                            <td className="py-3 text-muted-foreground">
-                                                {
-                                                    item.series_category
-                                                        ?.class_category
-                                                        ?.major_category?.name
-                                                }{' '}
-                                                / {item.series_category?.name}
-                                            </td>
-                                            <td className="py-3 text-right font-semibold">
-                                                {item.quantity}{' '}
-                                                {item.unit_of_measure}
-                                            </td>
-                                            <td className="py-3 text-right">
-                                                ₱
-                                                {Number(
-                                                    item.price,
-                                                ).toLocaleString()}
-                                            </td>
-                                            <td className="py-3">
-                                                <Badge
-                                                    variant={
-                                                        item.status === 'active'
-                                                            ? 'default'
-                                                            : 'secondary'
-                                                    }
-                                                >
-                                                    {item.status}
-                                                </Badge>
-                                            </td>
-                                            {canManageInventory && (
-                                                <td className="py-3">
-                                                    <div className="flex justify-end gap-2">
-                                                        <StockInDialog
-                                                            item={item}
-                                                        />
-                                                        <StockOutDialog
-                                                            item={item}
-                                                            references={
-                                                                references
+                                        <Tooltip key={item.inventory_item_id}>
+                                            <TooltipTrigger
+                                                render={
+                                                    <tr
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        aria-haspopup="dialog"
+                                                        aria-label={`View receipt and release history for ${item.name}`}
+                                                        className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                                                        onClick={(event) => {
+                                                            if (
+                                                                !isInteractiveRowTarget(
+                                                                    event.target,
+                                                                )
+                                                            ) {
+                                                                setSelectedItem(
+                                                                    item,
+                                                                );
                                                             }
-                                                        />
-                                                        <Button
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            aria-label={`Delete ${item.name}`}
-                                                            onClick={() => {
-                                                                if (
-                                                                    window.confirm(
-                                                                        `Delete ${item.name} and its stock history?`,
-                                                                    )
-                                                                ) {
-                                                                    router.visit(
-                                                                        destroy(
-                                                                            item,
-                                                                        ),
-                                                                    );
-                                                                }
-                                                            }}
-                                                        >
-                                                            <Trash2 />
-                                                        </Button>
+                                                        }}
+                                                        onKeyDown={(event) => {
+                                                            if (
+                                                                event.target ===
+                                                                    event.currentTarget &&
+                                                                (event.key ===
+                                                                    'Enter' ||
+                                                                    event.key ===
+                                                                        ' ')
+                                                            ) {
+                                                                event.preventDefault();
+                                                                setSelectedItem(
+                                                                    item,
+                                                                );
+                                                            }
+                                                        }}
+                                                    />
+                                                }
+                                            >
+                                                <td className="py-3 font-mono text-xs">
+                                                    {item.stock_number ?? '—'}
+                                                </td>
+                                                <td className="py-3">
+                                                    <div className="font-medium">
+                                                        {item.name}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {item
+                                                            .accountable_reference
+                                                            ?.name ??
+                                                            'No accountable person'}
                                                     </div>
                                                 </td>
-                                            )}
-                                        </tr>
+                                                <td className="py-3 text-muted-foreground">
+                                                    {
+                                                        item.series_category
+                                                            ?.class_category
+                                                            ?.major_category
+                                                            ?.name
+                                                    }{' '}
+                                                    /{' '}
+                                                    {item.series_category?.name}
+                                                </td>
+                                                <td className="py-3 text-right">
+                                                    <div className="font-semibold">
+                                                        {item.quantity}{' '}
+                                                        {item.unit_of_measure}
+                                                    </div>
+                                                    {item.is_low_stock && (
+                                                        <Badge
+                                                            variant="destructive"
+                                                            className="mt-1"
+                                                        >
+                                                            Reorder at{' '}
+                                                            {item.reorder_point}
+                                                        </Badge>
+                                                    )}
+                                                </td>
+                                                <td className="py-3 text-right">
+                                                    {currency.format(
+                                                        Number(
+                                                            item.inventory_value,
+                                                        ),
+                                                    )}
+                                                </td>
+                                                <td className="py-3 text-muted-foreground">
+                                                    <div>
+                                                        {item.next_expiration_date
+                                                            ? new Date(
+                                                                  `${item.next_expiration_date}T00:00:00`,
+                                                              ).toLocaleDateString()
+                                                            : 'No expiry'}
+                                                    </div>
+                                                    {item.expiration_status ===
+                                                        'expired' && (
+                                                        <Badge
+                                                            variant="destructive"
+                                                            className="mt-1"
+                                                        >
+                                                            Expired
+                                                        </Badge>
+                                                    )}
+                                                    {item.expiration_status ===
+                                                        'expiring' && (
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="mt-1 border-amber-500/50 text-amber-700 dark:text-amber-400"
+                                                        >
+                                                            Expiring soon
+                                                        </Badge>
+                                                    )}
+                                                </td>
+                                                <td className="py-3">
+                                                    <Badge
+                                                        variant={
+                                                            item.status ===
+                                                            'active'
+                                                                ? 'default'
+                                                                : 'secondary'
+                                                        }
+                                                    >
+                                                        {item.status}
+                                                    </Badge>
+                                                </td>
+                                                {canManageInventory && (
+                                                    <td className="py-3">
+                                                        <div className="flex justify-end gap-2">
+                                                            {showingArchived ? (
+                                                                <Form
+                                                                    action={restore(
+                                                                        item,
+                                                                    )}
+                                                                    options={{
+                                                                        preserveScroll: true,
+                                                                    }}
+                                                                >
+                                                                    {({
+                                                                        processing,
+                                                                    }) => (
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="outline"
+                                                                            disabled={
+                                                                                processing
+                                                                            }
+                                                                        >
+                                                                            <RotateCcw />
+                                                                            {processing
+                                                                                ? 'Restoring…'
+                                                                                : 'Restore'}
+                                                                        </Button>
+                                                                    )}
+                                                                </Form>
+                                                            ) : (
+                                                                <>
+                                                                    <StockInDialog
+                                                                        item={
+                                                                            item
+                                                                        }
+                                                                    />
+                                                                    <StockOutDialog
+                                                                        item={
+                                                                            item
+                                                                        }
+                                                                        references={
+                                                                            references
+                                                                        }
+                                                                    />
+                                                                    <ReplenishmentDialog
+                                                                        item={
+                                                                            item
+                                                                        }
+                                                                    />
+                                                                    <ArchiveRecordDialog
+                                                                        action={destroy(
+                                                                            item,
+                                                                        )}
+                                                                        recordName={
+                                                                            item.name
+                                                                        }
+                                                                        recordType="inventory item"
+                                                                        prerequisite="An item must have zero stock before it can be archived."
+                                                                    />
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                )}
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                Click for receipt and release
+                                                history
+                                            </TooltipContent>
+                                        </Tooltip>
                                     ))}
                                     {items.data.length === 0 && (
                                         <tr>
                                             <td
                                                 colSpan={
-                                                    canManageInventory ? 7 : 6
+                                                    canManageInventory ? 8 : 7
                                                 }
                                                 className="py-10 text-center text-muted-foreground"
                                             >
@@ -768,6 +1253,19 @@ export default function ItemsIndex({
                         <DataPagination links={items.links} />
                     </CardContent>
                 </Card>
+
+                {selectedItem && (
+                    <InventoryItemDetailsDialog
+                        key={selectedItem.inventory_item_id}
+                        item={selectedItem}
+                        open
+                        onOpenChange={(open) => {
+                            if (!open) {
+                                setSelectedItem(null);
+                            }
+                        }}
+                    />
+                )}
             </div>
         </>
     );

@@ -134,7 +134,8 @@ test('archived categories cannot be selected for new inventory records', functio
         'name' => 'Archived category item',
         'unit_of_measure' => 'pc',
         'quantity' => 0,
-        'price' => 0,
+        'reorder_point' => 10,
+        'unit_cost' => 0,
         'status' => 'active',
     ])->assertSessionHasErrors('series_category_id');
 
@@ -145,7 +146,8 @@ test('archived categories cannot be selected for new inventory records', functio
         'unit_of_measure' => 'unit',
         'acquisition_date' => now()->toDateString(),
         'depreciation_useful_life_months' => 60,
-        'status' => 'available',
+        'lifecycle_status' => 'active',
+        'condition_status' => 'good',
     ])->assertSessionHasErrors('category_id');
 
     $this->actingAs($user)

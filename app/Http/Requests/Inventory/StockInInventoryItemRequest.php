@@ -24,7 +24,12 @@ class StockInInventoryItemRequest extends FormRequest
     {
         return [
             'quantity' => ['required', 'integer', 'min:1'],
+            'unit_cost' => ['required', 'numeric', 'min:0', 'max:9999999999.99'],
             'received_at' => ['nullable', 'date'],
+            'expiration_date' => ['nullable', 'date'],
+            'source' => ['nullable', 'string', 'max:255'],
+            'reference_no' => ['nullable', 'string', 'max:100'],
+            'batch_notes' => ['nullable', 'string', 'max:2000'],
         ];
     }
 }

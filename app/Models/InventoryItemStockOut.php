@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'inventory_item_id',
@@ -24,6 +25,8 @@ class InventoryItemStockOut extends Model
     use HasFactory;
 
     protected $primaryKey = 'inventory_item_stock_out_id';
+
+    protected $appends = ['total_cost'];
 
     protected function casts(): array
     {
@@ -43,5 +46,20 @@ class InventoryItemStockOut extends Model
     public function recipientReference(): BelongsTo
     {
         return $this->belongsTo(HrisReference::class, 'recipient_reference_id');
+    }
+
+    /** @return HasMany<InventoryItemStockOutAllocation, $this> */
+    public function allocations(): HasMany
+    {
+        return $this->hasMany(InventoryItemStockOutAllocation::class, 'inventory_item_stock_out_id', 'inventory_item_stock_out_id');
+    }
+
+    public function getTotalCostAttribute(): string
+    {
+        $value = $this->relationLoaded('allocations')
+            ? $this->allocations->sum(fn (InventoryItemStockOutAllocation $allocation): float => $allocation->quantity * (float) $allocation->unit_cost)
+            : (float) $this->allocations()->selectRaw('COALESCE(SUM(quantity * unit_cost), 0) AS value')->value('value');
+
+        return number_format($value, 2, '.', '');
     }
 }

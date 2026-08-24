@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\InventoryAsset;
+use App\Models\InventoryItem;
 use App\Models\InventoryMajorCategory;
 use App\Models\User;
 use App\UserRole;
@@ -13,21 +15,32 @@ test('the system exposes exactly the supported roles', function () {
     ]);
 });
 
-test('role abilities follow the access matrix', function (
-    UserRole $role,
-    bool $managesUsers,
-    bool $viewsAuditLogs,
-    bool $managesInventory,
-) {
+test('role abilities follow the access matrix', function (UserRole $role, array $abilities) {
     $user = User::factory()->create(['role' => $role]);
 
-    expect($user->can('manage-users'))->toBe($managesUsers)
-        ->and($user->can('view-audit-logs'))->toBe($viewsAuditLogs)
-        ->and($user->can('manage-inventory'))->toBe($managesInventory);
+    expect($user->can('manage-users'))->toBe($abilities['manage_users'])
+        ->and($user->can('view-audit-logs'))->toBe($abilities['view_audit_logs'])
+        ->and($user->can('manage-integrations'))->toBe($abilities['manage_integrations'])
+        ->and($user->can('manage-inventory'))->toBe($abilities['manage_inventory']);
 })->with([
-    'super admin' => [UserRole::SuperAdmin, true, true, true],
-    'inventory manager' => [UserRole::InventoryManager, false, false, true],
-    'employee' => [UserRole::Employee, false, false, false],
+    'super admin' => [UserRole::SuperAdmin, [
+        'manage_users' => true,
+        'view_audit_logs' => true,
+        'manage_integrations' => true,
+        'manage_inventory' => true,
+    ]],
+    'inventory manager' => [UserRole::InventoryManager, [
+        'manage_users' => false,
+        'view_audit_logs' => false,
+        'manage_integrations' => false,
+        'manage_inventory' => true,
+    ]],
+    'employee' => [UserRole::Employee, [
+        'manage_users' => false,
+        'view_audit_logs' => false,
+        'manage_integrations' => false,
+        'manage_inventory' => false,
+    ]],
 ]);
 
 test('employees have read-only inventory access', function () {
@@ -47,6 +60,22 @@ test('employees have read-only inventory access', function () {
         ->assertForbidden();
 
     expect(InventoryMajorCategory::query()->count())->toBe(0);
+
+    $archivedItem = InventoryItem::factory()->create();
+    $archivedItem->delete();
+
+    $this->actingAs($employee)
+        ->patch(route('inventory.items.restore', $archivedItem->inventory_item_id))
+        ->assertForbidden();
+
+    $asset = InventoryAsset::factory()->create();
+
+    $this->actingAs($employee)
+        ->patch(route('inventory.assets.update_state', $asset), [
+            'lifecycle_status' => 'retired',
+            'condition_status' => 'fair',
+        ])
+        ->assertForbidden();
 });
 
 test('inventory managers can modify inventory but cannot administer users', function () {

@@ -3,7 +3,9 @@
 namespace App\Integrations\Hris;
 
 use App\Contracts\HrisReferenceSource;
+use App\Models\HrisIntegrationSetting;
 use App\Models\HrisReference;
+use App\Services\HrisEndpointGuard;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
@@ -12,6 +14,8 @@ use LogicException;
 
 class HrisApiClient implements HrisReferenceSource
 {
+    public function __construct(private HrisEndpointGuard $endpointGuard) {}
+
     /**
      * @return array<int, array<string, mixed>>
      */
@@ -46,17 +50,24 @@ class HrisApiClient implements HrisReferenceSource
 
     private function request(): PendingRequest
     {
-        $baseUrl = config('services.hris.base_url');
+        $baseUrl = HrisIntegrationSetting::configuredBaseUrl();
 
         if (! is_string($baseUrl) || $baseUrl === '') {
             throw new LogicException('HRIS_API_BASE_URL is not configured.');
         }
 
-        $request = Http::baseUrl($baseUrl)
+        $validationError = $this->endpointGuard->validationError($baseUrl);
+
+        if ($validationError !== null) {
+            throw new LogicException("The configured HRIS API URL is unsafe: {$validationError}");
+        }
+
+        $request = Http::baseUrl($this->endpointGuard->normalize($baseUrl))
             ->acceptJson()
             ->connectTimeout((int) config('services.hris.connect_timeout', 3))
             ->timeout((int) config('services.hris.timeout', 10))
-            ->retry([100, 500, 1000]);
+            ->retry([100, 500, 1000])
+            ->withOptions(['allow_redirects' => false]);
 
         $token = config('services.hris.token');
 

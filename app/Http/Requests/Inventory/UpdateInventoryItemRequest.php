@@ -31,8 +31,8 @@ class UpdateInventoryItemRequest extends FormRequest
             'unit_of_measure' => ['required', 'string', 'max:50'],
             'uacs_object_code' => ['nullable', 'string', 'max:50'],
             'description' => ['nullable', 'string', 'max:2000'],
-            'price' => ['required', 'numeric', 'min:0', 'max:9999999999.99'],
-            'expiration_date' => ['nullable', 'date'],
+            'reorder_point' => ['required', 'integer', 'min:0', 'max:1000000'],
+            'reorder_quantity' => ['nullable', 'integer', 'min:1', 'max:1000000'],
             'status' => ['required', Rule::in(['active', 'inactive', 'disposed'])],
         ];
     }

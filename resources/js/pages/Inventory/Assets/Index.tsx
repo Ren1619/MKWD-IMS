@@ -3,10 +3,13 @@ import {
     Handshake,
     Plus,
     RotateCcw,
-    Trash2,
+    SlidersHorizontal,
     UserCheck,
     UserMinus,
 } from 'lucide-react';
+import { useState } from 'react';
+import { ArchiveRecordDialog } from '@/components/archive-record-dialog';
+import { AssetDetailsDialog } from '@/components/asset-details-dialog';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +30,11 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useAppPage } from '@/hooks/use-app-page';
 import { useFilterSubmit } from '@/hooks/use-filter-submit';
 import {
@@ -34,44 +42,133 @@ import {
     borrow,
     destroy,
     index,
+    restore,
     returnMethod,
     store,
     unassign,
+    update_state,
 } from '@/routes/inventory/assets';
 import type {
     AssetCategory,
+    AssetStateOptions,
     HrisReference,
+    InventoryAsset,
     Paginated,
 } from '@/types/inventory';
 
 const selectClass =
     'border-input bg-background h-9 w-full rounded-md border px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
-type Asset = {
-    inventory_asset_id: number;
-    serial_number: string;
-    property_number: string | null;
-    name: string;
-    brand: string | null;
-    model: string | null;
-    location: string | null;
-    status: string;
-    acquisition_cost: string | null;
-    book_value: number;
-    category: AssetCategory;
-    current_custodian: HrisReference | null;
-    active_borrowing: {
-        borrower_name: string | null;
-        due_at: string | null;
-        borrower_reference: HrisReference | null;
-    } | null;
-};
+function isInteractiveRowTarget(target: EventTarget | null): boolean {
+    return (
+        target instanceof Element &&
+        target.closest('button, a, input, select, textarea') !== null
+    );
+}
+
+function formatStateLabel(value: string): string {
+    return value
+        .split('_')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+}
+
+function AssetStateDialog({
+    asset,
+    options,
+}: {
+    asset: InventoryAsset;
+    options: AssetStateOptions;
+}) {
+    return (
+        <Dialog>
+            <DialogTrigger render={<Button size="sm" variant="outline" />}>
+                <SlidersHorizontal /> State
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Update asset state</DialogTitle>
+                    <DialogDescription>
+                        Lifecycle and condition are maintained separately from
+                        the custody state, which is calculated from assignment
+                        and borrowing records.
+                    </DialogDescription>
+                </DialogHeader>
+                <Form action={update_state(asset)} className="grid gap-4">
+                    {({ errors, processing }) => (
+                        <>
+                            <div>
+                                <label
+                                    htmlFor={`lifecycle-${asset.inventory_asset_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Lifecycle
+                                </label>
+                                <select
+                                    id={`lifecycle-${asset.inventory_asset_id}`}
+                                    name="lifecycle_status"
+                                    className={selectClass}
+                                    defaultValue={asset.lifecycle_status}
+                                    required
+                                >
+                                    {options.lifecycles.map((option) => (
+                                        <option
+                                            key={option.value}
+                                            value={option.value}
+                                        >
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <InputError message={errors.lifecycle_status} />
+                            </div>
+                            <div>
+                                <label
+                                    htmlFor={`condition-${asset.inventory_asset_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Physical condition
+                                </label>
+                                <select
+                                    id={`condition-${asset.inventory_asset_id}`}
+                                    name="condition_status"
+                                    className={selectClass}
+                                    defaultValue={asset.condition_status}
+                                    required
+                                >
+                                    {options.conditions.map((option) => (
+                                        <option
+                                            key={option.value}
+                                            value={option.value}
+                                        >
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <InputError message={errors.condition_status} />
+                            </div>
+                            <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                                Current custody:{' '}
+                                <span className="font-medium">
+                                    {formatStateLabel(asset.custody_status)}
+                                </span>
+                            </div>
+                            <Button disabled={processing}>
+                                {processing ? 'Updating…' : 'Update state'}
+                            </Button>
+                        </>
+                    )}
+                </Form>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 function CustodianDialog({
     asset,
     employees,
 }: {
-    asset: Asset;
+    asset: InventoryAsset;
     employees: HrisReference[];
 }) {
     return (
@@ -137,7 +234,7 @@ function BorrowDialog({
     asset,
     employees,
 }: {
-    asset: Asset;
+    asset: InventoryAsset;
     employees: HrisReference[];
 }) {
     return (
@@ -149,7 +246,10 @@ function BorrowDialog({
                 <DialogHeader>
                     <DialogTitle>Record borrowing</DialogTitle>
                     <DialogDescription>
-                        {asset.name} · current status: {asset.status}
+                        {asset.name} ·{' '}
+                        {formatStateLabel(asset.lifecycle_status)}
+                        {' · '}
+                        {formatStateLabel(asset.condition_status)}
                     </DialogDescription>
                 </DialogHeader>
                 <Form action={borrow(asset)} className="grid gap-4">
@@ -245,15 +345,27 @@ export default function AssetsIndex({
     categories,
     employees,
     filters,
+    assetStateOptions,
 }: {
-    assets: Paginated<Asset>;
+    assets: Paginated<InventoryAsset>;
     categories: AssetCategory[];
     employees: HrisReference[];
-    filters: { search?: string; status?: string };
+    filters: {
+        search?: string;
+        records?: string;
+        lifecycle_status?: string;
+        condition_status?: string;
+        custody_status?: string;
+    };
+    assetStateOptions: AssetStateOptions;
 }) {
     const { submitAfterDelay, submitImmediately } = useFilterSubmit();
     const { auth } = useAppPage().props;
     const canManageInventory = auth.permissions.manage_inventory;
+    const showingArchived = filters.records === 'archived';
+    const [selectedAsset, setSelectedAsset] = useState<InventoryAsset | null>(
+        null,
+    );
 
     return (
         <>
@@ -555,39 +667,72 @@ export default function AssetsIndex({
                                             </div>
                                             <div>
                                                 <label
-                                                    htmlFor="asset-status"
+                                                    htmlFor="asset-lifecycle"
                                                     className="mb-1.5 block text-sm font-medium"
                                                 >
-                                                    Status
+                                                    Lifecycle
                                                 </label>
                                                 <select
-                                                    id="asset-status"
-                                                    name="status"
+                                                    id="asset-lifecycle"
+                                                    name="lifecycle_status"
                                                     className={selectClass}
-                                                    defaultValue="available"
+                                                    defaultValue="active"
                                                     required
                                                 >
-                                                    <option value="available">
-                                                        Available
-                                                    </option>
-                                                    <option value="maintenance">
-                                                        Maintenance
-                                                    </option>
-                                                    <option value="non-usable">
-                                                        Non-usable
-                                                    </option>
-                                                    <option value="disposed">
-                                                        Disposed
-                                                    </option>
-                                                    <option value="defective">
-                                                        Defective
-                                                    </option>
-                                                    <option value="lost">
-                                                        Lost
-                                                    </option>
+                                                    {assetStateOptions.lifecycles.map(
+                                                        (option) => (
+                                                            <option
+                                                                key={
+                                                                    option.value
+                                                                }
+                                                                value={
+                                                                    option.value
+                                                                }
+                                                            >
+                                                                {option.label}
+                                                            </option>
+                                                        ),
+                                                    )}
                                                 </select>
                                                 <InputError
-                                                    message={errors.status}
+                                                    message={
+                                                        errors.lifecycle_status
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    htmlFor="asset-condition"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Physical condition
+                                                </label>
+                                                <select
+                                                    id="asset-condition"
+                                                    name="condition_status"
+                                                    className={selectClass}
+                                                    defaultValue="good"
+                                                    required
+                                                >
+                                                    {assetStateOptions.conditions.map(
+                                                        (option) => (
+                                                            <option
+                                                                key={
+                                                                    option.value
+                                                                }
+                                                                value={
+                                                                    option.value
+                                                                }
+                                                            >
+                                                                {option.label}
+                                                            </option>
+                                                        ),
+                                                    )}
+                                                </select>
+                                                <InputError
+                                                    message={
+                                                        errors.condition_status
+                                                    }
                                                 />
                                             </div>
                                             <Button
@@ -608,9 +753,16 @@ export default function AssetsIndex({
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Asset registry</CardTitle>
+                        <CardTitle>
+                            {showingArchived
+                                ? 'Archived assets'
+                                : 'Asset registry'}
+                        </CardTitle>
                         <CardDescription>
-                            {assets.total} registered assets.
+                            {assets.total}{' '}
+                            {showingArchived
+                                ? 'archived assets.'
+                                : 'registered assets.'}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-4">
@@ -640,20 +792,90 @@ export default function AssetsIndex({
                                     </div>
                                     <div className="grid w-full gap-1.5 sm:w-44">
                                         <label
-                                            htmlFor="asset-status-filter"
+                                            htmlFor="asset-lifecycle-filter"
                                             className="text-sm font-medium"
                                         >
-                                            Status
+                                            Lifecycle
                                         </label>
                                         <select
-                                            id="asset-status-filter"
-                                            name="status"
-                                            defaultValue={filters.status ?? ''}
+                                            id="asset-lifecycle-filter"
+                                            name="lifecycle_status"
+                                            defaultValue={
+                                                filters.lifecycle_status ?? ''
+                                            }
                                             className={selectClass}
                                             onChange={submitImmediately}
                                         >
                                             <option value="">
-                                                All statuses
+                                                All lifecycles
+                                            </option>
+                                            {assetStateOptions.lifecycles.map(
+                                                (option) => (
+                                                    <option
+                                                        key={option.value}
+                                                        value={option.value}
+                                                    >
+                                                        {option.label}
+                                                    </option>
+                                                ),
+                                            )}
+                                        </select>
+                                        <InputError
+                                            message={errors.lifecycle_status}
+                                        />
+                                    </div>
+                                    <div className="grid w-full gap-1.5 sm:w-44">
+                                        <label
+                                            htmlFor="asset-condition-filter"
+                                            className="text-sm font-medium"
+                                        >
+                                            Condition
+                                        </label>
+                                        <select
+                                            id="asset-condition-filter"
+                                            name="condition_status"
+                                            defaultValue={
+                                                filters.condition_status ?? ''
+                                            }
+                                            className={selectClass}
+                                            onChange={submitImmediately}
+                                        >
+                                            <option value="">
+                                                All conditions
+                                            </option>
+                                            {assetStateOptions.conditions.map(
+                                                (option) => (
+                                                    <option
+                                                        key={option.value}
+                                                        value={option.value}
+                                                    >
+                                                        {option.label}
+                                                    </option>
+                                                ),
+                                            )}
+                                        </select>
+                                        <InputError
+                                            message={errors.condition_status}
+                                        />
+                                    </div>
+                                    <div className="grid w-full gap-1.5 sm:w-44">
+                                        <label
+                                            htmlFor="asset-custody-filter"
+                                            className="text-sm font-medium"
+                                        >
+                                            Custody
+                                        </label>
+                                        <select
+                                            id="asset-custody-filter"
+                                            name="custody_status"
+                                            defaultValue={
+                                                filters.custody_status ?? ''
+                                            }
+                                            className={selectClass}
+                                            onChange={submitImmediately}
+                                        >
+                                            <option value="">
+                                                All custody states
                                             </option>
                                             <option value="available">
                                                 Available
@@ -664,14 +886,35 @@ export default function AssetsIndex({
                                             <option value="borrowed">
                                                 Borrowed
                                             </option>
-                                            <option value="maintenance">
-                                                Maintenance
+                                        </select>
+                                        <InputError
+                                            message={errors.custody_status}
+                                        />
+                                    </div>
+                                    <div className="grid w-full gap-1.5 sm:w-44">
+                                        <label
+                                            htmlFor="asset-records-filter"
+                                            className="text-sm font-medium"
+                                        >
+                                            Records
+                                        </label>
+                                        <select
+                                            id="asset-records-filter"
+                                            name="records"
+                                            defaultValue={
+                                                filters.records ?? 'active'
+                                            }
+                                            className={selectClass}
+                                            onChange={submitImmediately}
+                                        >
+                                            <option value="active">
+                                                Active records
                                             </option>
-                                            <option value="disposed">
-                                                Disposed
+                                            <option value="archived">
+                                                Archived records
                                             </option>
                                         </select>
-                                        <InputError message={errors.status} />
+                                        <InputError message={errors.records} />
                                     </div>
                                 </>
                             )}
@@ -687,7 +930,7 @@ export default function AssetsIndex({
                                         </th>
                                         <th className="pb-3">Location</th>
                                         <th className="pb-3">Book value</th>
-                                        <th className="pb-3">Status</th>
+                                        <th className="pb-3">State</th>
                                         {canManageInventory && (
                                             <th className="pb-3 text-right">
                                                 Actions
@@ -697,138 +940,241 @@ export default function AssetsIndex({
                                 </thead>
                                 <tbody className="divide-y">
                                     {assets.data.map((asset) => (
-                                        <tr key={asset.inventory_asset_id}>
-                                            <td className="py-3">
-                                                <div className="font-mono text-xs">
-                                                    {asset.property_number ??
-                                                        'No property no.'}
-                                                </div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    {asset.serial_number}
-                                                </div>
-                                            </td>
-                                            <td className="py-3">
-                                                <div className="font-medium">
-                                                    {asset.name}
-                                                </div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    {asset.category?.name} ·{' '}
-                                                    {[asset.brand, asset.model]
-                                                        .filter(Boolean)
-                                                        .join(' ')}
-                                                </div>
-                                            </td>
-                                            <td className="py-3">
-                                                <div>
-                                                    {asset.current_custodian
-                                                        ?.name ?? 'Unassigned'}
-                                                </div>
-                                                {asset.active_borrowing && (
-                                                    <div className="text-xs text-amber-600">
-                                                        Borrowed by{' '}
-                                                        {asset.active_borrowing
-                                                            .borrower_reference
-                                                            ?.name ??
-                                                            asset
-                                                                .active_borrowing
-                                                                .borrower_name}
-                                                    </div>
-                                                )}
-                                            </td>
-                                            <td className="py-3 text-muted-foreground">
-                                                {asset.location ?? '—'}
-                                            </td>
-                                            <td className="py-3 text-right">
-                                                ₱
-                                                {Number(
-                                                    asset.book_value,
-                                                ).toLocaleString()}
-                                            </td>
-                                            <td className="py-3">
-                                                <Badge
-                                                    variant={
-                                                        asset.status ===
-                                                        'available'
-                                                            ? 'default'
-                                                            : 'secondary'
-                                                    }
-                                                >
-                                                    {asset.status}
-                                                </Badge>
-                                            </td>
-                                            {canManageInventory && (
-                                                <td className="py-3">
-                                                    <div className="flex justify-end gap-2">
-                                                        {asset.status ===
-                                                        'borrowed' ? (
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                onClick={() =>
-                                                                    router.visit(
-                                                                        returnMethod(
-                                                                            asset,
-                                                                        ),
-                                                                    )
-                                                                }
-                                                            >
-                                                                <RotateCcw />{' '}
-                                                                Return
-                                                            </Button>
-                                                        ) : (
-                                                            <BorrowDialog
-                                                                asset={asset}
-                                                                employees={
-                                                                    employees
-                                                                }
-                                                            />
-                                                        )}
-                                                        <CustodianDialog
-                                                            asset={asset}
-                                                            employees={
-                                                                employees
+                                        <Tooltip key={asset.inventory_asset_id}>
+                                            <TooltipTrigger
+                                                render={
+                                                    <tr
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        aria-haspopup="dialog"
+                                                        aria-label={`View details for ${asset.name}`}
+                                                        className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                                                        onClick={(event) => {
+                                                            if (
+                                                                !isInteractiveRowTarget(
+                                                                    event.target,
+                                                                )
+                                                            ) {
+                                                                setSelectedAsset(
+                                                                    asset,
+                                                                );
                                                             }
-                                                        />
-                                                        {asset.current_custodian && (
-                                                            <Button
-                                                                size="icon"
-                                                                variant="ghost"
-                                                                aria-label="Unassign custodian"
-                                                                onClick={() =>
-                                                                    router.visit(
-                                                                        unassign(
-                                                                            asset,
-                                                                        ),
-                                                                    )
-                                                                }
-                                                            >
-                                                                <UserMinus />
-                                                            </Button>
-                                                        )}
-                                                        <Button
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            aria-label={`Delete ${asset.name}`}
-                                                            onClick={() => {
-                                                                if (
-                                                                    window.confirm(
-                                                                        `Delete ${asset.name} and its custody history?`,
-                                                                    )
-                                                                ) {
-                                                                    router.visit(
-                                                                        destroy(
-                                                                            asset,
-                                                                        ),
-                                                                    );
-                                                                }
-                                                            }}
-                                                        >
-                                                            <Trash2 />
-                                                        </Button>
+                                                        }}
+                                                        onKeyDown={(event) => {
+                                                            if (
+                                                                event.target ===
+                                                                    event.currentTarget &&
+                                                                (event.key ===
+                                                                    'Enter' ||
+                                                                    event.key ===
+                                                                        ' ')
+                                                            ) {
+                                                                event.preventDefault();
+                                                                setSelectedAsset(
+                                                                    asset,
+                                                                );
+                                                            }
+                                                        }}
+                                                    />
+                                                }
+                                            >
+                                                <td className="py-3">
+                                                    <div className="font-mono text-xs">
+                                                        {asset.property_number ??
+                                                            'No property no.'}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {asset.serial_number}
                                                     </div>
                                                 </td>
-                                            )}
-                                        </tr>
+                                                <td className="py-3">
+                                                    <div className="font-medium">
+                                                        {asset.name}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {asset.category?.name} ·{' '}
+                                                        {[
+                                                            asset.brand,
+                                                            asset.model,
+                                                        ]
+                                                            .filter(Boolean)
+                                                            .join(' ')}
+                                                    </div>
+                                                </td>
+                                                <td className="py-3">
+                                                    <div>
+                                                        {asset.current_custodian
+                                                            ?.name ??
+                                                            'Unassigned'}
+                                                    </div>
+                                                    {asset.active_borrowing && (
+                                                        <div className="text-xs text-amber-600">
+                                                            Borrowed by{' '}
+                                                            {asset
+                                                                .active_borrowing
+                                                                .borrower_reference
+                                                                ?.name ??
+                                                                asset
+                                                                    .active_borrowing
+                                                                    .borrower_name}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="py-3 text-muted-foreground">
+                                                    {asset.location ?? '—'}
+                                                </td>
+                                                <td className="py-3 text-right">
+                                                    ₱
+                                                    {Number(
+                                                        asset.book_value,
+                                                    ).toLocaleString()}
+                                                </td>
+                                                <td className="py-3">
+                                                    <div className="flex max-w-48 flex-wrap gap-1.5">
+                                                        <Badge
+                                                            variant={
+                                                                asset.lifecycle_status ===
+                                                                'active'
+                                                                    ? 'default'
+                                                                    : 'secondary'
+                                                            }
+                                                        >
+                                                            {formatStateLabel(
+                                                                asset.lifecycle_status,
+                                                            )}
+                                                        </Badge>
+                                                        <Badge variant="outline">
+                                                            {formatStateLabel(
+                                                                asset.condition_status,
+                                                            )}
+                                                        </Badge>
+                                                        <Badge
+                                                            variant={
+                                                                asset.custody_status ===
+                                                                'borrowed'
+                                                                    ? 'destructive'
+                                                                    : 'outline'
+                                                            }
+                                                        >
+                                                            {formatStateLabel(
+                                                                asset.custody_status,
+                                                            )}
+                                                        </Badge>
+                                                    </div>
+                                                </td>
+                                                {canManageInventory && (
+                                                    <td className="py-3">
+                                                        <div className="flex justify-end gap-2">
+                                                            {showingArchived ? (
+                                                                <Form
+                                                                    action={restore(
+                                                                        asset,
+                                                                    )}
+                                                                    options={{
+                                                                        preserveScroll: true,
+                                                                    }}
+                                                                >
+                                                                    {({
+                                                                        processing,
+                                                                    }) => (
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="outline"
+                                                                            disabled={
+                                                                                processing
+                                                                            }
+                                                                        >
+                                                                            <RotateCcw />
+                                                                            {processing
+                                                                                ? 'Restoring…'
+                                                                                : 'Restore'}
+                                                                        </Button>
+                                                                    )}
+                                                                </Form>
+                                                            ) : asset.custody_status ===
+                                                              'borrowed' ? (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    onClick={() =>
+                                                                        router.visit(
+                                                                            returnMethod(
+                                                                                asset,
+                                                                            ),
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    <RotateCcw />{' '}
+                                                                    Return
+                                                                </Button>
+                                                            ) : asset.is_borrowable ? (
+                                                                <BorrowDialog
+                                                                    asset={
+                                                                        asset
+                                                                    }
+                                                                    employees={
+                                                                        employees
+                                                                    }
+                                                                />
+                                                            ) : null}
+                                                            {!showingArchived && (
+                                                                <AssetStateDialog
+                                                                    asset={
+                                                                        asset
+                                                                    }
+                                                                    options={
+                                                                        assetStateOptions
+                                                                    }
+                                                                />
+                                                            )}
+                                                            {!showingArchived && (
+                                                                <>
+                                                                    {asset.is_assignable && (
+                                                                        <CustodianDialog
+                                                                            asset={
+                                                                                asset
+                                                                            }
+                                                                            employees={
+                                                                                employees
+                                                                            }
+                                                                        />
+                                                                    )}
+                                                                    {asset.current_custodian && (
+                                                                        <Button
+                                                                            size="icon"
+                                                                            variant="ghost"
+                                                                            aria-label="Unassign custodian"
+                                                                            onClick={() =>
+                                                                                router.visit(
+                                                                                    unassign(
+                                                                                        asset,
+                                                                                    ),
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            <UserMinus />
+                                                                        </Button>
+                                                                    )}
+                                                                    <ArchiveRecordDialog
+                                                                        action={destroy(
+                                                                            asset,
+                                                                        )}
+                                                                        recordName={
+                                                                            asset.name
+                                                                        }
+                                                                        recordType="asset"
+                                                                        prerequisite="An asset must be returned and unassigned before it can be archived."
+                                                                    />
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                )}
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                Click for more info
+                                            </TooltipContent>
+                                        </Tooltip>
                                     ))}
                                     {assets.data.length === 0 && (
                                         <tr>
@@ -848,6 +1194,18 @@ export default function AssetsIndex({
                         <DataPagination links={assets.links} />
                     </CardContent>
                 </Card>
+
+                {selectedAsset && (
+                    <AssetDetailsDialog
+                        asset={selectedAsset}
+                        open
+                        onOpenChange={(open) => {
+                            if (!open) {
+                                setSelectedAsset(null);
+                            }
+                        }}
+                    />
+                )}
             </div>
         </>
     );

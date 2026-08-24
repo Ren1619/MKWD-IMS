@@ -2,6 +2,9 @@
 
 namespace App\Models;
 
+use App\AssetConditionStatus;
+use App\AssetCustodyStatus;
+use App\AssetLifecycleStatus;
 use Database\Factories\InventoryAssetFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -9,16 +12,21 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
 /**
  * @property int $inventory_asset_id
- * @property string $status
+ * @property AssetLifecycleStatus $lifecycle_status
+ * @property AssetConditionStatus $condition_status
  * @property int|null $current_custodian_reference_id
  * @property string|float|null $acquisition_cost
  * @property int $depreciation_useful_life_months
  * @property Carbon|null $acquisition_date
  * @property float $depreciation_amount
+ * @property string $custody_status
+ * @property bool $is_assignable
+ * @property bool $is_borrowable
  */
 #[Fillable([
     'category_id',
@@ -49,19 +57,21 @@ use Illuminate\Support\Carbon;
     'loss_report_date',
     'loss_type',
     'loss_circumstances',
-    'status',
+    'lifecycle_status',
+    'condition_status',
 ])]
 class InventoryAsset extends Model
 {
     /** @use HasFactory<InventoryAssetFactory> */
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     private const DEFAULT_RESIDUAL_RATE = 0.05;
 
     protected $primaryKey = 'inventory_asset_id';
 
     protected $attributes = [
-        'status' => 'available',
+        'lifecycle_status' => 'active',
+        'condition_status' => 'good',
         'unit_of_measure' => 'unit',
         'quantity_per_property_card' => 1,
         'quantity_per_physical_count' => 1,
@@ -69,7 +79,7 @@ class InventoryAsset extends Model
         'impairment_losses' => 0,
     ];
 
-    protected $appends = ['depreciation_amount', 'book_value'];
+    protected $appends = ['depreciation_amount', 'book_value', 'custody_status', 'is_assignable', 'is_borrowable'];
 
     protected function casts(): array
     {
@@ -84,7 +94,41 @@ class InventoryAsset extends Model
             'impairment_losses' => 'decimal:2',
             'disposal_value' => 'decimal:2',
             'loss_report_date' => 'date',
+            'lifecycle_status' => AssetLifecycleStatus::class,
+            'condition_status' => AssetConditionStatus::class,
         ];
+    }
+
+    public function getCustodyStatusAttribute(): string
+    {
+        return $this->determineCustodyStatus()->value;
+    }
+
+    public function getIsAssignableAttribute(): bool
+    {
+        return $this->lifecycle_status->allowsAssignment();
+    }
+
+    public function getIsBorrowableAttribute(): bool
+    {
+        return $this->lifecycle_status === AssetLifecycleStatus::Active
+            && $this->condition_status->allowsBorrowing()
+            && $this->determineCustodyStatus() !== AssetCustodyStatus::Borrowed;
+    }
+
+    public function determineCustodyStatus(): AssetCustodyStatus
+    {
+        $hasActiveBorrowing = $this->relationLoaded('activeBorrowing')
+            ? $this->getRelation('activeBorrowing') !== null
+            : $this->activeBorrowing()->exists();
+
+        if ($hasActiveBorrowing) {
+            return AssetCustodyStatus::Borrowed;
+        }
+
+        return $this->current_custodian_reference_id
+            ? AssetCustodyStatus::Assigned
+            : AssetCustodyStatus::Available;
     }
 
     public function getDepreciationAmountAttribute(): float

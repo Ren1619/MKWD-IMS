@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\AssetCustodyStatus;
+use App\AssetLifecycleStatus;
 use App\Models\HrisReference;
 use App\Models\InventoryAsset;
 use App\Models\InventoryAssetBorrowing;
@@ -15,6 +17,10 @@ class InventoryAssetService
         return DB::transaction(function () use ($asset, $reference): InventoryAsset {
             $lockedAsset = InventoryAsset::query()->whereKey($asset->getKey())->lockForUpdate()->firstOrFail();
 
+            if (! $lockedAsset->is_assignable) {
+                throw new InvalidArgumentException('Disposed or lost assets cannot be assigned.');
+            }
+
             $lockedAsset->custodianAssignments()
                 ->whereNull('unassigned_at')
                 ->update(['unassigned_at' => now()]);
@@ -24,10 +30,7 @@ class InventoryAssetService
                 'assigned_at' => now(),
             ]);
 
-            $lockedAsset->update([
-                'current_custodian_reference_id' => $reference->id,
-                'status' => $lockedAsset->status === 'borrowed' ? 'borrowed' : 'assigned',
-            ]);
+            $lockedAsset->update(['current_custodian_reference_id' => $reference->id]);
 
             $lockedAsset->refresh();
             $lockedAsset->load(['category', 'currentCustodian', 'activeBorrowing.borrowerReference']);
@@ -43,7 +46,6 @@ class InventoryAssetService
             $lockedAsset->custodianAssignments()->whereNull('unassigned_at')->update(['unassigned_at' => now()]);
             $lockedAsset->update([
                 'current_custodian_reference_id' => null,
-                'status' => $lockedAsset->status === 'borrowed' ? 'borrowed' : 'available',
             ]);
 
             $lockedAsset->refresh();
@@ -63,13 +65,15 @@ class InventoryAssetService
                 throw new InvalidArgumentException('This asset is already borrowed.');
             }
 
+            if (! $lockedAsset->is_borrowable) {
+                throw new InvalidArgumentException('Only active assets in good or fair condition can be borrowed.');
+            }
+
             $borrowing = $lockedAsset->borrowings()->create([
                 ...$data,
                 'borrowed_at' => now(),
                 'status' => 'borrowed',
             ]);
-
-            $lockedAsset->update(['status' => 'borrowed']);
 
             return $borrowing;
         });
@@ -91,14 +95,27 @@ class InventoryAssetService
                 'return_notes' => $notes,
             ]);
 
-            $lockedAsset->update([
-                'status' => $lockedAsset->current_custodian_reference_id ? 'assigned' : 'available',
-            ]);
-
             $lockedAsset->refresh();
             $lockedAsset->load(['category', 'currentCustodian', 'activeBorrowing.borrowerReference']);
 
             return $lockedAsset;
+        });
+    }
+
+    /** @param array{lifecycle_status: string, condition_status: string} $state */
+    public function updateState(InventoryAsset $asset, array $state): InventoryAsset
+    {
+        return DB::transaction(function () use ($asset, $state): InventoryAsset {
+            $lockedAsset = InventoryAsset::query()->whereKey($asset->getKey())->lockForUpdate()->firstOrFail();
+            $nextLifecycle = AssetLifecycleStatus::from($state['lifecycle_status']);
+
+            if ($nextLifecycle === AssetLifecycleStatus::Disposed && $lockedAsset->determineCustodyStatus() !== AssetCustodyStatus::Available) {
+                throw new InvalidArgumentException('Return and unassign the asset before marking it as disposed.');
+            }
+
+            $lockedAsset->update($state);
+
+            return $lockedAsset->refresh();
         });
     }
 }

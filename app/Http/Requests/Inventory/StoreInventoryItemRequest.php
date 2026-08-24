@@ -32,8 +32,14 @@ class StoreInventoryItemRequest extends FormRequest
             'uacs_object_code' => ['nullable', 'string', 'max:50'],
             'description' => ['nullable', 'string', 'max:2000'],
             'quantity' => ['required', 'integer', 'min:0'],
-            'price' => ['required', 'numeric', 'min:0', 'max:9999999999.99'],
+            'reorder_point' => ['required', 'integer', 'min:0', 'max:1000000'],
+            'reorder_quantity' => ['nullable', 'integer', 'min:1', 'max:1000000'],
+            'unit_cost' => ['required', 'numeric', 'min:0', 'max:9999999999.99'],
+            'received_at' => ['nullable', 'date'],
             'expiration_date' => ['nullable', 'date'],
+            'source' => ['nullable', 'string', 'max:255'],
+            'reference_no' => ['nullable', 'string', 'max:100'],
+            'batch_notes' => ['nullable', 'string', 'max:2000'],
             'status' => ['required', Rule::in(['active', 'inactive', 'disposed'])],
         ];
     }
