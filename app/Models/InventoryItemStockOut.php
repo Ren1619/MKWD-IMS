@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'quantity',
     'stocked_out_at',
     'notes',
+    'supply_request_line_id',
 ])]
 class InventoryItemStockOut extends Model
 {
@@ -52,6 +53,12 @@ class InventoryItemStockOut extends Model
     public function allocations(): HasMany
     {
         return $this->hasMany(InventoryItemStockOutAllocation::class, 'inventory_item_stock_out_id', 'inventory_item_stock_out_id');
+    }
+
+    /** @return BelongsTo<SupplyRequestLine, $this> */
+    public function supplyRequestLine(): BelongsTo
+    {
+        return $this->belongsTo(SupplyRequestLine::class);
     }
 
     public function getTotalCostAttribute(): string

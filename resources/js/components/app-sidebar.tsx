@@ -2,9 +2,12 @@ import { Link } from '@inertiajs/react';
 import {
     Boxes,
     ChartNoAxesCombined,
+    ClipboardSignature,
     LayoutGrid,
     PackageCheck,
     ScrollText,
+    ClipboardList,
+    ShoppingCart,
     ShieldCheck,
     Tags,
 } from 'lucide-react';
@@ -25,10 +28,13 @@ import { useAppPage } from '@/hooks/use-app-page';
 import { dashboard } from '@/routes';
 import { index as auditLogsIndex } from '@/routes/admin/audit-logs';
 import { index as usersIndex } from '@/routes/admin/users';
+import { index as accountabilityIndex } from '@/routes/inventory/accountability';
 import { index as assetsIndex } from '@/routes/inventory/assets';
 import { index as categoriesIndex } from '@/routes/inventory/categories';
 import { index as itemsIndex } from '@/routes/inventory/items';
+import { index as procurementIndex } from '@/routes/inventory/procurement';
 import { index as reportsIndex } from '@/routes/inventory/reports';
+import { index as requestsIndex } from '@/routes/inventory/requests';
 import type { NavItem } from '@/types';
 
 const inventoryNavItems: NavItem[] = [
@@ -36,6 +42,11 @@ const inventoryNavItems: NavItem[] = [
         title: 'Dashboard',
         href: dashboard(),
         icon: LayoutGrid,
+    },
+    {
+        title: 'Supply Requests',
+        href: requestsIndex(),
+        icon: ClipboardList,
     },
     {
         title: 'Consumable Inventory',
@@ -46,6 +57,11 @@ const inventoryNavItems: NavItem[] = [
         title: 'Property & Equipment',
         href: assetsIndex(),
         icon: PackageCheck,
+    },
+    {
+        title: 'Property Accountability',
+        href: accountabilityIndex(),
+        icon: ClipboardSignature,
     },
     {
         title: 'Categories',
@@ -63,10 +79,28 @@ const footerNavItems: NavItem[] = [];
 
 export function AppSidebar() {
     const { auth } = useAppPage().props;
+    const roleInventoryItems = auth.permissions.manage_inventory
+        ? [
+              ...inventoryNavItems,
+              {
+                  title: 'Procurement Controls',
+                  href: procurementIndex(),
+                  icon: ShoppingCart,
+              },
+          ]
+        : inventoryNavItems.filter(
+              (item) =>
+                  item.title === 'Dashboard' ||
+                  item.title === 'Supply Requests' ||
+                  item.title === 'Consumable Inventory' ||
+                  item.title === 'Property & Equipment' ||
+                  item.title === 'Property Accountability' ||
+                  item.title === 'Reports',
+          );
     const mainNavItems: NavItem[] =
         auth.user?.role === 'super_admin'
             ? [
-                  ...inventoryNavItems,
+                  ...roleInventoryItems,
                   {
                       title: 'User Management',
                       href: usersIndex(),
@@ -78,7 +112,7 @@ export function AppSidebar() {
                       icon: ScrollText,
                   },
               ]
-            : inventoryNavItems;
+            : roleInventoryItems;
 
     return (
         <Sidebar collapsible="icon" variant="inset">

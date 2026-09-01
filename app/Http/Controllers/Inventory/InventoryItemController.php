@@ -11,6 +11,7 @@ use App\Http\Requests\Inventory\StoreInventoryItemRequest;
 use App\Http\Requests\Inventory\UpdateInventoryItemReplenishmentRequest;
 use App\Http\Requests\Inventory\UpdateInventoryItemRequest;
 use App\Models\HrisReference;
+use App\Models\InventoryClassCategory;
 use App\Models\InventoryItem;
 use App\Models\InventorySeriesCategory;
 use App\Services\InventoryStockService;
@@ -37,6 +38,10 @@ class InventoryItemController extends Controller
                 $nested->where('name', 'like', $search)->orWhere('stock_number', 'like', $search);
             }))
             ->when($request->string('status')->isNotEmpty(), fn ($query) => $query->where('status', $request->string('status')->toString()))
+            ->when($request->integer('class_category_id') > 0, fn ($query) => $query->whereHas(
+                'seriesCategory',
+                fn ($seriesQuery) => $seriesQuery->where('inv_class_cat_id', $request->integer('class_category_id')),
+            ))
             ->when($request->string('alert')->toString() === 'low_stock', fn ($query) => $query->lowStock())
             ->when($request->string('alert')->toString() === 'expired', fn ($query) => $query->whereHas('batches', fn ($batchQuery) => $batchQuery
                 ->where('quantity_remaining', '>', 0)
@@ -56,8 +61,12 @@ class InventoryItemController extends Controller
                 ->whereHas('classCategory', fn ($query) => $query->where('is_active', true)->whereHas('majorCategory', fn ($majorQuery) => $majorQuery->where('is_active', true)))
                 ->orderBy('name')
                 ->get(),
+            'classCategories' => InventoryClassCategory::query()
+                ->with('majorCategory:inv_mjr_cat_id,name')
+                ->orderBy('name')
+                ->get(['inv_class_cat_id', 'inv_mjr_cat_id', 'name']),
             'references' => HrisReference::query()->where('is_active', true)->orderBy('name')->get(['id', 'type', 'code', 'name']),
-            'filters' => $request->safe()->only(['search', 'status', 'records', 'alert']),
+            'filters' => $request->safe()->only(['search', 'status', 'records', 'alert', 'class_category_id']),
         ]);
     }
 

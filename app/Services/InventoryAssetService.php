@@ -7,30 +7,39 @@ use App\AssetLifecycleStatus;
 use App\Models\HrisReference;
 use App\Models\InventoryAsset;
 use App\Models\InventoryAssetBorrowing;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 class InventoryAssetService
 {
-    public function assign(InventoryAsset $asset, HrisReference $reference): InventoryAsset
+    public function __construct(private PropertyAccountabilityService $accountability) {}
+
+    public function assign(InventoryAsset $asset, HrisReference $reference, User $actor): InventoryAsset
     {
-        return DB::transaction(function () use ($asset, $reference): InventoryAsset {
+        return DB::transaction(function () use ($asset, $reference, $actor): InventoryAsset {
             $lockedAsset = InventoryAsset::query()->whereKey($asset->getKey())->lockForUpdate()->firstOrFail();
 
             if (! $lockedAsset->is_assignable) {
                 throw new InvalidArgumentException('Disposed or lost assets cannot be assigned.');
             }
 
+            $supersededDocument = $lockedAsset->accountabilityDocuments()
+                ->whereIn('status', ['pending_recipient', 'active'])
+                ->first();
+
+            $this->accountability->closeCurrentForAsset($lockedAsset, $actor, 'superseded', 'Custody transferred to a different accountable person.');
             $lockedAsset->custodianAssignments()
                 ->whereNull('unassigned_at')
                 ->update(['unassigned_at' => now()]);
 
-            $lockedAsset->custodianAssignments()->create([
+            $assignment = $lockedAsset->custodianAssignments()->create([
                 'hris_reference_id' => $reference->id,
                 'assigned_at' => now(),
             ]);
 
             $lockedAsset->update(['current_custodian_reference_id' => $reference->id]);
+            $this->accountability->issue($lockedAsset->refresh(), $assignment, $actor, $supersededDocument);
 
             $lockedAsset->refresh();
             $lockedAsset->load(['category', 'currentCustodian', 'activeBorrowing.borrowerReference']);
@@ -39,10 +48,11 @@ class InventoryAssetService
         });
     }
 
-    public function unassign(InventoryAsset $asset): InventoryAsset
+    public function unassign(InventoryAsset $asset, User $actor, string $reason = 'Property returned to the Property Unit.'): InventoryAsset
     {
-        return DB::transaction(function () use ($asset): InventoryAsset {
+        return DB::transaction(function () use ($asset, $actor, $reason): InventoryAsset {
             $lockedAsset = InventoryAsset::query()->whereKey($asset->getKey())->lockForUpdate()->firstOrFail();
+            $this->accountability->closeCurrentForAsset($lockedAsset, $actor, 'returned', $reason);
             $lockedAsset->custodianAssignments()->whereNull('unassigned_at')->update(['unassigned_at' => now()]);
             $lockedAsset->update([
                 'current_custodian_reference_id' => null,

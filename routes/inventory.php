@@ -4,6 +4,9 @@ use App\Http\Controllers\Inventory\InventoryAssetController;
 use App\Http\Controllers\Inventory\InventoryCategoryController;
 use App\Http\Controllers\Inventory\InventoryItemController;
 use App\Http\Controllers\Inventory\InventoryReportController;
+use App\Http\Controllers\Inventory\ProcurementRequestController;
+use App\Http\Controllers\Inventory\PropertyAccountabilityController;
+use App\Http\Controllers\Inventory\SupplyRequestController;
 use App\Services\InventoryReportService;
 use Illuminate\Support\Facades\Route;
 
@@ -17,8 +20,18 @@ Route::prefix('inventory')->name('inventory.')->group(function () {
     Route::get('reports/{document}/print', [InventoryReportController::class, 'print'])
         ->whereIn('document', InventoryReportService::documentKeys())
         ->name('reports.print');
+    Route::get('requests', [SupplyRequestController::class, 'index'])->name('requests.index');
+    Route::get('accountability', [PropertyAccountabilityController::class, 'index'])->name('accountability.index');
+    Route::patch('accountability/{document}/transition', [PropertyAccountabilityController::class, 'transition'])->name('accountability.transition');
+    Route::get('accountability/{document}/print', [PropertyAccountabilityController::class, 'print'])->name('accountability.print');
+    Route::post('requests', [SupplyRequestController::class, 'store'])->name('requests.store');
 
     Route::middleware('can:manage-inventory')->group(function () {
+        Route::post('assets/{asset}/accountability', [PropertyAccountabilityController::class, 'issue'])->name('accountability.issue');
+        Route::patch('requests/{supplyRequest}/transition', [SupplyRequestController::class, 'transition'])->name('requests.transition');
+        Route::get('procurement', [ProcurementRequestController::class, 'index'])->name('procurement.index');
+        Route::post('procurement', [ProcurementRequestController::class, 'store'])->name('procurement.store');
+        Route::patch('procurement/{procurementRequest}/transition', [ProcurementRequestController::class, 'transition'])->name('procurement.transition');
         Route::post('categories', [InventoryCategoryController::class, 'store'])->name('categories.store');
         Route::patch('categories/{type}/{category}', [InventoryCategoryController::class, 'update'])
             ->whereIn('type', ['major', 'class', 'series', 'asset'])

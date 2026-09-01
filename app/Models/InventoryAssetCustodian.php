@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable(['inventory_asset_id', 'hris_reference_id', 'assigned_at', 'unassigned_at'])]
 class InventoryAssetCustodian extends Model
@@ -34,5 +35,11 @@ class InventoryAssetCustodian extends Model
     public function reference(): BelongsTo
     {
         return $this->belongsTo(HrisReference::class, 'hris_reference_id');
+    }
+
+    /** @return HasMany<PropertyAccountabilityDocument, $this> */
+    public function accountabilityDocuments(): HasMany
+    {
+        return $this->hasMany(PropertyAccountabilityDocument::class, 'inventory_asset_custodian_id', 'inventory_asset_custodian_id');
     }
 }

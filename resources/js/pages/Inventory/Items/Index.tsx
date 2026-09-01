@@ -46,6 +46,7 @@ import {
     update_replenishment,
 } from '@/routes/inventory/items';
 import type {
+    ClassCategory,
     HrisReference,
     InventoryItem,
     Paginated,
@@ -449,17 +450,20 @@ function ReplenishmentDialog({ item }: { item: InventoryItem }) {
 export default function ItemsIndex({
     items,
     seriesCategories,
+    classCategories,
     references,
     filters,
 }: {
     items: Paginated<InventoryItem>;
     seriesCategories: SeriesCategory[];
+    classCategories: ClassCategory[];
     references: HrisReference[];
     filters: {
         search?: string;
         status?: string;
         records?: string;
         alert?: string;
+        class_category_id?: string;
     };
 }) {
     const { submitAfterDelay, submitImmediately } = useFilterSubmit();
@@ -932,6 +936,45 @@ export default function ItemsIndex({
                                             onChange={submitAfterDelay}
                                         />
                                         <InputError message={errors.search} />
+                                    </div>
+                                    <div className="grid w-full gap-1.5 sm:w-44">
+                                        <label
+                                            htmlFor="item-class-category-filter"
+                                            className="text-sm font-medium"
+                                        >
+                                            Class category
+                                        </label>
+                                        <select
+                                            id="item-class-category-filter"
+                                            name="class_category_id"
+                                            defaultValue={
+                                                filters.class_category_id ?? ''
+                                            }
+                                            className={selectClass}
+                                            onChange={submitImmediately}
+                                        >
+                                            <option value="">
+                                                All classes
+                                            </option>
+                                            {classCategories.map((category) => (
+                                                <option
+                                                    key={
+                                                        category.inv_class_cat_id
+                                                    }
+                                                    value={
+                                                        category.inv_class_cat_id
+                                                    }
+                                                >
+                                                    {category.name}
+                                                    {category.major_category
+                                                        ? ` — ${category.major_category.name}`
+                                                        : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <InputError
+                                            message={errors.class_category_id}
+                                        />
                                     </div>
                                     <div className="grid w-full gap-1.5 sm:w-44">
                                         <label

@@ -120,7 +120,7 @@ class InventoryAssetController extends Controller
         $reference = HrisReference::query()->findOrFail($request->integer('hris_reference_id'));
 
         try {
-            $this->assetService->assign($asset, $reference);
+            $this->assetService->assign($asset, $reference, $request->user());
         } catch (InvalidArgumentException $exception) {
             throw ValidationException::withMessages(['hris_reference_id' => $exception->getMessage()]);
         }
@@ -132,7 +132,7 @@ class InventoryAssetController extends Controller
 
     public function unassign(InventoryAsset $asset): RedirectResponse
     {
-        $this->assetService->unassign($asset);
+        $this->assetService->unassign($asset, request()->user());
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Custodian unassigned.']);
 
         return to_route('inventory.assets.index');

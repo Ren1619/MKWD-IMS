@@ -172,6 +172,13 @@ class InventoryAsset extends Model
             ->latest('assigned_at');
     }
 
+    /** @return HasMany<PropertyAccountabilityDocument, $this> */
+    public function accountabilityDocuments(): HasMany
+    {
+        return $this->hasMany(PropertyAccountabilityDocument::class, 'inventory_asset_id', 'inventory_asset_id')
+            ->latest('issued_at');
+    }
+
     /** @return HasMany<InventoryAssetBorrowing, $this> */
     public function borrowings(): HasMany
     {

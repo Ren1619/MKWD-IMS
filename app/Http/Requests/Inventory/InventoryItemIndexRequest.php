@@ -28,6 +28,7 @@ class InventoryItemIndexRequest extends FormRequest
             'status' => ['nullable', Rule::in(['active', 'inactive', 'disposed'])],
             'records' => ['nullable', Rule::in(['active', 'archived'])],
             'alert' => ['nullable', Rule::in(['low_stock', 'expiring', 'expired'])],
+            'class_category_id' => ['nullable', 'integer', Rule::exists('inv_class_cats', 'inv_class_cat_id')],
         ];
     }
 }

@@ -16,6 +16,14 @@ use App\Models\InventoryItemStockOut;
 use App\Models\InventoryItemStockOutAllocation;
 use App\Models\InventoryMajorCategory;
 use App\Models\InventorySeriesCategory;
+use App\Models\ProcurementRequest;
+use App\Models\ProcurementRequestAction;
+use App\Models\ProcurementRequestLine;
+use App\Models\PropertyAccountabilityAction;
+use App\Models\PropertyAccountabilityDocument;
+use App\Models\SupplyRequest;
+use App\Models\SupplyRequestAction;
+use App\Models\SupplyRequestLine;
 use App\Models\User;
 use App\Observers\AuditObserver;
 use Carbon\CarbonImmutable;
@@ -69,6 +77,14 @@ class AppServiceProvider extends ServiceProvider
             InventoryClassCategory::class,
             InventorySeriesCategory::class,
             InventoryAssetCategory::class,
+            SupplyRequest::class,
+            SupplyRequestLine::class,
+            SupplyRequestAction::class,
+            ProcurementRequest::class,
+            ProcurementRequestLine::class,
+            ProcurementRequestAction::class,
+            PropertyAccountabilityDocument::class,
+            PropertyAccountabilityAction::class,
         ] as $model) {
             $model::observe(AuditObserver::class);
         }

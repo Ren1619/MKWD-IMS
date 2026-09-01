@@ -102,6 +102,25 @@ test('inventory lists apply independent state filters', function () {
             ->where('filters.search', 'Searchable Laptop'));
 });
 
+test('consumable inventory can be filtered by class category', function () {
+    $user = User::factory()->create();
+    $matchingClass = InventoryClassCategory::factory()->create(['name' => 'Office Supplies']);
+    $otherClass = InventoryClassCategory::factory()->create(['name' => 'Medical Supplies']);
+    $matchingSeries = InventorySeriesCategory::factory()->create(['inv_class_cat_id' => $matchingClass->getKey()]);
+    $otherSeries = InventorySeriesCategory::factory()->create(['inv_class_cat_id' => $otherClass->getKey()]);
+    $matchingItem = InventoryItem::factory()->create(['series_category_id' => $matchingSeries->getKey()]);
+    InventoryItem::factory()->create(['series_category_id' => $otherSeries->getKey()]);
+
+    $this->actingAs($user)
+        ->get(route('inventory.items.index', ['class_category_id' => $matchingClass->getKey()]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('items.data', 1)
+            ->where('items.data.0.inventory_item_id', $matchingItem->getKey())
+            ->where('filters.class_category_id', (string) $matchingClass->getKey())
+            ->has('classCategories', 2));
+});
+
 test('the asset registry provides the complete record for its details modal', function () {
     $user = User::factory()->create();
     $custodian = HrisReference::factory()->create([
@@ -172,6 +191,7 @@ test('inventory list filters reject invalid input', function (string $routeName,
     'item search length' => ['inventory.items.index', ['search' => str_repeat('a', 101)], 'search'],
     'item status' => ['inventory.items.index', ['status' => 'unknown'], 'status'],
     'item records' => ['inventory.items.index', ['records' => 'deleted'], 'records'],
+    'item class category' => ['inventory.items.index', ['class_category_id' => 999999], 'class_category_id'],
     'asset search length' => ['inventory.assets.index', ['search' => str_repeat('a', 101)], 'search'],
     'asset lifecycle' => ['inventory.assets.index', ['lifecycle_status' => 'unknown'], 'lifecycle_status'],
     'asset condition' => ['inventory.assets.index', ['condition_status' => 'damaged'], 'condition_status'],

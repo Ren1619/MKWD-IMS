@@ -11,6 +11,7 @@ use App\Models\InventoryAssetCustodian;
 use App\Models\InventoryItem;
 use App\Models\InventoryItemBatch;
 use App\Models\InventoryItemStockOut;
+use App\Models\PropertyAccountabilityDocument;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\LazyCollection;
@@ -44,7 +45,9 @@ class InventoryReportService
             'rpcppe', 'physical-count-worksheet' => $this->physicalPpe($filters),
             'rpci' => $this->physicalInventories(),
             'variance-reconciliation' => $this->varianceReconciliation($filters),
-            'par', 'ics', 'property-return', 'accountability-employee', 'accountability-office' => $this->assetAccountability($filters),
+            'par' => $this->assetAccountability($filters, 'PAR'),
+            'ics' => $this->assetAccountability($filters, 'ICS'),
+            'property-return', 'accountability-employee', 'accountability-office' => $this->assetAccountability($filters),
             'property-card' => $this->propertyCards($filters),
             'ppe-ledger-card', 'depreciation-schedule' => $this->ppeLedger($filters),
             'stock-card', 'supplies-ledger-card' => $this->stockLedger(),
@@ -135,9 +138,19 @@ class InventoryReportService
     }
 
     /** @param array<string, mixed> $filters @return array<string, mixed> */
-    private function assetAccountability(array $filters): array
+    private function assetAccountability(array $filters, ?string $documentType = null): array
     {
-        $assets = $this->assetsForPrint($filters)->whereNotNull('current_custodian_reference_id')->get();
+        $assets = $this->assetsForPrint($filters)
+            ->whereNotNull('current_custodian_reference_id')
+            ->when(
+                $documentType === 'PAR',
+                fn (Builder $query) => $query->where('acquisition_cost', '>=', PropertyAccountabilityDocument::CAPITALIZATION_THRESHOLD),
+            )
+            ->when(
+                $documentType === 'ICS',
+                fn (Builder $query) => $query->where('acquisition_cost', '<', PropertyAccountabilityDocument::CAPITALIZATION_THRESHOLD),
+            )
+            ->get();
 
         return ['columns' => ['Accountable person', 'Employee No.', 'Property No.', 'Description', 'Serial No.', 'Unit', 'Qty.', 'Acquisition date', 'Amount', 'Location', 'Condition'], 'rows' => $assets->map(fn (InventoryAsset $asset): array => [
             $asset->currentCustodian?->name, $asset->currentCustodian?->code, $asset->property_number, $asset->name, $asset->serial_number,

@@ -9,7 +9,8 @@ import {
     Search,
     TrendingDown,
 } from 'lucide-react';
-import { useState, type ChangeEventHandler } from 'react';
+import { useState } from 'react';
+import type { ChangeEventHandler } from 'react';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
