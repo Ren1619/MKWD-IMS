@@ -1,7 +1,11 @@
 import { Form, Head, router } from '@inertiajs/react';
 import {
+    Archive,
+    Calculator,
+    EllipsisVertical,
     Handshake,
     Plus,
+    QrCode,
     RotateCcw,
     SlidersHorizontal,
     UserCheck,
@@ -12,6 +16,14 @@ import { ArchiveRecordDialog } from '@/components/archive-record-dialog';
 import { AssetDetailsDialog } from '@/components/asset-details-dialog';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,7 +41,17 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuGroup,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Tooltip,
     TooltipContent,
@@ -43,10 +65,12 @@ import {
     destroy,
     index,
     restore,
+    property_tag,
     returnMethod,
     store,
     unassign,
     update_state,
+    update_accounting,
 } from '@/routes/inventory/assets';
 import type {
     AssetCategory,
@@ -58,6 +82,19 @@ import type {
 
 const selectClass =
     'border-input bg-background h-9 w-full rounded-md border px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
+const registryTabs = [
+    { value: 'all', label: 'All durable property' },
+    { value: 'ppe', label: 'PPE' },
+    { value: 'semi_expendable', label: 'Semi-expendable' },
+    { value: 'needs_review', label: 'Needs review' },
+] as const;
+
+type RegistryTab = (typeof registryTabs)[number]['value'];
+
+function isRegistryTab(value: unknown): value is RegistryTab {
+    return registryTabs.some((tab) => tab.value === value);
+}
 
 function isInteractiveRowTarget(target: EventTarget | null): boolean {
     return (
@@ -76,16 +113,17 @@ function formatStateLabel(value: string): string {
 function AssetStateDialog({
     asset,
     options,
+    open,
+    onOpenChange,
 }: {
     asset: InventoryAsset;
     options: AssetStateOptions;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
 }) {
     return (
-        <Dialog>
-            <DialogTrigger render={<Button size="sm" variant="outline" />}>
-                <SlidersHorizontal /> State
-            </DialogTrigger>
-            <DialogContent>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent onClick={(event) => event.stopPropagation()}>
                 <DialogHeader>
                     <DialogTitle>Update asset state</DialogTitle>
                     <DialogDescription>
@@ -164,19 +202,124 @@ function AssetStateDialog({
     );
 }
 
+function AssetAccountingDialog({
+    asset,
+    open,
+    onOpenChange,
+}: {
+    asset: InventoryAsset;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+}) {
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent onClick={(event) => event.stopPropagation()}>
+                <DialogHeader>
+                    <DialogTitle>Update PPE accounting settings</DialogTitle>
+                    <DialogDescription>
+                        Change the residual percentage or depreciation start
+                        basis for {asset.name}. Every change is written to the
+                        audit log.
+                    </DialogDescription>
+                </DialogHeader>
+                <Form action={update_accounting(asset)} className="grid gap-4">
+                    {({ errors, processing }) => (
+                        <>
+                            <div>
+                                <label
+                                    htmlFor={`accounting-available-${asset.inventory_asset_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Available-for-use date
+                                </label>
+                                <Input
+                                    id={`accounting-available-${asset.inventory_asset_id}`}
+                                    name="available_for_use_date"
+                                    type="date"
+                                    defaultValue={
+                                        asset.available_for_use_date?.slice(
+                                            0,
+                                            10,
+                                        ) ?? asset.acquisition_date.slice(0, 10)
+                                    }
+                                    required
+                                />
+                                <InputError
+                                    message={errors.available_for_use_date}
+                                />
+                            </div>
+                            <div>
+                                <label
+                                    htmlFor={`accounting-residual-${asset.inventory_asset_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Residual value percentage
+                                </label>
+                                <Input
+                                    id={`accounting-residual-${asset.inventory_asset_id}`}
+                                    name="residual_value_percentage"
+                                    type="number"
+                                    min="5"
+                                    max="99.99"
+                                    step="0.01"
+                                    defaultValue={
+                                        asset.residual_value_percentage ?? '5'
+                                    }
+                                    required
+                                />
+                                <InputError
+                                    message={errors.residual_value_percentage}
+                                />
+                            </div>
+                            <div>
+                                <label
+                                    htmlFor={`accounting-basis-${asset.inventory_asset_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Basis or justification
+                                </label>
+                                <textarea
+                                    id={`accounting-basis-${asset.inventory_asset_id}`}
+                                    name="residual_value_basis"
+                                    className={`${selectClass} min-h-24 py-2`}
+                                    defaultValue={
+                                        asset.residual_value_basis ??
+                                        'COA default residual value of 5%.'
+                                    }
+                                    maxLength={1000}
+                                    required
+                                />
+                                <InputError
+                                    message={errors.residual_value_basis}
+                                />
+                            </div>
+                            <Button disabled={processing}>
+                                {processing
+                                    ? 'Updating…'
+                                    : 'Update accounting settings'}
+                            </Button>
+                        </>
+                    )}
+                </Form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function CustodianDialog({
     asset,
     employees,
+    open,
+    onOpenChange,
 }: {
     asset: InventoryAsset;
     employees: HrisReference[];
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
 }) {
     return (
-        <Dialog>
-            <DialogTrigger render={<Button size="sm" variant="outline" />}>
-                <UserCheck /> Assign
-            </DialogTrigger>
-            <DialogContent>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent onClick={(event) => event.stopPropagation()}>
                 <DialogHeader>
                     <DialogTitle>Assign custodian</DialogTitle>
                     <DialogDescription>
@@ -233,16 +376,17 @@ function CustodianDialog({
 function BorrowDialog({
     asset,
     employees,
+    open,
+    onOpenChange,
 }: {
     asset: InventoryAsset;
     employees: HrisReference[];
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
 }) {
     return (
-        <Dialog>
-            <DialogTrigger render={<Button size="sm" variant="outline" />}>
-                <Handshake /> Borrow
-            </DialogTrigger>
-            <DialogContent>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent onClick={(event) => event.stopPropagation()}>
                 <DialogHeader>
                     <DialogTitle>Record borrowing</DialogTitle>
                     <DialogDescription>
@@ -340,12 +484,206 @@ function BorrowDialog({
     );
 }
 
+type AssetActionDialog =
+    'accounting' | 'archive' | 'assign' | 'borrow' | 'state' | null;
+
+function AssetActions({
+    asset,
+    employees,
+    options,
+    showingArchived,
+}: {
+    asset: InventoryAsset;
+    employees: HrisReference[];
+    options: AssetStateOptions;
+    showingArchived: boolean;
+}) {
+    const [activeDialog, setActiveDialog] = useState<AssetActionDialog>(null);
+
+    const handleDialogOpenChange = (
+        dialog: Exclude<AssetActionDialog, null>,
+    ) => {
+        return (open: boolean) => {
+            setActiveDialog(open ? dialog : null);
+        };
+    };
+
+    return (
+        <>
+            <DropdownMenu>
+                <DropdownMenuTrigger
+                    render={
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            aria-label={`Open actions for ${asset.name}`}
+                        />
+                    }
+                >
+                    <EllipsisVertical />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                    align="end"
+                    className="w-52"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <DropdownMenuGroup>
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {showingArchived ? (
+                            <Form
+                                action={restore(asset)}
+                                options={{ preserveScroll: true }}
+                            >
+                                {({ processing }) => (
+                                    <DropdownMenuItem
+                                        disabled={processing}
+                                        render={
+                                            <button
+                                                type="submit"
+                                                className="w-full"
+                                            />
+                                        }
+                                    >
+                                        <RotateCcw />
+                                        {processing ? 'Restoring…' : 'Restore'}
+                                    </DropdownMenuItem>
+                                )}
+                            </Form>
+                        ) : (
+                            <>
+                                {asset.custody_status === 'borrowed' ? (
+                                    <DropdownMenuItem
+                                        onClick={() =>
+                                            router.visit(returnMethod(asset), {
+                                                preserveScroll: true,
+                                            })
+                                        }
+                                    >
+                                        <RotateCcw /> Return
+                                    </DropdownMenuItem>
+                                ) : asset.is_borrowable ? (
+                                    <DropdownMenuItem
+                                        onClick={() =>
+                                            setActiveDialog('borrow')
+                                        }
+                                    >
+                                        <Handshake /> Borrow
+                                    </DropdownMenuItem>
+                                ) : null}
+                                <DropdownMenuItem
+                                    onClick={() => setActiveDialog('state')}
+                                >
+                                    <SlidersHorizontal /> State
+                                </DropdownMenuItem>
+                                {asset.is_depreciable && (
+                                    <DropdownMenuItem
+                                        onClick={() =>
+                                            setActiveDialog('accounting')
+                                        }
+                                    >
+                                        <Calculator /> Accounting
+                                    </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                    render={
+                                        <a
+                                            href={property_tag.url(asset)}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        />
+                                    }
+                                >
+                                    <QrCode /> Print property tag
+                                </DropdownMenuItem>
+                                {asset.is_assignable && (
+                                    <DropdownMenuItem
+                                        onClick={() =>
+                                            setActiveDialog('assign')
+                                        }
+                                    >
+                                        <UserCheck /> Assign custodian
+                                    </DropdownMenuItem>
+                                )}
+                                {asset.current_custodian && (
+                                    <DropdownMenuItem
+                                        onClick={() =>
+                                            router.visit(unassign(asset), {
+                                                preserveScroll: true,
+                                            })
+                                        }
+                                    >
+                                        <UserMinus /> Unassign custodian
+                                    </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() => setActiveDialog('archive')}
+                                >
+                                    <Archive /> Archive
+                                </DropdownMenuItem>
+                            </>
+                        )}
+                    </DropdownMenuGroup>
+                </DropdownMenuContent>
+            </DropdownMenu>
+
+            {!showingArchived && (
+                <>
+                    {asset.custody_status !== 'borrowed' &&
+                        asset.is_borrowable && (
+                            <BorrowDialog
+                                asset={asset}
+                                employees={employees}
+                                open={activeDialog === 'borrow'}
+                                onOpenChange={handleDialogOpenChange('borrow')}
+                            />
+                        )}
+                    <AssetStateDialog
+                        asset={asset}
+                        options={options}
+                        open={activeDialog === 'state'}
+                        onOpenChange={handleDialogOpenChange('state')}
+                    />
+                    {asset.is_depreciable && (
+                        <AssetAccountingDialog
+                            asset={asset}
+                            open={activeDialog === 'accounting'}
+                            onOpenChange={handleDialogOpenChange('accounting')}
+                        />
+                    )}
+                    {asset.is_assignable && (
+                        <CustodianDialog
+                            asset={asset}
+                            employees={employees}
+                            open={activeDialog === 'assign'}
+                            onOpenChange={handleDialogOpenChange('assign')}
+                        />
+                    )}
+                    <ArchiveRecordDialog
+                        action={destroy(asset)}
+                        recordName={asset.name}
+                        recordType="asset"
+                        prerequisite="An asset must be returned and unassigned before it can be archived."
+                        open={activeDialog === 'archive'}
+                        onOpenChange={handleDialogOpenChange('archive')}
+                        showTrigger={false}
+                    />
+                </>
+            )}
+        </>
+    );
+}
+
 export default function AssetsIndex({
     assets,
     categories,
     employees,
     filters,
     assetStateOptions,
+    capitalizationThreshold,
 }: {
     assets: Paginated<InventoryAsset>;
     categories: AssetCategory[];
@@ -356,8 +694,10 @@ export default function AssetsIndex({
         lifecycle_status?: string;
         condition_status?: string;
         custody_status?: string;
+        accounting_classification?: string;
     };
     assetStateOptions: AssetStateOptions;
+    capitalizationThreshold: number;
 }) {
     const { submitAfterDelay, submitImmediately } = useFilterSubmit();
     const { auth } = useAppPage().props;
@@ -366,19 +706,52 @@ export default function AssetsIndex({
     const [selectedAsset, setSelectedAsset] = useState<InventoryAsset | null>(
         null,
     );
+    const registryTitle =
+        filters.accounting_classification === 'ppe'
+            ? 'PPE Registry'
+            : filters.accounting_classification === 'semi_expendable'
+              ? 'Semi-Expendable Property Registry'
+              : filters.accounting_classification === 'needs_review'
+                ? 'Assets Needing Accounting Review'
+                : 'Durable Property Registry';
+    const activeRegistryTab: RegistryTab = isRegistryTab(
+        filters.accounting_classification,
+    )
+        ? filters.accounting_classification
+        : 'all';
+
+    const changeRegistryTab = (value: unknown): void => {
+        if (!isRegistryTab(value) || value === activeRegistryTab) {
+            return;
+        }
+
+        router.visit(
+            index({
+                query: {
+                    ...filters,
+                    accounting_classification:
+                        value === 'all' ? undefined : value,
+                },
+            }),
+            {
+                preserveScroll: true,
+                preserveState: true,
+            },
+        );
+    };
 
     return (
         <>
-            <Head title="Property and Equipment" />
+            <Head title={registryTitle} />
             <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
                 <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
                     <div>
                         <h1 className="text-2xl font-semibold">
-                            Property and equipment
+                            {registryTitle}
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Asset registry, custody history, borrowing, and
-                            depreciation.
+                            Separate PPE and semi-expendable accountability,
+                            custody, valuation, and property tags.
                         </p>
                     </div>
                     {canManageInventory && (
@@ -611,13 +984,84 @@ export default function AssetsIndex({
                                                     id="acquisition-cost"
                                                     name="acquisition_cost"
                                                     type="number"
-                                                    min="0"
+                                                    min="0.01"
                                                     step="0.01"
                                                     placeholder="e.g. 54999.00"
+                                                    required
                                                 />
                                                 <InputError
                                                     message={
                                                         errors.acquisition_cost
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    htmlFor="available-for-use-date"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Available-for-use date
+                                                </label>
+                                                <Input
+                                                    id="available-for-use-date"
+                                                    name="available_for_use_date"
+                                                    type="date"
+                                                />
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    Required for PPE. This is
+                                                    the basis for starting
+                                                    depreciation.
+                                                </p>
+                                                <InputError
+                                                    message={
+                                                        errors.available_for_use_date
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    htmlFor="residual-value-percentage"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Residual value percentage
+                                                </label>
+                                                <Input
+                                                    id="residual-value-percentage"
+                                                    name="residual_value_percentage"
+                                                    type="number"
+                                                    min="5"
+                                                    max="99.99"
+                                                    step="0.01"
+                                                    defaultValue="5"
+                                                />
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    Applied only to PPE; COA's
+                                                    standard starting value is
+                                                    5%.
+                                                </p>
+                                                <InputError
+                                                    message={
+                                                        errors.residual_value_percentage
+                                                    }
+                                                />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label
+                                                    htmlFor="residual-value-basis"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Residual value basis
+                                                </label>
+                                                <textarea
+                                                    id="residual-value-basis"
+                                                    name="residual_value_basis"
+                                                    className={`${selectClass} min-h-20 py-2`}
+                                                    defaultValue="COA default residual value of 5%."
+                                                    maxLength={1000}
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.residual_value_basis
                                                     }
                                                 />
                                             </div>
@@ -643,6 +1087,16 @@ export default function AssetsIndex({
                                                         errors.depreciation_useful_life_months
                                                     }
                                                 />
+                                            </div>
+                                            <div className="rounded-lg border bg-muted/40 p-3 text-sm md:col-span-2">
+                                                The system classifies an item
+                                                automatically: PHP{' '}
+                                                {capitalizationThreshold.toLocaleString()}{' '}
+                                                and above becomes PPE with PAR
+                                                and depreciation; lower-cost
+                                                durable property becomes
+                                                semi-expendable with ICS and no
+                                                depreciation.
                                             </div>
                                             <div>
                                                 <label
@@ -750,6 +1204,22 @@ export default function AssetsIndex({
                         </Dialog>
                     )}
                 </div>
+                <Tabs
+                    value={activeRegistryTab}
+                    onValueChange={changeRegistryTab}
+                >
+                    <TabsList aria-label="Asset accounting registries">
+                        {registryTabs.map((tab) => (
+                            <TabsTrigger key={tab.value} value={tab.value}>
+                                {tab.value === 'ppe'
+                                    ? `${tab.label} - PHP ${capitalizationThreshold.toLocaleString()}+`
+                                    : tab.value === 'semi_expendable'
+                                      ? `${tab.label} - below PHP ${capitalizationThreshold.toLocaleString()}`
+                                      : tab.label}
+                            </TabsTrigger>
+                        ))}
+                    </TabsList>
+                </Tabs>
 
                 <Card>
                     <CardHeader>
@@ -790,6 +1260,15 @@ export default function AssetsIndex({
                                         />
                                         <InputError message={errors.search} />
                                     </div>
+                                    {filters.accounting_classification && (
+                                        <input
+                                            type="hidden"
+                                            name="accounting_classification"
+                                            value={
+                                                filters.accounting_classification
+                                            }
+                                        />
+                                    )}
                                     <div className="grid w-full gap-1.5 sm:w-44">
                                         <label
                                             htmlFor="asset-lifecycle-filter"
@@ -920,30 +1399,40 @@ export default function AssetsIndex({
                             )}
                         </Form>
                         <div className="overflow-x-auto rounded-lg border border-border/70">
-                            <table className="w-full min-w-[1050px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
-                                <thead className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                                    <tr>
-                                        <th className="pb-3">Property</th>
-                                        <th className="pb-3">Asset</th>
-                                        <th className="pb-3">
+                            <Table className="w-full min-w-[1050px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
+                                <TableHeader className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                    <TableRow>
+                                        <TableHead className="pb-3">
+                                            Property
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Asset
+                                        </TableHead>
+                                        <TableHead className="pb-3">
                                             Custodian / borrower
-                                        </th>
-                                        <th className="pb-3">Location</th>
-                                        <th className="pb-3">Book value</th>
-                                        <th className="pb-3">State</th>
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Location
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Book value
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            State
+                                        </TableHead>
                                         {canManageInventory && (
-                                            <th className="pb-3 text-right">
+                                            <TableHead className="pb-3 text-right">
                                                 Actions
-                                            </th>
+                                            </TableHead>
                                         )}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y">
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody className="divide-y">
                                     {assets.data.map((asset) => (
                                         <Tooltip key={asset.inventory_asset_id}>
                                             <TooltipTrigger
                                                 render={
-                                                    <tr
+                                                    <TableRow
                                                         role="button"
                                                         tabIndex={0}
                                                         aria-haspopup="dialog"
@@ -978,7 +1467,7 @@ export default function AssetsIndex({
                                                     />
                                                 }
                                             >
-                                                <td className="py-3">
+                                                <TableCell className="py-3">
                                                     <div className="font-mono text-xs">
                                                         {asset.property_number ??
                                                             'No property no.'}
@@ -986,22 +1475,21 @@ export default function AssetsIndex({
                                                     <div className="text-xs text-muted-foreground">
                                                         {asset.serial_number}
                                                     </div>
-                                                </td>
-                                                <td className="py-3">
+                                                </TableCell>
+                                                <TableCell className="py-3">
                                                     <div className="font-medium">
                                                         {asset.name}
                                                     </div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {asset.category?.name} ·{' '}
-                                                        {[
-                                                            asset.brand,
-                                                            asset.model,
-                                                        ]
-                                                            .filter(Boolean)
-                                                            .join(' ')}
-                                                    </div>
-                                                </td>
-                                                <td className="py-3">
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="mt-1"
+                                                    >
+                                                        {formatStateLabel(
+                                                            asset.accounting_classification,
+                                                        )}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell className="py-3">
                                                     <div>
                                                         {asset.current_custodian
                                                             ?.name ??
@@ -1019,17 +1507,24 @@ export default function AssetsIndex({
                                                                     .borrower_name}
                                                         </div>
                                                     )}
-                                                </td>
-                                                <td className="py-3 text-muted-foreground">
+                                                </TableCell>
+                                                <TableCell className="py-3 text-muted-foreground">
                                                     {asset.location ?? '—'}
-                                                </td>
-                                                <td className="py-3 text-right">
-                                                    ₱
-                                                    {Number(
-                                                        asset.book_value,
-                                                    ).toLocaleString()}
-                                                </td>
-                                                <td className="py-3">
+                                                </TableCell>
+                                                <TableCell className="py-3 text-right">
+                                                    <div>
+                                                        PHP{' '}
+                                                        {Number(
+                                                            asset.book_value,
+                                                        ).toLocaleString()}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {asset.is_depreciable
+                                                            ? `Residual ${asset.residual_value_percentage}%`
+                                                            : 'No depreciation'}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="py-3">
                                                     <div className="flex max-w-48 flex-wrap gap-1.5">
                                                         <Badge
                                                             variant={
@@ -1061,114 +1556,24 @@ export default function AssetsIndex({
                                                             )}
                                                         </Badge>
                                                     </div>
-                                                </td>
+                                                </TableCell>
                                                 {canManageInventory && (
-                                                    <td className="py-3">
-                                                        <div className="flex justify-end gap-2">
-                                                            {showingArchived ? (
-                                                                <Form
-                                                                    action={restore(
-                                                                        asset,
-                                                                    )}
-                                                                    options={{
-                                                                        preserveScroll: true,
-                                                                    }}
-                                                                >
-                                                                    {({
-                                                                        processing,
-                                                                    }) => (
-                                                                        <Button
-                                                                            size="sm"
-                                                                            variant="outline"
-                                                                            disabled={
-                                                                                processing
-                                                                            }
-                                                                        >
-                                                                            <RotateCcw />
-                                                                            {processing
-                                                                                ? 'Restoring…'
-                                                                                : 'Restore'}
-                                                                        </Button>
-                                                                    )}
-                                                                </Form>
-                                                            ) : asset.custody_status ===
-                                                              'borrowed' ? (
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant="outline"
-                                                                    onClick={() =>
-                                                                        router.visit(
-                                                                            returnMethod(
-                                                                                asset,
-                                                                            ),
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <RotateCcw />{' '}
-                                                                    Return
-                                                                </Button>
-                                                            ) : asset.is_borrowable ? (
-                                                                <BorrowDialog
-                                                                    asset={
-                                                                        asset
-                                                                    }
-                                                                    employees={
-                                                                        employees
-                                                                    }
-                                                                />
-                                                            ) : null}
-                                                            {!showingArchived && (
-                                                                <AssetStateDialog
-                                                                    asset={
-                                                                        asset
-                                                                    }
-                                                                    options={
-                                                                        assetStateOptions
-                                                                    }
-                                                                />
-                                                            )}
-                                                            {!showingArchived && (
-                                                                <>
-                                                                    {asset.is_assignable && (
-                                                                        <CustodianDialog
-                                                                            asset={
-                                                                                asset
-                                                                            }
-                                                                            employees={
-                                                                                employees
-                                                                            }
-                                                                        />
-                                                                    )}
-                                                                    {asset.current_custodian && (
-                                                                        <Button
-                                                                            size="icon"
-                                                                            variant="ghost"
-                                                                            aria-label="Unassign custodian"
-                                                                            onClick={() =>
-                                                                                router.visit(
-                                                                                    unassign(
-                                                                                        asset,
-                                                                                    ),
-                                                                                )
-                                                                            }
-                                                                        >
-                                                                            <UserMinus />
-                                                                        </Button>
-                                                                    )}
-                                                                    <ArchiveRecordDialog
-                                                                        action={destroy(
-                                                                            asset,
-                                                                        )}
-                                                                        recordName={
-                                                                            asset.name
-                                                                        }
-                                                                        recordType="asset"
-                                                                        prerequisite="An asset must be returned and unassigned before it can be archived."
-                                                                    />
-                                                                </>
-                                                            )}
+                                                    <TableCell className="py-3">
+                                                        <div className="flex justify-end">
+                                                            <AssetActions
+                                                                asset={asset}
+                                                                employees={
+                                                                    employees
+                                                                }
+                                                                options={
+                                                                    assetStateOptions
+                                                                }
+                                                                showingArchived={
+                                                                    showingArchived
+                                                                }
+                                                            />
                                                         </div>
-                                                    </td>
+                                                    </TableCell>
                                                 )}
                                             </TooltipTrigger>
                                             <TooltipContent>
@@ -1177,19 +1582,19 @@ export default function AssetsIndex({
                                         </Tooltip>
                                     ))}
                                     {assets.data.length === 0 && (
-                                        <tr>
-                                            <td
+                                        <TableRow>
+                                            <TableCell
                                                 colSpan={
                                                     canManageInventory ? 7 : 6
                                                 }
                                                 className="py-10 text-center text-muted-foreground"
                                             >
                                                 No assets found.
-                                            </td>
-                                        </tr>
+                                            </TableCell>
+                                        </TableRow>
                                     )}
-                                </tbody>
-                            </table>
+                                </TableBody>
+                            </Table>
                         </div>
                         <DataPagination links={assets.links} />
                     </CardContent>

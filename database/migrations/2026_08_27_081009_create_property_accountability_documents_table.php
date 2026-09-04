@@ -15,12 +15,32 @@ return new class extends Migration
             $table->id();
             $table->string('document_no')->unique();
             $table->string('document_type', 3)->index();
-            $table->foreignId('inventory_asset_id')->constrained('inventory_assets', 'inventory_asset_id')->restrictOnDelete();
-            $table->foreignId('inventory_asset_custodian_id')->constrained('inventory_asset_custodians', 'inventory_asset_custodian_id')->restrictOnDelete();
-            $table->foreignId('recipient_reference_id')->constrained('hris_references')->restrictOnDelete();
-            $table->foreignId('issued_by_user_id')->constrained('users')->restrictOnDelete();
-            $table->foreignId('acknowledged_by_user_id')->nullable()->constrained('users')->nullOnDelete();
-            $table->foreignId('supersedes_document_id')->nullable()->constrained('property_accountability_documents')->nullOnDelete();
+            $table->foreignId('inventory_asset_id')->constrained(
+                table: 'inventory_assets',
+                column: 'inventory_asset_id',
+                indexName: 'pa_docs_asset_fk',
+            )->restrictOnDelete();
+            $table->foreignId('inventory_asset_custodian_id')->constrained(
+                table: 'inventory_asset_custodians',
+                column: 'inventory_asset_custodian_id',
+                indexName: 'pa_docs_custodian_fk',
+            )->restrictOnDelete();
+            $table->foreignId('recipient_reference_id')->constrained(
+                table: 'hris_references',
+                indexName: 'pa_docs_recipient_fk',
+            )->restrictOnDelete();
+            $table->foreignId('issued_by_user_id')->constrained(
+                table: 'users',
+                indexName: 'pa_docs_issuer_fk',
+            )->restrictOnDelete();
+            $table->foreignId('acknowledged_by_user_id')->nullable()->constrained(
+                table: 'users',
+                indexName: 'pa_docs_acknowledger_fk',
+            )->nullOnDelete();
+            $table->foreignId('supersedes_document_id')->nullable()->constrained(
+                table: 'property_accountability_documents',
+                indexName: 'pa_docs_supersedes_fk',
+            )->nullOnDelete();
             $table->string('status')->default('pending_recipient')->index();
             $table->string('entity_name');
             $table->string('fund_cluster')->nullable();

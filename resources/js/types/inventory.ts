@@ -148,6 +148,9 @@ export type AssetConditionStatus =
 
 export type AssetCustodyStatus = 'available' | 'assigned' | 'borrowed';
 
+export type AssetAccountingClassification =
+    'ppe' | 'semi_expendable' | 'needs_review';
+
 export type AssetStateOption = {
     value: string;
     label: string;
@@ -164,6 +167,7 @@ export type InventoryAsset = {
     current_custodian_reference_id: number | null;
     serial_number: string;
     property_number: string | null;
+    property_tag_uuid: string;
     name: string;
     type: string | null;
     unit_of_measure: string;
@@ -176,10 +180,16 @@ export type InventoryAsset = {
     location: string | null;
     nature_of_occupancy: string | null;
     acquisition_date: string;
+    available_for_use_date: string | null;
     acquisition_cost: string | null;
+    accounting_classification: AssetAccountingClassification;
+    residual_value_percentage: string | null;
+    residual_value_basis: string | null;
     depreciation_useful_life_months: number;
     depreciation_amount: number;
+    residual_value: number;
     book_value: number;
+    is_depreciable: boolean;
     appraised_value: string | null;
     appraisal_date: string | null;
     impairment_losses: string;

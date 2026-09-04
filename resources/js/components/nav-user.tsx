@@ -1,4 +1,5 @@
 import { ChevronsUpDown } from 'lucide-react';
+import { useState } from 'react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -19,6 +20,7 @@ export function NavUser() {
     const { auth } = useAppPage().props;
     const { state } = useSidebar();
     const isMobile = useIsMobile();
+    const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
     if (!auth.user) {
         return null;
@@ -27,8 +29,12 @@ export function NavUser() {
     return (
         <SidebarMenu>
             <SidebarMenuItem>
-                <DropdownMenu>
+                <DropdownMenu
+                    open={isUserMenuOpen}
+                    onOpenChange={setIsUserMenuOpen}
+                >
                     <DropdownMenuTrigger
+                        aria-expanded={isUserMenuOpen}
                         render={
                             <SidebarMenuButton
                                 size="lg"

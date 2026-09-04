@@ -13,6 +13,14 @@ import { useState } from 'react';
 import type { ChangeEventHandler } from 'react';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -111,28 +119,32 @@ function FilterSelect({
 function ConsumableTable({ records }: { records: Paginated<InventoryItem> }) {
     return (
         <div className="overflow-x-auto rounded-lg border border-border/70">
-            <table className="w-full min-w-[980px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
+            <Table className="w-full min-w-[980px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
                 <caption className="sr-only">
                     Consumable inventory valuation and replenishment report
                 </caption>
-                <thead className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    <tr>
-                        <th>Stock no.</th>
-                        <th>Item and category</th>
-                        <th className="text-right">On hand</th>
-                        <th className="text-right">Reorder point</th>
-                        <th className="text-right">Stock value</th>
-                        <th>Next expiry</th>
-                        <th>Attention</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y">
+                <TableHeader className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    <TableRow>
+                        <TableHead>Stock no.</TableHead>
+                        <TableHead>Item and category</TableHead>
+                        <TableHead className="text-right">On hand</TableHead>
+                        <TableHead className="text-right">
+                            Reorder point
+                        </TableHead>
+                        <TableHead className="text-right">
+                            Stock value
+                        </TableHead>
+                        <TableHead>Next expiry</TableHead>
+                        <TableHead>Attention</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y">
                     {records.data.map((item) => (
-                        <tr key={item.inventory_item_id}>
-                            <td className="font-mono text-xs">
+                        <TableRow key={item.inventory_item_id}>
+                            <TableCell className="font-mono text-xs">
                                 {item.stock_number ?? '—'}
-                            </td>
-                            <td>
+                            </TableCell>
+                            <TableCell>
                                 <div className="font-medium">{item.name}</div>
                                 <div className="text-xs text-muted-foreground">
                                     {item.series_category?.class_category
@@ -141,25 +153,25 @@ function ConsumableTable({ records }: { records: Paginated<InventoryItem> }) {
                                     /{' '}
                                     {item.series_category?.name ?? 'No series'}
                                 </div>
-                            </td>
-                            <td className="text-right font-medium tabular-nums">
+                            </TableCell>
+                            <TableCell className="text-right font-medium tabular-nums">
                                 {integer.format(item.quantity)}{' '}
                                 <span className="font-normal text-muted-foreground">
                                     {item.unit_of_measure}
                                 </span>
-                            </td>
-                            <td className="text-right tabular-nums">
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
                                 {integer.format(item.reorder_point)}
-                            </td>
-                            <td className="text-right font-medium tabular-nums">
+                            </TableCell>
+                            <TableCell className="text-right font-medium tabular-nums">
                                 {currency.format(Number(item.inventory_value))}
-                            </td>
-                            <td className="text-muted-foreground">
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
                                 {item.next_expiration_date
                                     ? formatDate(item.next_expiration_date)
                                     : 'No expiry'}
-                            </td>
-                            <td>
+                            </TableCell>
+                            <TableCell>
                                 <div className="flex flex-wrap gap-1">
                                     {item.is_low_stock && (
                                         <Badge variant="destructive">
@@ -188,22 +200,22 @@ function ConsumableTable({ records }: { records: Paginated<InventoryItem> }) {
                                             </Badge>
                                         )}
                                 </div>
-                            </td>
-                        </tr>
+                            </TableCell>
+                        </TableRow>
                     ))}
                     {records.data.length === 0 && (
-                        <tr>
-                            <td
+                        <TableRow>
+                            <TableCell
                                 colSpan={7}
                                 role="status"
                                 className="py-12 text-center text-muted-foreground"
                             >
                                 No consumable records match these filters.
-                            </td>
-                        </tr>
+                            </TableCell>
+                        </TableRow>
                     )}
-                </tbody>
-            </table>
+                </TableBody>
+            </Table>
         </div>
     );
 }
@@ -211,23 +223,27 @@ function ConsumableTable({ records }: { records: Paginated<InventoryItem> }) {
 function AssetTable({ records }: { records: Paginated<InventoryAsset> }) {
     return (
         <div className="overflow-x-auto rounded-lg border border-border/70">
-            <table className="w-full min-w-[1120px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
+            <Table className="w-full min-w-[1120px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
                 <caption className="sr-only">
                     Property and equipment valuation and depreciation report
                 </caption>
-                <thead className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    <tr>
-                        <th>Property no.</th>
-                        <th>Asset</th>
-                        <th>Custody</th>
-                        <th>Lifecycle</th>
-                        <th>Condition</th>
-                        <th className="text-right">Acquisition cost</th>
-                        <th className="text-right">Depreciation</th>
-                        <th className="text-right">Book value</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y">
+                <TableHeader className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    <TableRow>
+                        <TableHead>Property no.</TableHead>
+                        <TableHead>Asset</TableHead>
+                        <TableHead>Custody</TableHead>
+                        <TableHead>Lifecycle</TableHead>
+                        <TableHead>Condition</TableHead>
+                        <TableHead className="text-right">
+                            Acquisition cost
+                        </TableHead>
+                        <TableHead className="text-right">
+                            Depreciation
+                        </TableHead>
+                        <TableHead className="text-right">Book value</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y">
                     {records.data.map((asset) => {
                         const holder =
                             asset.active_borrowing?.borrower_reference?.name ??
@@ -235,11 +251,11 @@ function AssetTable({ records }: { records: Paginated<InventoryAsset> }) {
                             asset.current_custodian?.name;
 
                         return (
-                            <tr key={asset.inventory_asset_id}>
-                                <td className="font-mono text-xs">
+                            <TableRow key={asset.inventory_asset_id}>
+                                <TableCell className="font-mono text-xs">
                                     {asset.property_number ?? '—'}
-                                </td>
-                                <td>
+                                </TableCell>
+                                <TableCell>
                                     <div className="font-medium">
                                         {asset.name}
                                     </div>
@@ -248,8 +264,8 @@ function AssetTable({ records }: { records: Paginated<InventoryAsset> }) {
                                             'Uncategorized'}{' '}
                                         · {asset.serial_number}
                                     </div>
-                                </td>
-                                <td>
+                                </TableCell>
+                                <TableCell>
                                     <Badge variant="outline">
                                         {titleCase(asset.custody_status)}
                                     </Badge>
@@ -258,36 +274,40 @@ function AssetTable({ records }: { records: Paginated<InventoryAsset> }) {
                                             {holder}
                                         </div>
                                     )}
-                                </td>
-                                <td>{titleCase(asset.lifecycle_status)}</td>
-                                <td>{titleCase(asset.condition_status)}</td>
-                                <td className="text-right tabular-nums">
+                                </TableCell>
+                                <TableCell>
+                                    {titleCase(asset.lifecycle_status)}
+                                </TableCell>
+                                <TableCell>
+                                    {titleCase(asset.condition_status)}
+                                </TableCell>
+                                <TableCell className="text-right tabular-nums">
                                     {currency.format(
                                         Number(asset.acquisition_cost ?? 0),
                                     )}
-                                </td>
-                                <td className="text-right text-muted-foreground tabular-nums">
+                                </TableCell>
+                                <TableCell className="text-right text-muted-foreground tabular-nums">
                                     {currency.format(asset.depreciation_amount)}
-                                </td>
-                                <td className="text-right font-medium tabular-nums">
+                                </TableCell>
+                                <TableCell className="text-right font-medium tabular-nums">
                                     {currency.format(asset.book_value)}
-                                </td>
-                            </tr>
+                                </TableCell>
+                            </TableRow>
                         );
                     })}
                     {records.data.length === 0 && (
-                        <tr>
-                            <td
+                        <TableRow>
+                            <TableCell
                                 colSpan={8}
                                 role="status"
                                 className="py-12 text-center text-muted-foreground"
                             >
                                 No asset records match these filters.
-                            </td>
-                        </tr>
+                            </TableCell>
+                        </TableRow>
                     )}
-                </tbody>
-            </table>
+                </TableBody>
+            </Table>
         </div>
     );
 }

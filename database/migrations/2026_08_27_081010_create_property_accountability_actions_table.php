@@ -13,8 +13,14 @@ return new class extends Migration
     {
         Schema::create('property_accountability_actions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('property_accountability_document_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('actor_user_id')->constrained('users')->restrictOnDelete();
+            $table->foreignId('property_accountability_document_id')->constrained(
+                table: 'property_accountability_documents',
+                indexName: 'pa_actions_document_fk',
+            )->cascadeOnDelete();
+            $table->foreignId('actor_user_id')->constrained(
+                table: 'users',
+                indexName: 'pa_actions_actor_fk',
+            )->restrictOnDelete();
             $table->string('action');
             $table->string('from_status')->nullable();
             $table->string('to_status');

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\AssetAccountingClassification;
 use App\AssetConditionStatus;
 use App\AssetLifecycleStatus;
 use App\Http\Controllers\Controller;
@@ -10,6 +11,7 @@ use App\Http\Requests\Inventory\BorrowInventoryAssetRequest;
 use App\Http\Requests\Inventory\InventoryAssetIndexRequest;
 use App\Http\Requests\Inventory\ReturnInventoryAssetRequest;
 use App\Http\Requests\Inventory\StoreInventoryAssetRequest;
+use App\Http\Requests\Inventory\UpdateInventoryAssetAccountingRequest;
 use App\Http\Requests\Inventory\UpdateInventoryAssetRequest;
 use App\Http\Requests\Inventory\UpdateInventoryAssetStateRequest;
 use App\Models\HrisReference;
@@ -39,6 +41,7 @@ class InventoryAssetController extends Controller
             }))
             ->when($request->string('lifecycle_status')->isNotEmpty(), fn ($query) => $query->where('lifecycle_status', $request->string('lifecycle_status')->toString()))
             ->when($request->string('condition_status')->isNotEmpty(), fn ($query) => $query->where('condition_status', $request->string('condition_status')->toString()))
+            ->when($request->string('accounting_classification')->isNotEmpty(), fn ($query) => $query->where('accounting_classification', $request->string('accounting_classification')->toString()))
             ->when($request->string('custody_status')->toString() === 'borrowed', fn ($query) => $query->whereHas('activeBorrowing'))
             ->when($request->string('custody_status')->toString() === 'assigned', fn ($query) => $query->whereNotNull('current_custodian_reference_id')->whereDoesntHave('activeBorrowing'))
             ->when($request->string('custody_status')->toString() === 'available', fn ($query) => $query->whereNull('current_custodian_reference_id')->whereDoesntHave('activeBorrowing'))
@@ -60,7 +63,16 @@ class InventoryAssetController extends Controller
                 'lifecycle_status',
                 'condition_status',
                 'custody_status',
+                'accounting_classification',
             ]),
+            'accountingClassificationOptions' => array_map(
+                fn (AssetAccountingClassification $classification): array => [
+                    'value' => $classification->value,
+                    'label' => $classification->label(),
+                ],
+                AssetAccountingClassification::cases(),
+            ),
+            'capitalizationThreshold' => AssetAccountingClassification::CAPITALIZATION_THRESHOLD,
             'assetStateOptions' => [
                 'lifecycles' => array_map(
                     fn (AssetLifecycleStatus $status): array => ['value' => $status->value, 'label' => $status->label()],
@@ -88,6 +100,22 @@ class InventoryAssetController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Asset updated.']);
 
         return to_route('inventory.assets.index');
+    }
+
+    public function updateAccounting(
+        UpdateInventoryAssetAccountingRequest $request,
+        InventoryAsset $asset,
+    ): RedirectResponse {
+        if ($asset->accounting_classification !== AssetAccountingClassification::Ppe) {
+            throw ValidationException::withMessages([
+                'residual_value_percentage' => 'Residual value and depreciation settings apply only to PPE.',
+            ]);
+        }
+
+        $asset->update($request->validated());
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'PPE accounting settings updated.']);
+
+        return back();
     }
 
     public function destroy(InventoryAsset $asset): RedirectResponse

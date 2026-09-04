@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Inventory\PropertyAccountabilityIndexRequest;
 use App\Http\Requests\Inventory\TransitionPropertyAccountabilityRequest;
 use App\Models\InventoryAsset;
 use App\Models\PropertyAccountabilityDocument;
@@ -24,16 +25,30 @@ class PropertyAccountabilityController extends Controller
         private InventoryAssetService $assets,
     ) {}
 
-    public function index(Request $request): Response
+    public function index(PropertyAccountabilityIndexRequest $request): Response
     {
         $user = $request->user();
         $canManage = $user->canManageInventory();
+        $filters = $request->validated();
 
         $documents = PropertyAccountabilityDocument::query()
             ->when(
                 ! $canManage,
                 fn ($query) => $query->where('recipient_reference_id', $user->hris_reference_id ?? 0),
             )
+            ->when($filters['search'] ?? null, function ($query, string $search): void {
+                $query->where(function ($query) use ($search): void {
+                    $query->where('document_no', 'like', "%{$search}%")
+                        ->orWhere('asset_name', 'like', "%{$search}%")
+                        ->orWhere('property_number', 'like', "%{$search}%")
+                        ->orWhere('serial_number', 'like', "%{$search}%")
+                        ->orWhere('recipient_name', 'like', "%{$search}%");
+                });
+            })
+            ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
+            ->when($filters['document_type'] ?? null, fn ($query, string $documentType) => $query->where('document_type', $documentType))
+            ->when(($filters['queue'] ?? null) === 'needs_action', fn ($query) => $query->whereIn('status', ['pending_recipient', 'active']))
+            ->when(($filters['queue'] ?? null) === 'completed', fn ($query) => $query->whereIn('status', ['superseded', 'returned', 'cancelled']))
             ->with('actions.actor:id,name')
             ->latest('issued_at')
             ->paginate(15)
@@ -64,6 +79,7 @@ class PropertyAccountabilityController extends Controller
             'canManage' => $canManage,
             'currentReferenceId' => $user->hris_reference_id,
             'capitalizationThreshold' => PropertyAccountabilityDocument::CAPITALIZATION_THRESHOLD,
+            'filters' => $filters,
         ]);
     }
 
@@ -74,7 +90,9 @@ class PropertyAccountabilityController extends Controller
 
         $this->accountability->issueForCurrentAssignment($asset, $request->user());
 
-        return back()->with('success', 'Accountability document issued.');
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Accountability document issued.']);
+
+        return back();
     }
 
     public function transition(
@@ -88,7 +106,9 @@ class PropertyAccountabilityController extends Controller
         if ($action === 'acknowledge') {
             $this->accountability->acknowledge($document, $user, $remarks);
 
-            return back()->with('success', 'Property custody acknowledged.');
+            Inertia::flash('toast', ['type' => 'success', 'message' => 'Property custody acknowledged.']);
+
+            return back();
         }
 
         Gate::authorize('manage-inventory');
@@ -107,7 +127,9 @@ class PropertyAccountabilityController extends Controller
             ]);
         }
 
-        return back()->with('success', 'Accountability workflow updated.');
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Accountability workflow updated.']);
+
+        return back();
     }
 
     public function print(Request $request, PropertyAccountabilityDocument $document): View

@@ -43,9 +43,13 @@ class PropertyAccountabilityService
                 ]);
             }
 
-            $documentType = $cost >= PropertyAccountabilityDocument::CAPITALIZATION_THRESHOLD
-                ? 'PAR'
-                : 'ICS';
+            $documentType = $lockedAsset->accounting_classification->accountabilityDocumentType();
+
+            if ($documentType === null) {
+                throw ValidationException::withMessages([
+                    'asset' => 'Resolve the asset accounting classification before issuing an accountability document.',
+                ]);
+            }
             $issuedAt = now();
             $issuerAttestation = 'I certify that the property was issued as described and custody was assigned to the named recipient.';
 

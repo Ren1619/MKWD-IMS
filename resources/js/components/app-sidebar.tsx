@@ -37,12 +37,15 @@ import { index as reportsIndex } from '@/routes/inventory/reports';
 import { index as requestsIndex } from '@/routes/inventory/requests';
 import type { NavItem } from '@/types';
 
-const inventoryNavItems: NavItem[] = [
+const overviewNavItems: NavItem[] = [
     {
         title: 'Dashboard',
         href: dashboard(),
         icon: LayoutGrid,
     },
+];
+
+const inventoryOperationsNavItems: NavItem[] = [
     {
         title: 'Supply Requests',
         href: requestsIndex(),
@@ -53,8 +56,11 @@ const inventoryNavItems: NavItem[] = [
         href: itemsIndex(),
         icon: Boxes,
     },
+];
+
+const propertyManagementNavItems: NavItem[] = [
     {
-        title: 'Property & Equipment',
+        title: 'Asset Registry',
         href: assetsIndex(),
         icon: PackageCheck,
     },
@@ -63,11 +69,9 @@ const inventoryNavItems: NavItem[] = [
         href: accountabilityIndex(),
         icon: ClipboardSignature,
     },
-    {
-        title: 'Categories',
-        href: categoriesIndex(),
-        icon: Tags,
-    },
+];
+
+const reportingNavItems: NavItem[] = [
     {
         title: 'Reports',
         href: reportsIndex(),
@@ -75,44 +79,47 @@ const inventoryNavItems: NavItem[] = [
     },
 ];
 
+const configurationNavItems: NavItem[] = [
+    {
+        title: 'Categories',
+        href: categoriesIndex(),
+        icon: Tags,
+    },
+];
+
+const administrationNavItems: NavItem[] = [
+    {
+        title: 'User Management',
+        href: usersIndex(),
+        icon: ShieldCheck,
+    },
+    {
+        title: 'Audit Logs',
+        href: auditLogsIndex(),
+        icon: ScrollText,
+    },
+];
+
 const footerNavItems: NavItem[] = [];
 
 export function AppSidebar() {
     const { auth } = useAppPage().props;
-    const roleInventoryItems = auth.permissions.manage_inventory
+    const operationsItems: NavItem[] = auth.permissions.manage_inventory
         ? [
-              ...inventoryNavItems,
+              ...inventoryOperationsNavItems,
               {
                   title: 'Procurement Controls',
                   href: procurementIndex(),
                   icon: ShoppingCart,
               },
           ]
-        : inventoryNavItems.filter(
-              (item) =>
-                  item.title === 'Dashboard' ||
-                  item.title === 'Supply Requests' ||
-                  item.title === 'Consumable Inventory' ||
-                  item.title === 'Property & Equipment' ||
-                  item.title === 'Property Accountability' ||
-                  item.title === 'Reports',
-          );
-    const mainNavItems: NavItem[] =
-        auth.user?.role === 'super_admin'
-            ? [
-                  ...roleInventoryItems,
-                  {
-                      title: 'User Management',
-                      href: usersIndex(),
-                      icon: ShieldCheck,
-                  },
-                  {
-                      title: 'Audit Logs',
-                      href: auditLogsIndex(),
-                      icon: ScrollText,
-                  },
-              ]
-            : roleInventoryItems;
+        : inventoryOperationsNavItems;
+    const reportsAndConfigurationItems: NavItem[] = auth.permissions
+        .manage_inventory
+        ? [...reportingNavItems, ...configurationNavItems]
+        : reportingNavItems;
+    const administrationItems =
+        auth.user?.role === 'super_admin' ? administrationNavItems : [];
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -130,7 +137,17 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain label="Overview" items={overviewNavItems} />
+                <NavMain label="Inventory Operations" items={operationsItems} />
+                <NavMain
+                    label="Property Management"
+                    items={propertyManagementNavItems}
+                />
+                <NavMain
+                    label="Reports & Configuration"
+                    items={reportsAndConfigurationItems}
+                />
+                <NavMain label="Administration" items={administrationItems} />
             </SidebarContent>
 
             <SidebarFooter>

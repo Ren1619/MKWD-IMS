@@ -2,6 +2,14 @@ import { Form, Head, Link } from '@inertiajs/react';
 import { Activity, LogIn, LogOut, Pencil, Plus, Trash2 } from 'lucide-react';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -185,31 +193,43 @@ export default function AuditLogsIndex({
                         </Form>
 
                         <div className="overflow-x-auto rounded-lg border border-border/70">
-                            <table className="w-full min-w-[900px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
-                                <thead className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                                    <tr>
-                                        <th className="pb-3">When</th>
-                                        <th className="pb-3">Who</th>
-                                        <th className="pb-3">Event</th>
-                                        <th className="pb-3">Activity</th>
-                                        <th className="pb-3">Changed fields</th>
-                                        <th className="pb-3">IP address</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y">
+                            <Table className="w-full min-w-[900px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
+                                <TableHeader className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                    <TableRow>
+                                        <TableHead className="pb-3">
+                                            When
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Who
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Event
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Activity
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Changed fields
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            IP address
+                                        </TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody className="divide-y">
                                     {auditLogs.data.map((log) => {
                                         const presentation =
                                             eventPresentation[log.event];
                                         const Icon = presentation.icon;
 
                                         return (
-                                            <tr key={log.id}>
-                                                <td className="py-3 whitespace-nowrap text-muted-foreground">
+                                            <TableRow key={log.id}>
+                                                <TableCell className="py-3 whitespace-nowrap text-muted-foreground">
                                                     {new Date(
                                                         log.created_at,
                                                     ).toLocaleString()}
-                                                </td>
-                                                <td className="py-3">
+                                                </TableCell>
+                                                <TableCell className="py-3">
                                                     <div className="font-medium">
                                                         {log.user?.name ??
                                                             'System'}
@@ -218,8 +238,8 @@ export default function AuditLogsIndex({
                                                         {log.user?.email ??
                                                             'Background process'}
                                                     </div>
-                                                </td>
-                                                <td className="py-3">
+                                                </TableCell>
+                                                <TableCell className="py-3">
                                                     <Badge
                                                         variant={
                                                             presentation.variant
@@ -228,11 +248,11 @@ export default function AuditLogsIndex({
                                                         <Icon />
                                                         {presentation.label}
                                                     </Badge>
-                                                </td>
-                                                <td className="min-w-64 py-3">
+                                                </TableCell>
+                                                <TableCell className="min-w-64 py-3">
                                                     {log.description}
-                                                </td>
-                                                <td className="py-3 text-xs text-muted-foreground">
+                                                </TableCell>
+                                                <TableCell className="py-3 text-xs text-muted-foreground">
                                                     {log.changed_attributes
                                                         .map((field) =>
                                                             field.replaceAll(
@@ -241,26 +261,26 @@ export default function AuditLogsIndex({
                                                             ),
                                                         )
                                                         .join(', ') || '—'}
-                                                </td>
-                                                <td className="py-3 font-mono text-xs whitespace-nowrap text-muted-foreground">
+                                                </TableCell>
+                                                <TableCell className="py-3 font-mono text-xs whitespace-nowrap text-muted-foreground">
                                                     {log.ip_address ?? '—'}
-                                                </td>
-                                            </tr>
+                                                </TableCell>
+                                            </TableRow>
                                         );
                                     })}
                                     {auditLogs.data.length === 0 && (
-                                        <tr>
-                                            <td
+                                        <TableRow>
+                                            <TableCell
                                                 colSpan={6}
                                                 className="py-10 text-center text-muted-foreground"
                                             >
                                                 No activity matches these
                                                 filters.
-                                            </td>
-                                        </tr>
+                                            </TableCell>
+                                        </TableRow>
                                     )}
-                                </tbody>
-                            </table>
+                                </TableBody>
+                            </Table>
                         </div>
                         <DataPagination links={auditLogs.links} />
                     </CardContent>

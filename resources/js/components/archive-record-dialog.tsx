@@ -18,26 +18,34 @@ export function ArchiveRecordDialog({
     recordName,
     recordType,
     prerequisite,
+    open,
+    onOpenChange,
+    showTrigger = true,
 }: {
     action: RouteDefinition<'delete'>;
     recordName: string;
     recordType: string;
     prerequisite: string;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    showTrigger?: boolean;
 }) {
     return (
-        <Dialog>
-            <DialogTrigger
-                render={
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        aria-label={`Archive ${recordName}`}
-                    />
-                }
-            >
-                <Archive />
-            </DialogTrigger>
-            <DialogContent>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            {showTrigger && (
+                <DialogTrigger
+                    render={
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            aria-label={`Archive ${recordName}`}
+                        />
+                    }
+                >
+                    <Archive />
+                </DialogTrigger>
+            )}
+            <DialogContent onClick={(event) => event.stopPropagation()}>
                 <DialogHeader>
                     <DialogTitle>Archive {recordName}?</DialogTitle>
                     <DialogDescription>

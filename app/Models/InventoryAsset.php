@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\AssetAccountingClassification;
 use App\AssetConditionStatus;
 use App\AssetCustodyStatus;
 use App\AssetLifecycleStatus;
@@ -14,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * @property int $inventory_asset_id
@@ -21,9 +23,14 @@ use Illuminate\Support\Carbon;
  * @property AssetConditionStatus $condition_status
  * @property int|null $current_custodian_reference_id
  * @property string|float|null $acquisition_cost
+ * @property AssetAccountingClassification $accounting_classification
+ * @property string|float|null $residual_value_percentage
  * @property int $depreciation_useful_life_months
  * @property Carbon|null $acquisition_date
+ * @property Carbon|null $available_for_use_date
  * @property float $depreciation_amount
+ * @property float $residual_value
+ * @property bool $is_depreciable
  * @property string $custody_status
  * @property bool $is_assignable
  * @property bool $is_borrowable
@@ -33,6 +40,7 @@ use Illuminate\Support\Carbon;
     'current_custodian_reference_id',
     'serial_number',
     'property_number',
+    'property_tag_uuid',
     'name',
     'type',
     'unit_of_measure',
@@ -45,7 +53,11 @@ use Illuminate\Support\Carbon;
     'location',
     'nature_of_occupancy',
     'acquisition_date',
+    'available_for_use_date',
     'acquisition_cost',
+    'accounting_classification',
+    'residual_value_percentage',
+    'residual_value_basis',
     'depreciation_useful_life_months',
     'appraised_value',
     'appraisal_date',
@@ -65,8 +77,6 @@ class InventoryAsset extends Model
     /** @use HasFactory<InventoryAssetFactory> */
     use HasFactory, SoftDeletes;
 
-    private const DEFAULT_RESIDUAL_RATE = 0.05;
-
     protected $primaryKey = 'inventory_asset_id';
 
     protected $attributes = [
@@ -79,13 +89,46 @@ class InventoryAsset extends Model
         'impairment_losses' => 0,
     ];
 
-    protected $appends = ['depreciation_amount', 'book_value', 'custody_status', 'is_assignable', 'is_borrowable'];
+    protected $appends = [
+        'depreciation_amount',
+        'residual_value',
+        'book_value',
+        'is_depreciable',
+        'custody_status',
+        'is_assignable',
+        'is_borrowable',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (InventoryAsset $asset): void {
+            $asset->property_tag_uuid ??= (string) Str::uuid();
+        });
+
+        static::saving(function (InventoryAsset $asset): void {
+            $classification = AssetAccountingClassification::fromAcquisitionCost($asset->acquisition_cost);
+
+            $asset->accounting_classification = $classification;
+
+            if ($classification === AssetAccountingClassification::Ppe) {
+                $asset->residual_value_percentage ??= 5;
+                $asset->residual_value_basis ??= 'COA default residual value of 5%.';
+                $asset->available_for_use_date ??= $asset->acquisition_date;
+            } else {
+                $asset->residual_value_percentage = null;
+                $asset->residual_value_basis = null;
+            }
+        });
+    }
 
     protected function casts(): array
     {
         return [
             'acquisition_date' => 'date',
+            'available_for_use_date' => 'date',
             'acquisition_cost' => 'decimal:2',
+            'accounting_classification' => AssetAccountingClassification::class,
+            'residual_value_percentage' => 'decimal:2',
             'depreciation_useful_life_months' => 'integer',
             'quantity_per_property_card' => 'integer',
             'quantity_per_physical_count' => 'integer',
@@ -116,6 +159,23 @@ class InventoryAsset extends Model
             && $this->determineCustodyStatus() !== AssetCustodyStatus::Borrowed;
     }
 
+    public function getIsDepreciableAttribute(): bool
+    {
+        return $this->accounting_classification === AssetAccountingClassification::Ppe;
+    }
+
+    public function getResidualValueAttribute(): float
+    {
+        if (! $this->is_depreciable) {
+            return 0.0;
+        }
+
+        $cost = (float) ($this->acquisition_cost ?? 0);
+        $percentage = (float) ($this->residual_value_percentage ?? 5);
+
+        return round($cost * ($percentage / 100), 2);
+    }
+
     public function determineCustodyStatus(): AssetCustodyStatus
     {
         $hasActiveBorrowing = $this->relationLoaded('activeBorrowing')
@@ -133,24 +193,48 @@ class InventoryAsset extends Model
 
     public function getDepreciationAmountAttribute(): float
     {
-        $cost = (float) ($this->acquisition_cost ?? 0);
-        $life = (int) $this->depreciation_useful_life_months;
-
-        if ($cost <= 0 || $life <= 0 || ! $this->acquisition_date) {
+        if (! $this->is_depreciable) {
             return 0.0;
         }
 
-        $months = min($life, (int) $this->acquisition_date->diffInMonths(now()));
-        $residualValue = $cost * self::DEFAULT_RESIDUAL_RATE;
+        $cost = (float) ($this->acquisition_cost ?? 0);
+        $life = (int) $this->depreciation_useful_life_months;
+        $availableForUseDate = $this->available_for_use_date ?? $this->acquisition_date;
 
-        return round((($cost - $residualValue) / $life) * $months, 2);
+        if ($cost <= 0 || $life <= 0 || ! $availableForUseDate) {
+            return 0.0;
+        }
+
+        $firstDepreciationMonth = $availableForUseDate->day <= 15
+            ? $availableForUseDate->copy()->endOfMonth()
+            : $availableForUseDate->copy()->addMonth()->endOfMonth();
+        $today = now();
+        $lastCompletedMonth = $today->isLastOfMonth()
+            ? $today->copy()->endOfMonth()
+            : $today->copy()->subMonth()->endOfMonth();
+
+        if ($lastCompletedMonth->lt($firstDepreciationMonth)) {
+            return 0.0;
+        }
+
+        $months = (($lastCompletedMonth->year - $firstDepreciationMonth->year) * 12)
+            + $lastCompletedMonth->month
+            - $firstDepreciationMonth->month
+            + 1;
+        $months = min($life, $months);
+
+        return round((($cost - $this->residual_value) / $life) * $months, 2);
     }
 
     public function getBookValueAttribute(): float
     {
         $cost = (float) ($this->acquisition_cost ?? 0);
 
-        return round(max($cost * self::DEFAULT_RESIDUAL_RATE, $cost - $this->depreciation_amount), 2);
+        if (! $this->is_depreciable) {
+            return round($cost, 2);
+        }
+
+        return round(max($this->residual_value, $cost - $this->depreciation_amount), 2);
     }
 
     /** @return BelongsTo<InventoryAssetCategory, $this> */

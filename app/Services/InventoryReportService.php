@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\AssetAccountingClassification;
 use App\AssetConditionStatus;
 use App\AssetCustodyStatus;
 use App\AssetLifecycleStatus;
@@ -11,7 +12,6 @@ use App\Models\InventoryAssetCustodian;
 use App\Models\InventoryItem;
 use App\Models\InventoryItemBatch;
 use App\Models\InventoryItemStockOut;
-use App\Models\PropertyAccountabilityDocument;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\LazyCollection;
@@ -105,7 +105,9 @@ class InventoryReportService
     /** @param array<string, mixed> $filters @return array<string, mixed> */
     private function physicalPpe(array $filters): array
     {
-        $assets = $this->assetsForPrint($filters)->get();
+        $assets = $this->assetsForPrint($filters)
+            ->where('accounting_classification', AssetAccountingClassification::Ppe)
+            ->get();
 
         return ['columns' => ['Property No.', 'Description', 'Location', 'Accountable person', 'Unit', 'Card qty.', 'Physical qty.', 'Short/(Over)', 'Unit cost', 'Condition', 'Remarks'], 'rows' => $assets->map(fn (InventoryAsset $asset): array => [
             $asset->property_number, $asset->name, $asset->location, $asset->currentCustodian?->name, $asset->unit_of_measure,
@@ -144,11 +146,11 @@ class InventoryReportService
             ->whereNotNull('current_custodian_reference_id')
             ->when(
                 $documentType === 'PAR',
-                fn (Builder $query) => $query->where('acquisition_cost', '>=', PropertyAccountabilityDocument::CAPITALIZATION_THRESHOLD),
+                fn (Builder $query) => $query->where('accounting_classification', AssetAccountingClassification::Ppe),
             )
             ->when(
                 $documentType === 'ICS',
-                fn (Builder $query) => $query->where('acquisition_cost', '<', PropertyAccountabilityDocument::CAPITALIZATION_THRESHOLD),
+                fn (Builder $query) => $query->where('accounting_classification', AssetAccountingClassification::SemiExpendable),
             )
             ->get();
 
@@ -161,7 +163,9 @@ class InventoryReportService
     /** @param array<string, mixed> $filters @return array<string, mixed> */
     private function propertyCards(array $filters): array
     {
-        $assets = $this->assetsForPrint($filters)->get();
+        $assets = $this->assetsForPrint($filters)
+            ->where('accounting_classification', AssetAccountingClassification::Ppe)
+            ->get();
 
         return ['columns' => ['Property No.', 'Description', 'Category', 'Serial No.', 'Acquired', 'Reference', 'Custodian', 'Location', 'Cost', 'Status'], 'rows' => $assets->map(fn (InventoryAsset $asset): array => [$asset->property_number, $asset->name, $asset->category?->name, $asset->serial_number, $asset->acquisition_date?->toDateString(), null, $asset->currentCustodian?->name, $asset->location, $asset->acquisition_cost, $asset->lifecycle_status->label()])];
     }
@@ -169,7 +173,9 @@ class InventoryReportService
     /** @param array<string, mixed> $filters @return array<string, mixed> */
     private function ppeLedger(array $filters): array
     {
-        $assets = $this->assetsForPrint($filters)->get();
+        $assets = $this->assetsForPrint($filters)
+            ->where('accounting_classification', AssetAccountingClassification::Ppe)
+            ->get();
 
         return ['columns' => ['Property No.', 'PPE class', 'Description', 'Acquisition date', 'Cost', 'Useful life (months)', 'Accumulated depreciation', 'Impairment', 'Carrying amount'], 'rows' => $assets->map(fn (InventoryAsset $asset): array => [$asset->property_number, $asset->category?->name, $asset->name, $asset->acquisition_date?->toDateString(), $asset->acquisition_cost, $asset->depreciation_useful_life_months, $asset->depreciation_amount, $asset->impairment_losses, $asset->book_value]), 'summary' => ['cost' => $assets->sum(fn (InventoryAsset $asset): float => (float) $asset->acquisition_cost), 'depreciation' => $assets->sum('depreciation_amount'), 'carrying amount' => $assets->sum('book_value')]];
     }
@@ -338,7 +344,10 @@ class InventoryReportService
             ->select([
                 'inventory_asset_id',
                 'acquisition_date',
+                'available_for_use_date',
                 'acquisition_cost',
+                'accounting_classification',
+                'residual_value_percentage',
                 'depreciation_useful_life_months',
             ])
             ->cursor() as $asset) {

@@ -7,6 +7,14 @@ import {
     Warehouse,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -300,45 +308,49 @@ export function InventoryItemDetailsDialog({
                                     </div>
                                 </div>
                                 <div className="overflow-x-auto">
-                                    <table className="w-full min-w-[950px] text-sm [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
-                                        <thead className="border-b bg-muted/20 text-left text-xs text-muted-foreground uppercase">
-                                            <tr>
-                                                <th>Batch</th>
-                                                <th>Received</th>
-                                                <th>Source / reference</th>
-                                                <th className="text-right">
+                                    <Table className="w-full min-w-[950px] text-sm [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
+                                        <TableHeader className="border-b bg-muted/20 text-left text-xs text-muted-foreground uppercase">
+                                            <TableRow>
+                                                <TableHead>Batch</TableHead>
+                                                <TableHead>Received</TableHead>
+                                                <TableHead>
+                                                    Source / reference
+                                                </TableHead>
+                                                <TableHead className="text-right">
                                                     Unit cost
-                                                </th>
-                                                <th className="text-right">
+                                                </TableHead>
+                                                <TableHead className="text-right">
                                                     Received
-                                                </th>
-                                                <th className="text-right">
+                                                </TableHead>
+                                                <TableHead className="text-right">
                                                     Released
-                                                </th>
-                                                <th className="text-right">
+                                                </TableHead>
+                                                <TableHead className="text-right">
                                                     Remaining
-                                                </th>
-                                                <th>Expiration</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y">
+                                                </TableHead>
+                                                <TableHead>
+                                                    Expiration
+                                                </TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody className="divide-y">
                                             {details.item.batches.map(
                                                 (batch) => (
-                                                    <tr
+                                                    <TableRow
                                                         key={
                                                             batch.inventory_item_batch_id
                                                         }
                                                     >
-                                                        <td className="font-medium">
+                                                        <TableCell className="font-medium">
                                                             #
                                                             {batch.batch_number}
-                                                        </td>
-                                                        <td>
+                                                        </TableCell>
+                                                        <TableCell>
                                                             {formatDate(
                                                                 batch.received_at,
                                                             )}
-                                                        </td>
-                                                        <td>
+                                                        </TableCell>
+                                                        <TableCell>
                                                             <div>
                                                                 {batch.source ??
                                                                     'Not provided'}
@@ -354,50 +366,50 @@ export function InventoryItemDetailsDialog({
                                                                     }
                                                                 </div>
                                                             )}
-                                                        </td>
-                                                        <td className="text-right">
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
                                                             {currencyFormatter.format(
                                                                 Number(
                                                                     batch.unit_cost,
                                                                 ),
                                                             )}
-                                                        </td>
-                                                        <td className="text-right">
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
                                                             {batch.quantity_in}
-                                                        </td>
-                                                        <td className="text-right text-muted-foreground">
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-muted-foreground">
                                                             {batch.quantity_in -
                                                                 batch.quantity_remaining}
-                                                        </td>
-                                                        <td className="text-right font-semibold">
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-semibold">
                                                             {
                                                                 batch.quantity_remaining
                                                             }
-                                                        </td>
-                                                        <td>
+                                                        </TableCell>
+                                                        <TableCell>
                                                             {batch.expiration_date
                                                                 ? formatDate(
                                                                       batch.expiration_date,
                                                                   )
                                                                 : 'No expiry'}
-                                                        </td>
-                                                    </tr>
+                                                        </TableCell>
+                                                    </TableRow>
                                                 ),
                                             )}
                                             {details.item.batches.length ===
                                                 0 && (
-                                                <tr>
-                                                    <td
+                                                <TableRow>
+                                                    <TableCell
                                                         colSpan={8}
                                                         className="py-8 text-center text-muted-foreground"
                                                     >
                                                         No receipt batches have
                                                         been recorded.
-                                                    </td>
-                                                </tr>
+                                                    </TableCell>
+                                                </TableRow>
                                             )}
-                                        </tbody>
-                                    </table>
+                                        </TableBody>
+                                    </Table>
                                 </div>
                             </section>
 

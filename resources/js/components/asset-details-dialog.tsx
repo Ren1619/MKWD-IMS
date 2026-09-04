@@ -146,6 +146,9 @@ export function AssetDetailsDialog({
                         <Badge variant="outline">
                             {formatLabel(asset.condition_status)}
                         </Badge>
+                        <Badge variant="outline">
+                            {formatLabel(asset.accounting_classification)}
+                        </Badge>
                         <Badge
                             variant={
                                 asset.custody_status === 'borrowed'
@@ -184,7 +187,11 @@ export function AssetDetailsDialog({
                                     Depreciation to date
                                 </p>
                                 <p className="mt-1 text-lg font-semibold">
-                                    {formatCurrency(asset.depreciation_amount)}
+                                    {asset.is_depreciable
+                                        ? formatCurrency(
+                                              asset.depreciation_amount,
+                                          )
+                                        : 'Not applicable'}
                                 </p>
                             </div>
                             <div className="rounded-xl border bg-primary/5 p-4 ring-1 ring-primary/15">
@@ -307,18 +314,53 @@ export function AssetDetailsDialog({
                                 value={formatDate(asset.acquisition_date)}
                             />
                             <DetailField
+                                label="Accounting classification"
+                                value={formatLabel(
+                                    asset.accounting_classification,
+                                )}
+                            />
+                            <DetailField
                                 label="Acquisition cost"
                                 value={formatCurrency(asset.acquisition_cost)}
+                            />
+                            <DetailField
+                                label="Available-for-use date"
+                                value={formatDate(asset.available_for_use_date)}
                             />
                             <DetailField
                                 label="Useful life"
                                 value={`${asset.depreciation_useful_life_months} months`}
                             />
                             <DetailField
+                                label="Residual value percentage"
+                                value={
+                                    asset.is_depreciable
+                                        ? `${asset.residual_value_percentage}%`
+                                        : 'Not applicable'
+                                }
+                            />
+                            <DetailField
+                                label="Residual value"
+                                value={
+                                    asset.is_depreciable
+                                        ? formatCurrency(asset.residual_value)
+                                        : 'Not applicable'
+                                }
+                            />
+                            <DetailField
+                                label="Residual value basis"
+                                value={asset.residual_value_basis}
+                                fullWidth
+                            />
+                            <DetailField
                                 label="Depreciation to date"
-                                value={formatCurrency(
-                                    asset.depreciation_amount,
-                                )}
+                                value={
+                                    asset.is_depreciable
+                                        ? formatCurrency(
+                                              asset.depreciation_amount,
+                                          )
+                                        : 'Not applicable'
+                                }
                             />
                             <DetailField
                                 label="Current book value"

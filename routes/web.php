@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Inventory\InventoryDashboardController;
+use App\Http\Controllers\Inventory\PropertyTagController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -18,6 +19,9 @@ Route::get('/', function (Request $request) {
         'status' => $request->session()->get('status'),
     ]);
 })->name('home');
+
+Route::get('property-tags/{asset:property_tag_uuid}', [PropertyTagController::class, 'show'])
+    ->name('property-tags.show');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', InventoryDashboardController::class)->name('dashboard');

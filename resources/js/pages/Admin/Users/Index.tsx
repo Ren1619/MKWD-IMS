@@ -3,6 +3,14 @@ import { Pencil, Plus, ShieldCheck, UserCheck, UserX } from 'lucide-react';
 import { useState } from 'react';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -517,29 +525,39 @@ export default function UsersIndex({
                         </Form>
 
                         <div className="overflow-x-auto rounded-lg border border-border/70">
-                            <table className="w-full min-w-[850px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
-                                <thead className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                                    <tr>
-                                        <th className="pb-3">Account</th>
-                                        <th className="pb-3">Employee</th>
-                                        <th className="pb-3">Role</th>
-                                        <th className="pb-3">Status</th>
-                                        <th className="pb-3">Last sign-in</th>
-                                        <th />
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y">
+                            <Table className="w-full min-w-[850px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
+                                <TableHeader className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                    <TableRow>
+                                        <TableHead className="pb-3">
+                                            Account
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Employee
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Role
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Status
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Last sign-in
+                                        </TableHead>
+                                        <TableHead />
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody className="divide-y">
                                     {users.data.map((user) => (
-                                        <tr key={user.id}>
-                                            <td className="py-3">
+                                        <TableRow key={user.id}>
+                                            <TableCell className="py-3">
                                                 <div className="font-medium">
                                                     {user.name}
                                                 </div>
                                                 <div className="text-xs text-muted-foreground">
                                                     {user.email}
                                                 </div>
-                                            </td>
-                                            <td className="py-3">
+                                            </TableCell>
+                                            <TableCell className="py-3">
                                                 {user.employee ? (
                                                     <>
                                                         <div>
@@ -556,8 +574,8 @@ export default function UsersIndex({
                                                         System account
                                                     </span>
                                                 )}
-                                            </td>
-                                            <td className="py-3">
+                                            </TableCell>
+                                            <TableCell className="py-3">
                                                 <Badge variant="outline">
                                                     {user.role ===
                                                     'super_admin' ? (
@@ -569,8 +587,8 @@ export default function UsersIndex({
                                                             user.role,
                                                     )?.label ?? user.role}
                                                 </Badge>
-                                            </td>
-                                            <td className="py-3">
+                                            </TableCell>
+                                            <TableCell className="py-3">
                                                 <Badge
                                                     variant={
                                                         user.is_active
@@ -587,35 +605,35 @@ export default function UsersIndex({
                                                         ? 'Active'
                                                         : 'Inactive'}
                                                 </Badge>
-                                            </td>
-                                            <td className="py-3 text-muted-foreground">
+                                            </TableCell>
+                                            <TableCell className="py-3 text-muted-foreground">
                                                 {user.last_login_at
                                                     ? new Date(
                                                           user.last_login_at,
                                                       ).toLocaleString()
                                                     : 'Never'}
-                                            </td>
-                                            <td className="py-3 text-right">
+                                            </TableCell>
+                                            <TableCell className="py-3 text-right">
                                                 <EditUserDialog
                                                     user={user}
                                                     employees={employees}
                                                     roles={roles}
                                                 />
-                                            </td>
-                                        </tr>
+                                            </TableCell>
+                                        </TableRow>
                                     ))}
                                     {users.data.length === 0 && (
-                                        <tr>
-                                            <td
+                                        <TableRow>
+                                            <TableCell
                                                 colSpan={6}
                                                 className="py-10 text-center text-muted-foreground"
                                             >
                                                 No accounts match these filters.
-                                            </td>
-                                        </tr>
+                                            </TableCell>
+                                        </TableRow>
                                     )}
-                                </tbody>
-                            </table>
+                                </TableBody>
+                            </Table>
                         </div>
                         <DataPagination links={users.links} />
                     </CardContent>

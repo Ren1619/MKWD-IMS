@@ -8,6 +8,14 @@ import {
     PackagePlus,
     Users,
 } from 'lucide-react';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import {
     Card,
@@ -336,65 +344,71 @@ export default function InventoryDashboard({
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="overflow-x-auto px-0">
-                            <table className="w-full min-w-[760px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
-                                <thead className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                                    <tr>
-                                        <th className="pb-3">Item</th>
-                                        <th className="pb-3">Recipient</th>
-                                        <th className="pb-3">Date</th>
-                                        <th className="pb-3 text-right">
+                            <Table className="w-full min-w-[760px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
+                                <TableHeader className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                    <TableRow>
+                                        <TableHead className="pb-3">
+                                            Item
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Recipient
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Date
+                                        </TableHead>
+                                        <TableHead className="pb-3 text-right">
                                             Quantity
-                                        </th>
-                                        <th className="pb-3 text-right">
+                                        </TableHead>
+                                        <TableHead className="pb-3 text-right">
                                             Issue value
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y">
+                                        </TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody className="divide-y">
                                     {recentStockOuts.map((release) => (
-                                        <tr
+                                        <TableRow
                                             key={
                                                 release.inventory_item_stock_out_id
                                             }
                                         >
-                                            <td className="py-3 font-medium">
+                                            <TableCell className="py-3 font-medium">
                                                 {release.item.name}
-                                            </td>
-                                            <td className="py-3">
+                                            </TableCell>
+                                            <TableCell className="py-3">
                                                 {release.recipient_reference
                                                     ?.name ??
                                                     release.recipient_name ??
                                                     'Unspecified'}
-                                            </td>
-                                            <td className="py-3 text-muted-foreground">
+                                            </TableCell>
+                                            <TableCell className="py-3 text-muted-foreground">
                                                 {new Date(
                                                     release.stocked_out_at +
                                                         'T00:00:00',
                                                 ).toLocaleDateString()}
-                                            </td>
-                                            <td className="py-3 text-right">
+                                            </TableCell>
+                                            <TableCell className="py-3 text-right">
                                                 {release.quantity}{' '}
                                                 {release.item.unit_of_measure}
-                                            </td>
-                                            <td className="py-3 text-right">
+                                            </TableCell>
+                                            <TableCell className="py-3 text-right">
                                                 {currency.format(
                                                     Number(release.total_cost),
                                                 )}
-                                            </td>
-                                        </tr>
+                                            </TableCell>
+                                        </TableRow>
                                     ))}
                                     {recentStockOuts.length === 0 && (
-                                        <tr>
-                                            <td
+                                        <TableRow>
+                                            <TableCell
                                                 colSpan={5}
                                                 className="py-8 text-center text-muted-foreground"
                                             >
                                                 No stock releases recorded.
-                                            </td>
-                                        </tr>
+                                            </TableCell>
+                                        </TableRow>
                                     )}
-                                </tbody>
-                            </table>
+                                </TableBody>
+                            </Table>
                         </CardContent>
                     </Card>
 

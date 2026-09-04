@@ -2,15 +2,11 @@
 
 namespace App\Http\Requests\Inventory;
 
-use App\AssetAccountingClassification;
-use App\AssetConditionStatus;
-use App\AssetCustodyStatus;
-use App\AssetLifecycleStatus;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class InventoryAssetIndexRequest extends FormRequest
+class SupplyRequestIndexRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -29,11 +25,11 @@ class InventoryAssetIndexRequest extends FormRequest
     {
         return [
             'search' => ['nullable', 'string', 'max:100'],
-            'records' => ['nullable', Rule::in(['active', 'archived'])],
-            'lifecycle_status' => ['nullable', Rule::enum(AssetLifecycleStatus::class)],
-            'condition_status' => ['nullable', Rule::enum(AssetConditionStatus::class)],
-            'custody_status' => ['nullable', Rule::enum(AssetCustodyStatus::class)],
-            'accounting_classification' => ['nullable', Rule::enum(AssetAccountingClassification::class)],
+            'status' => ['nullable', Rule::in([
+                'submitted', 'approved', 'awaiting_replenishment', 'ready_for_release',
+                'partially_released', 'released', 'rejected', 'cancelled',
+            ])],
+            'queue' => ['nullable', Rule::in(['needs_action', 'completed'])],
         ];
     }
 }

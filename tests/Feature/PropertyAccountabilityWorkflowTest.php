@@ -6,6 +6,35 @@ use App\Models\PropertyAccountabilityDocument;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
+test('the accountability register filters by document type and current custody queue', function () {
+    $manager = User::factory()->inventoryManager()->create();
+
+    PropertyAccountabilityDocument::factory()->create([
+        'document_no' => 'PAR-2026-SEARCH',
+        'document_type' => 'PAR',
+        'status' => 'pending_recipient',
+        'asset_name' => 'Searchable pump controller',
+    ]);
+    PropertyAccountabilityDocument::factory()->create([
+        'document_no' => 'ICS-2026-CLOSED',
+        'document_type' => 'ICS',
+        'status' => 'returned',
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('inventory.accountability.index', [
+            'search' => 'pump controller',
+            'document_type' => 'PAR',
+            'queue' => 'needs_action',
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('Inventory/Accountability/Index')
+            ->has('documents.data', 1)
+            ->where('documents.data.0.document_no', 'PAR-2026-SEARCH')
+            ->where('filters.document_type', 'PAR'));
+});
+
 test('assigning property issues the correct frozen PAR and the recipient can acknowledge it', function () {
     $manager = User::factory()->inventoryManager()->create();
     $recipientReference = HrisReference::factory()->create([

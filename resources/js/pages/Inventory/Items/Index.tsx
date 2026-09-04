@@ -11,6 +11,14 @@ import { ArchiveRecordDialog } from '@/components/archive-record-dialog';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
 import { InventoryItemDetailsDialog } from '@/components/inventory-item-details-dialog';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -1061,33 +1069,43 @@ export default function ItemsIndex({
                             )}
                         </Form>
                         <div className="overflow-x-auto rounded-lg border border-border/70">
-                            <table className="w-full min-w-[900px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
-                                <thead className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                                    <tr>
-                                        <th className="pb-3">Stock no.</th>
-                                        <th className="pb-3">Item</th>
-                                        <th className="pb-3">Category</th>
-                                        <th className="pb-3 text-right">
+                            <Table className="w-full min-w-[900px] text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-muted/35 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4 [&_th]:py-3">
+                                <TableHeader className="border-b bg-muted/50 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                    <TableRow>
+                                        <TableHead className="pb-3">
+                                            Stock no.
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Item
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Category
+                                        </TableHead>
+                                        <TableHead className="pb-3 text-right">
                                             On hand
-                                        </th>
-                                        <th className="pb-3 text-right">
+                                        </TableHead>
+                                        <TableHead className="pb-3 text-right">
                                             Stock value
-                                        </th>
-                                        <th className="pb-3">Next expiry</th>
-                                        <th className="pb-3">Status</th>
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Next expiry
+                                        </TableHead>
+                                        <TableHead className="pb-3">
+                                            Status
+                                        </TableHead>
                                         {canManageInventory && (
-                                            <th className="pb-3 text-right">
+                                            <TableHead className="pb-3 text-right">
                                                 Actions
-                                            </th>
+                                            </TableHead>
                                         )}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y">
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody className="divide-y">
                                     {items.data.map((item) => (
                                         <Tooltip key={item.inventory_item_id}>
                                             <TooltipTrigger
                                                 render={
-                                                    <tr
+                                                    <TableRow
                                                         role="button"
                                                         tabIndex={0}
                                                         aria-haspopup="dialog"
@@ -1122,10 +1140,10 @@ export default function ItemsIndex({
                                                     />
                                                 }
                                             >
-                                                <td className="py-3 font-mono text-xs">
+                                                <TableCell className="py-3 font-mono text-xs">
                                                     {item.stock_number ?? '—'}
-                                                </td>
-                                                <td className="py-3">
+                                                </TableCell>
+                                                <TableCell className="py-3">
                                                     <div className="font-medium">
                                                         {item.name}
                                                     </div>
@@ -1135,8 +1153,8 @@ export default function ItemsIndex({
                                                             ?.name ??
                                                             'No accountable person'}
                                                     </div>
-                                                </td>
-                                                <td className="py-3 text-muted-foreground">
+                                                </TableCell>
+                                                <TableCell className="py-3 text-muted-foreground">
                                                     {
                                                         item.series_category
                                                             ?.class_category
@@ -1145,8 +1163,8 @@ export default function ItemsIndex({
                                                     }{' '}
                                                     /{' '}
                                                     {item.series_category?.name}
-                                                </td>
-                                                <td className="py-3 text-right">
+                                                </TableCell>
+                                                <TableCell className="py-3 text-right">
                                                     <div className="font-semibold">
                                                         {item.quantity}{' '}
                                                         {item.unit_of_measure}
@@ -1160,15 +1178,15 @@ export default function ItemsIndex({
                                                             {item.reorder_point}
                                                         </Badge>
                                                     )}
-                                                </td>
-                                                <td className="py-3 text-right">
+                                                </TableCell>
+                                                <TableCell className="py-3 text-right">
                                                     {currency.format(
                                                         Number(
                                                             item.inventory_value,
                                                         ),
                                                     )}
-                                                </td>
-                                                <td className="py-3 text-muted-foreground">
+                                                </TableCell>
+                                                <TableCell className="py-3 text-muted-foreground">
                                                     <div>
                                                         {item.next_expiration_date
                                                             ? new Date(
@@ -1194,8 +1212,8 @@ export default function ItemsIndex({
                                                             Expiring soon
                                                         </Badge>
                                                     )}
-                                                </td>
-                                                <td className="py-3">
+                                                </TableCell>
+                                                <TableCell className="py-3">
                                                     <Badge
                                                         variant={
                                                             item.status ===
@@ -1206,9 +1224,9 @@ export default function ItemsIndex({
                                                     >
                                                         {item.status}
                                                     </Badge>
-                                                </td>
+                                                </TableCell>
                                                 {canManageInventory && (
-                                                    <td className="py-3">
+                                                    <TableCell className="py-3">
                                                         <div className="flex justify-end gap-2">
                                                             {showingArchived ? (
                                                                 <Form
@@ -1269,7 +1287,7 @@ export default function ItemsIndex({
                                                                 </>
                                                             )}
                                                         </div>
-                                                    </td>
+                                                    </TableCell>
                                                 )}
                                             </TooltipTrigger>
                                             <TooltipContent>
@@ -1279,19 +1297,19 @@ export default function ItemsIndex({
                                         </Tooltip>
                                     ))}
                                     {items.data.length === 0 && (
-                                        <tr>
-                                            <td
+                                        <TableRow>
+                                            <TableCell
                                                 colSpan={
                                                     canManageInventory ? 8 : 7
                                                 }
                                                 className="py-10 text-center text-muted-foreground"
                                             >
                                                 No inventory items found.
-                                            </td>
-                                        </tr>
+                                            </TableCell>
+                                        </TableRow>
                                     )}
-                                </tbody>
-                            </table>
+                                </TableBody>
+                            </Table>
                         </div>
                         <DataPagination links={items.links} />
                     </CardContent>

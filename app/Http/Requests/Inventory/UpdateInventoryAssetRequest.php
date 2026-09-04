@@ -2,9 +2,12 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\AssetAccountingClassification;
+use App\Models\InventoryAsset;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateInventoryAssetRequest extends FormRequest
 {
@@ -36,8 +39,58 @@ class UpdateInventoryAssetRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:2000'],
             'location' => ['nullable', 'string', 'max:255'],
             'acquisition_date' => ['required', 'date'],
-            'acquisition_cost' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
+            'acquisition_cost' => ['required', 'numeric', 'min:0.01', 'max:9999999999.99'],
+            'available_for_use_date' => [
+                Rule::requiredIf(fn (): bool => $this->isPpe()),
+                'nullable',
+                'date',
+                'after_or_equal:acquisition_date',
+            ],
+            'residual_value_percentage' => [
+                Rule::requiredIf(fn (): bool => $this->isPpe()),
+                'nullable',
+                'numeric',
+                'min:5',
+                'max:99.99',
+            ],
+            'residual_value_basis' => [
+                Rule::requiredIf(fn (): bool => $this->isPpe()),
+                'nullable',
+                'string',
+                'max:1000',
+            ],
             'depreciation_useful_life_months' => ['required', 'integer', 'min:1', 'max:1200'],
         ];
+    }
+
+    /** @return array<callable(Validator): void> */
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            $asset = $this->route('asset');
+
+            if (! $asset instanceof InventoryAsset) {
+                return;
+            }
+
+            $nextClassification = AssetAccountingClassification::fromAcquisitionCost(
+                $this->input('acquisition_cost'),
+            );
+
+            if (
+                $nextClassification !== $asset->accounting_classification
+                && $asset->accountabilityDocuments()->whereIn('status', ['pending_recipient', 'active'])->exists()
+            ) {
+                $validator->errors()->add(
+                    'acquisition_cost',
+                    'Return or supersede the current PAR/ICS before changing this asset across the PHP 50,000 threshold.',
+                );
+            }
+        }];
+    }
+
+    private function isPpe(): bool
+    {
+        return (float) $this->input('acquisition_cost') >= AssetAccountingClassification::CAPITALIZATION_THRESHOLD;
     }
 }

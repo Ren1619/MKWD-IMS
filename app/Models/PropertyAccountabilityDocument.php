@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\AssetAccountingClassification;
 use Database\Factories\PropertyAccountabilityDocumentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -20,7 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 ])]
 class PropertyAccountabilityDocument extends Model
 {
-    public const CAPITALIZATION_THRESHOLD = 50000;
+    public const CAPITALIZATION_THRESHOLD = AssetAccountingClassification::CAPITALIZATION_THRESHOLD;
 
     /** @use HasFactory<PropertyAccountabilityDocumentFactory> */
     use HasFactory;

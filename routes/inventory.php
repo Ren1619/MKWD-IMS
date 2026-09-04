@@ -6,6 +6,7 @@ use App\Http\Controllers\Inventory\InventoryItemController;
 use App\Http\Controllers\Inventory\InventoryReportController;
 use App\Http\Controllers\Inventory\ProcurementRequestController;
 use App\Http\Controllers\Inventory\PropertyAccountabilityController;
+use App\Http\Controllers\Inventory\PropertyTagController;
 use App\Http\Controllers\Inventory\SupplyRequestController;
 use App\Services\InventoryReportService;
 use Illuminate\Support\Facades\Route;
@@ -50,10 +51,12 @@ Route::prefix('inventory')->name('inventory.')->group(function () {
         Route::resource('items', InventoryItemController::class)->only(['store', 'update', 'destroy']);
 
         Route::post('assets/{asset}/assign', [InventoryAssetController::class, 'assign'])->name('assets.assign');
+        Route::get('assets/{asset}/property-tag', [PropertyTagController::class, 'print'])->name('assets.property_tag');
         Route::post('assets/{asset}/unassign', [InventoryAssetController::class, 'unassign'])->name('assets.unassign');
         Route::post('assets/{asset}/borrow', [InventoryAssetController::class, 'borrow'])->name('assets.borrow');
         Route::patch('assets/{asset}/return', [InventoryAssetController::class, 'returnBorrowed'])->name('assets.return');
         Route::patch('assets/{asset}/state', [InventoryAssetController::class, 'updateState'])->name('assets.update_state');
+        Route::patch('assets/{asset}/accounting', [InventoryAssetController::class, 'updateAccounting'])->name('assets.update_accounting');
         Route::patch('assets/{asset}/restore', [InventoryAssetController::class, 'restore'])->withTrashed()->name('assets.restore');
         Route::resource('assets', InventoryAssetController::class)->only(['store', 'update', 'destroy']);
     });

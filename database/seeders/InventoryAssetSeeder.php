@@ -2,9 +2,11 @@
 
 namespace Database\Seeders;
 
+use App\AssetAccountingClassification;
 use App\Models\InventoryAsset;
 use App\Models\InventoryAssetCategory;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
 
 class InventoryAssetSeeder extends Seeder
 {
@@ -25,13 +27,28 @@ class InventoryAssetSeeder extends Seeder
             $categoryCode = (string) $assetData['category_code'];
             unset($assetData['category_code']);
 
-            $asset = InventoryAsset::query()->updateOrCreate(
-                ['serial_number' => $assetData['serial_number']],
-                [
-                    ...$assetData,
-                    'category_id' => $categoryIds[$categoryCode],
-                ],
+            $asset = InventoryAsset::query()->firstOrNew([
+                'serial_number' => $assetData['serial_number'],
+            ]);
+            $classification = AssetAccountingClassification::fromAcquisitionCost(
+                $assetData['acquisition_cost'],
             );
+
+            $asset->fill([
+                ...$assetData,
+                'category_id' => $categoryIds[$categoryCode],
+            ]);
+            $asset->forceFill([
+                'accounting_classification' => $classification,
+                'residual_value_percentage' => $classification === AssetAccountingClassification::Ppe ? 5 : null,
+                'residual_value_basis' => $classification === AssetAccountingClassification::Ppe
+                    ? 'COA default residual value of 5%.'
+                    : null,
+                'available_for_use_date' => $classification === AssetAccountingClassification::Ppe
+                    ? $assetData['acquisition_date']
+                    : null,
+                'property_tag_uuid' => $asset->property_tag_uuid ?? (string) Str::uuid(),
+            ])->save();
 
             if ($asset->serial_number === 'MKWD-EQP-0004') {
                 $asset->borrowings()->updateOrCreate(
