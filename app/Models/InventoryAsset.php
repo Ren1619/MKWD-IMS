@@ -37,12 +37,12 @@ use Illuminate\Support\Str;
  */
 #[Fillable([
     'category_id',
+    'subcategory_id',
     'current_custodian_reference_id',
     'serial_number',
     'property_number',
     'property_tag_uuid',
     'name',
-    'type',
     'unit_of_measure',
     'fund_cluster',
     'quantity_per_property_card',
@@ -241,6 +241,12 @@ class InventoryAsset extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(InventoryAssetCategory::class, 'category_id', 'inv_asset_cat_id');
+    }
+
+    /** @return BelongsTo<InventoryAssetSubcategory, $this> */
+    public function subcategory(): BelongsTo
+    {
+        return $this->belongsTo(InventoryAssetSubcategory::class, 'subcategory_id', 'inventory_asset_subcategory_id');
     }
 
     /** @return BelongsTo<HrisReference, $this> */

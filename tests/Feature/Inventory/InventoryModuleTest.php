@@ -8,6 +8,7 @@ use App\Models\InventoryAsset;
 use App\Models\InventoryAssetBorrowing;
 use App\Models\InventoryAssetCategory;
 use App\Models\InventoryAssetCustodian;
+use App\Models\InventoryAssetSubcategory;
 use App\Models\InventoryClassCategory;
 use App\Models\InventoryItem;
 use App\Models\InventoryItemBatch;
@@ -127,9 +128,13 @@ test('the asset registry provides the complete record for its details modal', fu
         'code' => 'EMP-1042',
         'name' => 'Maria Santos',
     ]);
+    $subcategory = InventoryAssetSubcategory::factory()->create([
+        'name' => 'Notebook computer',
+    ]);
     $asset = InventoryAsset::factory()->create([
+        'category_id' => $subcategory->inventory_asset_category_id,
+        'subcategory_id' => $subcategory->getKey(),
         'current_custodian_reference_id' => $custodian->id,
-        'type' => 'Notebook computer',
         'unit_of_measure' => 'unit',
         'fund_cluster' => '01',
         'quantity_per_property_card' => 2,
@@ -159,7 +164,7 @@ test('the asset registry provides the complete record for its details modal', fu
             ->has('assets.data', 1)
             ->has('assets.data.0', fn (Assert $assetData) => $assetData
                 ->where('inventory_asset_id', $asset->inventory_asset_id)
-                ->where('type', 'Notebook computer')
+                ->where('subcategory.name', 'Notebook computer')
                 ->where('fund_cluster', '01')
                 ->where('quantity_per_property_card', 2)
                 ->where('quantity_per_physical_count', 1)

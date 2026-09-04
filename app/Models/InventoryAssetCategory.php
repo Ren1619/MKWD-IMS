@@ -42,4 +42,10 @@ class InventoryAssetCategory extends Model
     {
         return $this->hasMany(InventoryAsset::class, 'category_id', 'inv_asset_cat_id');
     }
+
+    /** @return HasMany<InventoryAssetSubcategory, $this> */
+    public function subcategories(): HasMany
+    {
+        return $this->hasMany(InventoryAssetSubcategory::class, 'inventory_asset_category_id', 'inv_asset_cat_id');
+    }
 }

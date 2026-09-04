@@ -2,6 +2,7 @@
 
 use App\Models\InventoryAsset;
 use App\Models\InventoryAssetCategory;
+use App\Models\InventoryAssetSubcategory;
 use App\Models\InventoryClassCategory;
 use App\Models\InventoryItem;
 use App\Models\InventoryItemBatch;
@@ -16,8 +17,8 @@ test('inventory seeder creates the requested sample inventory hierarchy and reco
         ->and(InventoryClassCategory::query()->count())->toBe(10)
         ->and(InventorySeriesCategory::query()->count())->toBe(20)
         ->and(InventoryAssetCategory::query()->count())->toBe(5)
-        ->and(InventoryAsset::query()->where('type', 'Property')->count())->toBe(5)
-        ->and(InventoryAsset::query()->where('type', 'Equipment')->count())->toBe(5)
+        ->and(InventoryAssetSubcategory::query()->count())->toBe(10)
+        ->and(InventoryAsset::query()->whereNotNull('subcategory_id')->count())->toBe(10)
         ->and(InventoryItem::query()->count())->toBe(10)
         ->and(InventoryAsset::query()->distinct()->count('acquisition_date'))->toBeGreaterThan(5)
         ->and(InventoryAsset::query()->distinct()->count('condition_status'))->toBeGreaterThan(3)

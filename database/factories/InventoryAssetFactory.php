@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\InventoryAsset;
 use App\Models\InventoryAssetCategory;
+use App\Models\InventoryAssetSubcategory;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -20,6 +21,9 @@ class InventoryAssetFactory extends Factory
     {
         return [
             'category_id' => InventoryAssetCategory::factory(),
+            'subcategory_id' => fn (array $attributes): int => InventoryAssetSubcategory::factory()->create([
+                'inventory_asset_category_id' => $attributes['category_id'],
+            ])->getKey(),
             'serial_number' => fake()->unique()->bothify('SN-########'),
             'property_number' => fake()->unique()->bothify('PROP-######'),
             'name' => fake()->words(3, true),

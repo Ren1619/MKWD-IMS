@@ -28,10 +28,15 @@ class UpdateInventoryAssetRequest extends FormRequest
     {
         return [
             'category_id' => ['required', 'integer', 'exists:inv_asset_cats,inv_asset_cat_id'],
+            'subcategory_id' => [
+                'required',
+                'integer',
+                Rule::exists('inventory_asset_subcategories', 'inventory_asset_subcategory_id')
+                    ->where('inventory_asset_category_id', $this->integer('category_id')),
+            ],
             'serial_number' => ['required', 'string', 'max:100', Rule::unique('inventory_assets', 'serial_number')->ignore($this->route('asset'))],
             'property_number' => ['nullable', 'string', 'max:100', Rule::unique('inventory_assets', 'property_number')->ignore($this->route('asset'))],
             'name' => ['required', 'string', 'max:255'],
-            'type' => ['nullable', 'string', 'max:255'],
             'unit_of_measure' => ['required', 'string', 'max:50'],
             'fund_cluster' => ['nullable', 'string', 'max:100'],
             'brand' => ['nullable', 'string', 'max:255'],

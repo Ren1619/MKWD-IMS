@@ -217,8 +217,8 @@ export function AssetDetailsDialog({
                                 value={asset.serial_number}
                             />
                             <DetailField
-                                label="Type / article"
-                                value={asset.type}
+                                label="Subcategory"
+                                value={asset.subcategory?.name}
                             />
                             <DetailField
                                 label="Category"

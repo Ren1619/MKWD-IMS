@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\AssetAccountingClassification;
 use App\Models\InventoryAsset;
 use App\Models\InventoryAssetCategory;
+use App\Models\InventoryAssetSubcategory;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
@@ -26,6 +27,15 @@ class InventoryAssetSeeder extends Seeder
         foreach ($this->assets() as $assetData) {
             $categoryCode = (string) $assetData['category_code'];
             unset($assetData['category_code']);
+            $subcategory = InventoryAssetSubcategory::query()->updateOrCreate(
+                ['code' => Str::after((string) $assetData['serial_number'], 'MKWD-')],
+                [
+                    'inventory_asset_category_id' => $categoryIds[$categoryCode],
+                    'name' => $assetData['name'],
+                    'description' => $assetData['description'],
+                    'is_active' => true,
+                ],
+            );
 
             $asset = InventoryAsset::query()->firstOrNew([
                 'serial_number' => $assetData['serial_number'],
@@ -37,6 +47,7 @@ class InventoryAssetSeeder extends Seeder
             $asset->fill([
                 ...$assetData,
                 'category_id' => $categoryIds[$categoryCode],
+                'subcategory_id' => $subcategory->getKey(),
             ]);
             $asset->forceFill([
                 'accounting_classification' => $classification,
@@ -72,7 +83,6 @@ class InventoryAssetSeeder extends Seeder
                 'serial_number' => 'MKWD-PROP-0001',
                 'property_number' => 'PROP-2021-001',
                 'name' => 'Executive Office Table',
-                'type' => 'Property',
                 'unit_of_measure' => 'unit',
                 'fund_cluster' => 'Corporate Fund',
                 'brand' => 'Mandaue Foam',
@@ -95,7 +105,6 @@ class InventoryAssetSeeder extends Seeder
                 'serial_number' => 'MKWD-PROP-0002',
                 'property_number' => 'PROP-2022-014',
                 'name' => 'Steel Filing Cabinet',
-                'type' => 'Property',
                 'unit_of_measure' => 'unit',
                 'fund_cluster' => 'Corporate Fund',
                 'brand' => 'OfficeWorks',
@@ -116,7 +125,6 @@ class InventoryAssetSeeder extends Seeder
                 'serial_number' => 'MKWD-PROP-0003',
                 'property_number' => 'PROP-2020-009',
                 'name' => 'Heavy-duty Paper Shredder',
-                'type' => 'Property',
                 'unit_of_measure' => 'unit',
                 'fund_cluster' => 'Corporate Fund',
                 'brand' => 'Fellowes',
@@ -139,7 +147,6 @@ class InventoryAssetSeeder extends Seeder
                 'serial_number' => 'MKWD-PROP-0004',
                 'property_number' => 'PROP-2019-021',
                 'name' => 'Portable Water Pump',
-                'type' => 'Property',
                 'unit_of_measure' => 'unit',
                 'fund_cluster' => 'Corporate Fund',
                 'brand' => 'Honda',
@@ -162,7 +169,6 @@ class InventoryAssetSeeder extends Seeder
                 'serial_number' => 'MKWD-PROP-0005',
                 'property_number' => 'PROP-2018-003',
                 'name' => 'Utility Motorcycle',
-                'type' => 'Property',
                 'unit_of_measure' => 'unit',
                 'fund_cluster' => 'Corporate Fund',
                 'brand' => 'Honda',
@@ -185,7 +191,6 @@ class InventoryAssetSeeder extends Seeder
                 'serial_number' => 'MKWD-EQP-0001',
                 'property_number' => 'EQP-2025-031',
                 'name' => 'Business Laptop Computer',
-                'type' => 'Equipment',
                 'unit_of_measure' => 'unit',
                 'fund_cluster' => 'Corporate Fund',
                 'brand' => 'Lenovo',
@@ -206,7 +211,6 @@ class InventoryAssetSeeder extends Seeder
                 'serial_number' => 'MKWD-EQP-0002',
                 'property_number' => 'EQP-2024-018',
                 'name' => 'Network Laser Printer',
-                'type' => 'Equipment',
                 'unit_of_measure' => 'unit',
                 'fund_cluster' => 'Corporate Fund',
                 'brand' => 'Brother',
@@ -227,7 +231,6 @@ class InventoryAssetSeeder extends Seeder
                 'serial_number' => 'MKWD-EQP-0003',
                 'property_number' => 'EQP-2023-026',
                 'name' => 'Digital Photocopier',
-                'type' => 'Equipment',
                 'unit_of_measure' => 'unit',
                 'fund_cluster' => 'Corporate Fund',
                 'brand' => 'Ricoh',
@@ -250,7 +253,6 @@ class InventoryAssetSeeder extends Seeder
                 'serial_number' => 'MKWD-EQP-0004',
                 'property_number' => 'EQP-2022-011',
                 'name' => 'Electromagnetic Flow Meter',
-                'type' => 'Equipment',
                 'unit_of_measure' => 'unit',
                 'fund_cluster' => 'Corporate Fund',
                 'brand' => 'Endress+Hauser',
@@ -273,7 +275,6 @@ class InventoryAssetSeeder extends Seeder
                 'serial_number' => 'MKWD-EQP-0005',
                 'property_number' => 'EQP-2021-007',
                 'name' => 'Vehicle Diagnostic Scanner',
-                'type' => 'Equipment',
                 'unit_of_measure' => 'unit',
                 'fund_cluster' => 'Corporate Fund',
                 'brand' => 'Autel',

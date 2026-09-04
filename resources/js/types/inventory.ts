@@ -138,6 +138,18 @@ export type AssetCategory = {
     description?: string | null;
     is_active: boolean;
     assets_count?: number;
+    subcategories_count?: number;
+    subcategories?: AssetSubcategory[];
+};
+
+export type AssetSubcategory = {
+    inventory_asset_subcategory_id: number;
+    inventory_asset_category_id: number;
+    code: string;
+    name: string;
+    description?: string | null;
+    is_active: boolean;
+    assets_count?: number;
 };
 
 export type AssetLifecycleStatus =
@@ -164,12 +176,12 @@ export type AssetStateOptions = {
 export type InventoryAsset = {
     inventory_asset_id: number;
     category_id: number;
+    subcategory_id: number | null;
     current_custodian_reference_id: number | null;
     serial_number: string;
     property_number: string | null;
     property_tag_uuid: string;
     name: string;
-    type: string | null;
     unit_of_measure: string;
     fund_cluster: string | null;
     quantity_per_property_card: number;
@@ -209,6 +221,7 @@ export type InventoryAsset = {
     updated_at: string;
     deleted_at: string | null;
     category: AssetCategory;
+    subcategory: AssetSubcategory | null;
     current_custodian: HrisReference | null;
     active_borrowing: {
         borrower_name: string | null;

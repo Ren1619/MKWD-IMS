@@ -280,7 +280,7 @@ class InventoryReportService
     /** @param array<string, mixed> $filters @return Builder<InventoryAsset> */
     private function assetsForPrint(array $filters): Builder
     {
-        return InventoryAsset::query()->with(['category', 'currentCustodian:id,name,code'])->when($filters['fund_cluster'] !== '', fn (Builder $query) => $query->where('fund_cluster', $filters['fund_cluster']))->when($filters['custodian'], fn (Builder $query, int $custodian) => $query->where('current_custodian_reference_id', $custodian))->orderBy('property_number');
+        return InventoryAsset::query()->with(['category', 'subcategory', 'currentCustodian:id,name,code'])->when($filters['fund_cluster'] !== '', fn (Builder $query) => $query->where('fund_cluster', $filters['fund_cluster']))->when($filters['custodian'], fn (Builder $query, int $custodian) => $query->where('current_custodian_reference_id', $custodian))->orderBy('property_number');
     }
 
     private function averageUnitCost(InventoryItem $item): float
@@ -391,7 +391,7 @@ class InventoryReportService
     public function assets(array $filters): LengthAwarePaginator
     {
         return $this->assetQuery($filters)
-            ->with(['category', 'currentCustodian:id,name,code', 'activeBorrowing.borrowerReference:id,name,code'])
+            ->with(['category', 'subcategory', 'currentCustodian:id,name,code', 'activeBorrowing.borrowerReference:id,name,code'])
             ->latest('inventory_asset_id')
             ->paginate(20)
             ->withQueryString();
@@ -432,7 +432,7 @@ class InventoryReportService
             return [
                 'filename' => 'asset-register-'.now()->format('Y-m-d-His').'.csv',
                 'headers' => [
-                    'Property number', 'Serial number', 'Name', 'Category', 'Type', 'Custody', 'Custodian / borrower',
+                    'Property number', 'Serial number', 'Name', 'Category', 'Subcategory', 'Custody', 'Custodian / borrower',
                     'Lifecycle', 'Condition', 'Location', 'Acquisition date', 'Acquisition cost', 'Accumulated depreciation',
                     'Book value', 'Impairment losses', 'Archived at',
                 ],
@@ -536,7 +536,7 @@ class InventoryReportService
     private function assetExportRows(array $filters): LazyCollection
     {
         return $this->assetQuery($filters)
-            ->with(['category', 'currentCustodian:id,name,code', 'activeBorrowing.borrowerReference:id,name,code'])
+            ->with(['category', 'subcategory', 'currentCustodian:id,name,code', 'activeBorrowing.borrowerReference:id,name,code'])
             ->lazyById(250, column: 'inventory_asset_id')
             ->map($this->assetExportRow(...));
     }
@@ -581,7 +581,7 @@ class InventoryReportService
             $asset->serial_number,
             $asset->name,
             $asset->category?->name,
-            $asset->type,
+            $asset->subcategory?->name,
             $asset->custody_status,
             $holder,
             $asset->lifecycle_status->label(),

@@ -706,6 +706,10 @@ export default function AssetsIndex({
     const [selectedAsset, setSelectedAsset] = useState<InventoryAsset | null>(
         null,
     );
+    const [selectedCategoryId, setSelectedCategoryId] = useState('');
+    const selectedCategory = categories.find(
+        (category) => String(category.inv_asset_cat_id) === selectedCategoryId,
+    );
     const registryTitle =
         filters.accounting_classification === 'ppe'
             ? 'PPE Registry'
@@ -755,7 +759,13 @@ export default function AssetsIndex({
                         </p>
                     </div>
                     {canManageInventory && (
-                        <Dialog>
+                        <Dialog
+                            onOpenChange={(open) => {
+                                if (!open) {
+                                    setSelectedCategoryId('');
+                                }
+                            }}
+                        >
                             <DialogTrigger render={<Button />}>
                                 <Plus /> New asset
                             </DialogTrigger>
@@ -770,6 +780,7 @@ export default function AssetsIndex({
                                 <Form
                                     action={store()}
                                     resetOnSuccess
+                                    onSuccess={() => setSelectedCategoryId('')}
                                     className="grid gap-4 md:grid-cols-2"
                                 >
                                     {({ errors, processing }) => (
@@ -803,7 +814,12 @@ export default function AssetsIndex({
                                                     id="asset-category"
                                                     name="category_id"
                                                     className={selectClass}
-                                                    defaultValue=""
+                                                    value={selectedCategoryId}
+                                                    onChange={(event) =>
+                                                        setSelectedCategoryId(
+                                                            event.target.value,
+                                                        )
+                                                    }
                                                     required
                                                 >
                                                     <option value="" disabled>
@@ -869,19 +885,43 @@ export default function AssetsIndex({
                                             </div>
                                             <div>
                                                 <label
-                                                    htmlFor="asset-type"
+                                                    htmlFor="asset-subcategory"
                                                     className="mb-1.5 block text-sm font-medium"
                                                 >
-                                                    Type or article
+                                                    Asset subcategory
                                                 </label>
-                                                <Input
-                                                    id="asset-type"
-                                                    name="type"
-                                                    placeholder="e.g. Notebook computer"
-                                                    maxLength={255}
-                                                />
+                                                <select
+                                                    id="asset-subcategory"
+                                                    name="subcategory_id"
+                                                    className={selectClass}
+                                                    defaultValue=""
+                                                    disabled={!selectedCategory}
+                                                    required
+                                                >
+                                                    <option value="" disabled>
+                                                        {selectedCategory
+                                                            ? 'Select subcategory'
+                                                            : 'Select a category first'}
+                                                    </option>
+                                                    {selectedCategory?.subcategories?.map(
+                                                        (subcategory) => (
+                                                            <option
+                                                                key={
+                                                                    subcategory.inventory_asset_subcategory_id
+                                                                }
+                                                                value={
+                                                                    subcategory.inventory_asset_subcategory_id
+                                                                }
+                                                            >
+                                                                {subcategory.name}
+                                                            </option>
+                                                        ),
+                                                    )}
+                                                </select>
                                                 <InputError
-                                                    message={errors.type}
+                                                    message={
+                                                        errors.subcategory_id
+                                                    }
                                                 />
                                             </div>
                                             <div>

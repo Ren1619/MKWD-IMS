@@ -4,6 +4,7 @@ import {
     ArchiveRestore,
     Boxes,
     ChevronRight,
+    EllipsisVertical,
     FolderTree,
     GitBranch,
     Layers3,
@@ -14,6 +15,14 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import InputError from '@/components/input-error';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,11 +33,6 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import {
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import {
     Dialog,
     DialogContent,
     DialogDescription,
@@ -36,6 +40,14 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { useAppPage } from '@/hooks/use-app-page';
 import {
@@ -51,7 +63,8 @@ import type {
     MajorCategory,
 } from '@/types/inventory';
 
-type CategoryType = 'major' | 'class' | 'series' | 'asset';
+type CategoryType =
+    'major' | 'class' | 'series' | 'asset' | 'asset_subcategory';
 type Workspace = 'items' | 'assets';
 type StatusFilter = 'all' | 'active' | 'archived';
 
@@ -80,6 +93,21 @@ type CommonCategory = {
     is_active: boolean;
 };
 
+type CategoryTableRowData = {
+    key: string;
+    type: CategoryType;
+    id: number;
+    parentId?: number;
+    childType?: CategoryType;
+    parentKeys: string[];
+    isExpandable: boolean;
+    category: CommonCategory;
+    level: string;
+    depth: number;
+    usage: string;
+    dependencyCount: number;
+};
+
 const selectClass =
     'border-input bg-background h-9 w-full rounded-md border px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
@@ -88,6 +116,7 @@ const typeLabels: Record<CategoryType, string> = {
     class: 'class category',
     series: 'series category',
     asset: 'asset category',
+    asset_subcategory: 'asset subcategory',
 };
 
 function matchesStatus(category: CommonCategory, filter: StatusFilter) {
@@ -143,77 +172,229 @@ function CategoryActions({
     }
 
     return (
-        <div className="flex shrink-0 items-center gap-1">
-            {onAddChild && category.is_active && (
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Add a child to ${category.name}`}
-                    title="Add child category"
-                    onClick={onAddChild}
-                >
-                    <Plus className="size-4" />
-                </Button>
-            )}
-            <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`Edit ${category.name}`}
-                title="Edit category"
-                onClick={onEdit}
-            >
-                <Pencil className="size-4" />
-            </Button>
-            <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`${category.is_active ? 'Archive' : 'Activate'} ${category.name}`}
-                title={
-                    category.is_active
-                        ? 'Archive category'
-                        : 'Activate category'
-                }
-                onClick={() =>
-                    onConfirm({
-                        action: 'status',
-                        type,
-                        id,
-                        name: category.name,
-                        nextActive: !category.is_active,
-                    })
+        <DropdownMenu>
+            <DropdownMenuTrigger
+                render={
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Open actions for ${category.name}`}
+                    />
                 }
             >
-                {category.is_active ? (
-                    <ArchiveIcon className="size-4" />
-                ) : (
-                    <ArchiveRestore className="size-4" />
+                <EllipsisVertical className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {onAddChild && category.is_active && (
+                    <DropdownMenuItem onClick={onAddChild}>
+                        <Plus /> Add child category
+                    </DropdownMenuItem>
                 )}
-            </Button>
-            <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={dependencyCount > 0}
-                aria-label={`Delete ${category.name}`}
-                title={
-                    dependencyCount > 0
-                        ? 'Archive this category because it is still in use.'
-                        : 'Permanently delete category'
-                }
-                onClick={() =>
-                    onConfirm({
-                        action: 'delete',
-                        type,
-                        id,
-                        name: category.name,
-                    })
-                }
-            >
-                <Trash2 className="size-4 text-destructive" />
-            </Button>
+                <DropdownMenuItem onClick={onEdit}>
+                    <Pencil /> Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                    onClick={() =>
+                        onConfirm({
+                            action: 'status',
+                            type,
+                            id,
+                            name: category.name,
+                            nextActive: !category.is_active,
+                        })
+                    }
+                >
+                    {category.is_active ? <ArchiveIcon /> : <ArchiveRestore />}
+                    {category.is_active ? 'Archive' : 'Activate'}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                    variant="destructive"
+                    disabled={dependencyCount > 0}
+                    onClick={() =>
+                        onConfirm({
+                            action: 'delete',
+                            type,
+                            id,
+                            name: category.name,
+                        })
+                    }
+                >
+                    <Trash2 />
+                    {dependencyCount > 0
+                        ? 'In use — archive instead'
+                        : 'Delete permanently'}
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
+}
+
+function CategoryDataTable({
+    rows,
+    emptyMessage,
+    canManageInventory,
+    onCreateChild,
+    onEdit,
+    onConfirm,
+}: {
+    rows: CategoryTableRowData[];
+    emptyMessage: string;
+    canManageInventory: boolean;
+    onCreateChild: (type: CategoryType, parentId: number) => void;
+    onEdit: (
+        type: CategoryType,
+        id: number,
+        category: CommonCategory,
+        parentId?: number,
+    ) => void;
+    onConfirm: (confirmation: ConfirmationState) => void;
+}) {
+    const indentationClasses = ['', 'pl-7', 'pl-14'];
+    const [expandedRows, setExpandedRows] = useState<Set<string>>(
+        () =>
+            new Set(
+                rows.filter((row) => row.isExpandable).map((row) => row.key),
+            ),
+    );
+    const visibleRows = rows.filter((row) =>
+        row.parentKeys.every((parentKey) => expandedRows.has(parentKey)),
+    );
+
+    const toggleRow = (key: string): void => {
+        setExpandedRows((currentRows) => {
+            const nextRows = new Set(currentRows);
+
+            if (nextRows.has(key)) {
+                nextRows.delete(key);
+            } else {
+                nextRows.add(key);
+            }
+
+            return nextRows;
+        });
+    };
+
+    return (
+        <div className="overflow-x-auto">
+            <Table className="min-w-[760px]">
+                <TableHeader className="bg-muted/50">
+                    <TableRow>
+                        <TableHead>Classification</TableHead>
+                        <TableHead>Level</TableHead>
+                        <TableHead>Usage</TableHead>
+                        <TableHead>Status</TableHead>
+                        {canManageInventory && (
+                            <TableHead className="w-16 text-right">
+                                Actions
+                            </TableHead>
+                        )}
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {visibleRows.map((row) => (
+                        <TableRow
+                            key={row.key}
+                            className={row.depth === 0 ? 'bg-muted/20' : ''}
+                        >
+                            <TableCell className="whitespace-normal">
+                                <div
+                                    className={`flex items-start gap-3 ${indentationClasses[row.depth] ?? ''}`}
+                                >
+                                    {row.isExpandable ? (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="-mt-1 size-7 shrink-0"
+                                            aria-label={`${expandedRows.has(row.key) ? 'Collapse' : 'Expand'} ${row.category.name}`}
+                                            aria-expanded={expandedRows.has(
+                                                row.key,
+                                            )}
+                                            onClick={() => toggleRow(row.key)}
+                                        >
+                                            <ChevronRight
+                                                className={`size-4 transition-transform ${expandedRows.has(row.key) ? 'rotate-90' : ''}`}
+                                            />
+                                        </Button>
+                                    ) : (
+                                        <div className="w-7 shrink-0" />
+                                    )}
+                                    {row.depth === 0 ? (
+                                        <Layers3 className="mt-0.5 size-4 shrink-0 text-primary" />
+                                    ) : row.depth === 1 ? (
+                                        <GitBranch className="mt-0.5 size-4 shrink-0 text-sky-600" />
+                                    ) : (
+                                        <div className="mt-1.5 size-2 shrink-0 rounded-full bg-primary/50" />
+                                    )}
+                                    <div className="min-w-0">
+                                        <div
+                                            className={`flex flex-wrap items-center gap-2 ${row.depth < 2 ? 'font-medium' : ''}`}
+                                        >
+                                            <span className="font-mono text-xs text-muted-foreground">
+                                                {row.category.code}
+                                            </span>
+                                            <span>{row.category.name}</span>
+                                        </div>
+                                        <p className="max-w-xl truncate text-xs text-muted-foreground">
+                                            {row.category.description ||
+                                                'No description'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </TableCell>
+                            <TableCell>{row.level}</TableCell>
+                            <TableCell>{row.usage}</TableCell>
+                            <TableCell>
+                                <CategoryStatus
+                                    active={row.category.is_active}
+                                />
+                            </TableCell>
+                            {canManageInventory && (
+                                <TableCell className="text-right">
+                                    <CategoryActions
+                                        type={row.type}
+                                        id={row.id}
+                                        category={row.category}
+                                        dependencyCount={row.dependencyCount}
+                                        onAddChild={
+                                            row.childType
+                                                ? () =>
+                                                      onCreateChild(
+                                                          row.childType!,
+                                                          row.id,
+                                                      )
+                                                : undefined
+                                        }
+                                        onEdit={() =>
+                                            onEdit(
+                                                row.type,
+                                                row.id,
+                                                row.category,
+                                                row.parentId,
+                                            )
+                                        }
+                                        onConfirm={onConfirm}
+                                    />
+                                </TableCell>
+                            )}
+                        </TableRow>
+                    ))}
+                    {rows.length === 0 && (
+                        <TableRow>
+                            <TableCell
+                                colSpan={canManageInventory ? 5 : 4}
+                                className="h-32 text-center text-muted-foreground"
+                            >
+                                {emptyMessage}
+                            </TableCell>
+                        </TableRow>
+                    )}
+                </TableBody>
+            </Table>
         </div>
     );
 }
@@ -265,11 +446,17 @@ export default function CategoriesIndex({
 
     const visibleAssets = useMemo(
         () =>
-            assetCategories.filter(
-                (category) =>
+            assetCategories.filter((category) => {
+                const matchingSubcategory = (category.subcategories ?? []).some(
+                    (subcategory) => matchesSearch(subcategory, assetSearch),
+                );
+
+                return (
                     matchesStatus(category, assetStatusFilter) &&
-                    matchesSearch(category, assetSearch),
-            ),
+                    (matchesSearch(category, assetSearch) ||
+                        matchingSubcategory)
+                );
+            }),
         [assetCategories, assetSearch, assetStatusFilter],
     );
 
@@ -285,16 +472,27 @@ export default function CategoriesIndex({
                       id: major.inv_mjr_cat_id,
                       label: `${major.code} · ${major.name}`,
                   }))
-            : classCategories
-                  .filter(
-                      (category) =>
-                          category.is_active ||
-                          category.inv_class_cat_id === editor?.parentId,
-                  )
-                  .map((category) => ({
-                      id: category.inv_class_cat_id,
-                      label: `${category.code} · ${category.name}`,
-                  }));
+            : editor?.type === 'asset_subcategory'
+              ? assetCategories
+                    .filter(
+                        (category) =>
+                            category.is_active ||
+                            category.inv_asset_cat_id === editor.parentId,
+                    )
+                    .map((category) => ({
+                        id: category.inv_asset_cat_id,
+                        label: `${category.code} · ${category.name}`,
+                    }))
+              : classCategories
+                    .filter(
+                        (category) =>
+                            category.is_active ||
+                            category.inv_class_cat_id === editor?.parentId,
+                    )
+                    .map((category) => ({
+                        id: category.inv_class_cat_id,
+                        label: `${category.code} · ${category.name}`,
+                    }));
 
     const openCreate = (type: CategoryType, parentId?: number) =>
         setEditor({ mode: 'create', type, parentId });
@@ -357,6 +555,120 @@ export default function CategoriesIndex({
                 matchesStatus(series, itemStatusFilter) &&
                 matchesSearch(series, itemSearch),
         );
+
+    const itemCategoryRows: CategoryTableRowData[] = visibleMajors.flatMap(
+        (major) => {
+            const classes = filteredClassCategories(major);
+            const totalSeries = (major.class_categories ?? []).reduce(
+                (total, category) =>
+                    total + (category.series_categories?.length ?? 0),
+                0,
+            );
+            const totalItems = (major.class_categories ?? []).reduce(
+                (majorTotal, category) =>
+                    majorTotal +
+                    (category.series_categories ?? []).reduce(
+                        (classTotal, series) =>
+                            classTotal + (series.items_count ?? 0),
+                        0,
+                    ),
+                0,
+            );
+            const rows: CategoryTableRowData[] = [
+                {
+                    key: `major-${major.inv_mjr_cat_id}`,
+                    type: 'major',
+                    id: major.inv_mjr_cat_id,
+                    childType: 'class',
+                    category: major,
+                    level: 'Major category',
+                    depth: 0,
+                    parentKeys: [],
+                    isExpandable: classes.length > 0,
+                    usage: `${major.class_categories_count ?? 0} classes · ${totalSeries} series · ${totalItems} items`,
+                    dependencyCount: major.class_categories_count ?? 0,
+                },
+            ];
+
+            classes.forEach((classCategory) => {
+                const itemCount = (
+                    classCategory.series_categories ?? []
+                ).reduce(
+                    (total, series) => total + (series.items_count ?? 0),
+                    0,
+                );
+                rows.push({
+                    key: `class-${classCategory.inv_class_cat_id}`,
+                    type: 'class',
+                    id: classCategory.inv_class_cat_id,
+                    parentId: major.inv_mjr_cat_id,
+                    childType: 'series',
+                    category: classCategory,
+                    level: 'Class category',
+                    depth: 1,
+                    parentKeys: [`major-${major.inv_mjr_cat_id}`],
+                    isExpandable:
+                        filteredSeriesCategories(classCategory).length > 0,
+                    usage: `${classCategory.series_categories_count ?? 0} series · ${itemCount} items`,
+                    dependencyCount: classCategory.series_categories_count ?? 0,
+                });
+
+                filteredSeriesCategories(classCategory).forEach((series) => {
+                    rows.push({
+                        key: `series-${series.inv_series_cat_id}`,
+                        type: 'series',
+                        id: series.inv_series_cat_id,
+                        parentId: classCategory.inv_class_cat_id,
+                        category: series,
+                        level: 'Series category',
+                        depth: 2,
+                        parentKeys: [
+                            `major-${major.inv_mjr_cat_id}`,
+                            `class-${classCategory.inv_class_cat_id}`,
+                        ],
+                        isExpandable: false,
+                        usage: `${series.items_count ?? 0} items`,
+                        dependencyCount: series.items_count ?? 0,
+                    });
+                });
+            });
+
+            return rows;
+        },
+    );
+
+    const assetCategoryRows: CategoryTableRowData[] = visibleAssets.flatMap(
+        (category) => [
+            {
+                key: `asset-${category.inv_asset_cat_id}`,
+                type: 'asset',
+                id: category.inv_asset_cat_id,
+                childType: 'asset_subcategory',
+                category,
+                level: 'Asset category',
+                depth: 0,
+                parentKeys: [],
+                isExpandable: (category.subcategories ?? []).length > 0,
+                usage: `${category.subcategories_count ?? 0} subcategories · ${category.assets_count ?? 0} assets`,
+                dependencyCount:
+                    (category.assets_count ?? 0) +
+                    (category.subcategories_count ?? 0),
+            },
+            ...(category.subcategories ?? []).map((subcategory) => ({
+                key: `asset-subcategory-${subcategory.inventory_asset_subcategory_id}`,
+                type: 'asset_subcategory' as const,
+                id: subcategory.inventory_asset_subcategory_id,
+                parentId: category.inv_asset_cat_id,
+                category: subcategory,
+                level: 'Asset subcategory',
+                depth: 1,
+                parentKeys: [`asset-${category.inv_asset_cat_id}`],
+                isExpandable: false,
+                usage: `${subcategory.assets_count ?? 0} assets`,
+                dependencyCount: subcategory.assets_count ?? 0,
+            })),
+        ],
+    );
 
     return (
         <>
@@ -474,304 +786,15 @@ export default function CategoriesIndex({
                                 </div>
                             </div>
                         </CardHeader>
-                        <CardContent className="space-y-3">
-                            {visibleMajors.map((major) => {
-                                const classes = filteredClassCategories(major);
-                                const totalSeries = (
-                                    major.class_categories ?? []
-                                ).reduce(
-                                    (total, category) =>
-                                        total +
-                                        (category.series_categories?.length ??
-                                            0),
-                                    0,
-                                );
-                                const totalItems = (
-                                    major.class_categories ?? []
-                                ).reduce(
-                                    (majorTotal, category) =>
-                                        majorTotal +
-                                        (
-                                            category.series_categories ?? []
-                                        ).reduce(
-                                            (classTotal, series) =>
-                                                classTotal +
-                                                (series.items_count ?? 0),
-                                            0,
-                                        ),
-                                    0,
-                                );
-
-                                return (
-                                    <Collapsible
-                                        key={major.inv_mjr_cat_id}
-                                        defaultOpen
-                                        className="overflow-hidden rounded-xl border"
-                                    >
-                                        <div className="flex items-center gap-2 bg-muted/35 p-3">
-                                            <CollapsibleTrigger
-                                                render={
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="group size-8"
-                                                        aria-label={`Toggle ${major.name}`}
-                                                    />
-                                                }
-                                            >
-                                                <ChevronRight className="size-4 transition-transform group-data-panel-open:rotate-90" />
-                                            </CollapsibleTrigger>
-                                            <Layers3 className="size-5 shrink-0 text-primary" />
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <span className="font-mono text-xs text-muted-foreground">
-                                                        {major.code}
-                                                    </span>
-                                                    <span className="font-semibold">
-                                                        {major.name}
-                                                    </span>
-                                                    <CategoryStatus
-                                                        active={major.is_active}
-                                                    />
-                                                </div>
-                                                <p className="truncate text-xs text-muted-foreground">
-                                                    {major.description ||
-                                                        'No description'}{' '}
-                                                    ·{' '}
-                                                    {major.class_categories_count ??
-                                                        0}{' '}
-                                                    classes · {totalSeries}{' '}
-                                                    series · {totalItems} items
-                                                </p>
-                                            </div>
-                                            <CategoryActions
-                                                type="major"
-                                                id={major.inv_mjr_cat_id}
-                                                category={major}
-                                                dependencyCount={
-                                                    major.class_categories_count ??
-                                                    0
-                                                }
-                                                onAddChild={() =>
-                                                    openCreate(
-                                                        'class',
-                                                        major.inv_mjr_cat_id,
-                                                    )
-                                                }
-                                                onEdit={() =>
-                                                    openEdit(
-                                                        'major',
-                                                        major.inv_mjr_cat_id,
-                                                        major,
-                                                    )
-                                                }
-                                                onConfirm={setConfirmation}
-                                            />
-                                        </div>
-                                        <CollapsibleContent>
-                                            <div className="space-y-2 border-t p-3 pl-8 md:pl-12">
-                                                {classes.map(
-                                                    (classCategory) => {
-                                                        const seriesCategories =
-                                                            filteredSeriesCategories(
-                                                                classCategory,
-                                                            );
-                                                        const itemCount = (
-                                                            classCategory.series_categories ??
-                                                            []
-                                                        ).reduce(
-                                                            (total, series) =>
-                                                                total +
-                                                                (series.items_count ??
-                                                                    0),
-                                                            0,
-                                                        );
-
-                                                        return (
-                                                            <Collapsible
-                                                                key={
-                                                                    classCategory.inv_class_cat_id
-                                                                }
-                                                                defaultOpen
-                                                                className="rounded-lg border bg-background"
-                                                            >
-                                                                <div className="flex items-center gap-2 p-2.5">
-                                                                    <CollapsibleTrigger
-                                                                        render={
-                                                                            <Button
-                                                                                type="button"
-                                                                                variant="ghost"
-                                                                                size="icon"
-                                                                                className="group size-7"
-                                                                                aria-label={`Toggle ${classCategory.name}`}
-                                                                            />
-                                                                        }
-                                                                    >
-                                                                        <ChevronRight className="size-3.5 transition-transform group-data-panel-open:rotate-90" />
-                                                                    </CollapsibleTrigger>
-                                                                    <GitBranch className="size-4 shrink-0 text-sky-600" />
-                                                                    <div className="min-w-0 flex-1">
-                                                                        <div className="flex flex-wrap items-center gap-2 text-sm">
-                                                                            <span className="font-mono text-xs text-muted-foreground">
-                                                                                {
-                                                                                    classCategory.code
-                                                                                }
-                                                                            </span>
-                                                                            <span className="font-medium">
-                                                                                {
-                                                                                    classCategory.name
-                                                                                }
-                                                                            </span>
-                                                                            <CategoryStatus
-                                                                                active={
-                                                                                    classCategory.is_active
-                                                                                }
-                                                                            />
-                                                                        </div>
-                                                                        <p className="truncate text-xs text-muted-foreground">
-                                                                            {classCategory.description ||
-                                                                                'No description'}{' '}
-                                                                            ·{' '}
-                                                                            {classCategory.series_categories_count ??
-                                                                                0}{' '}
-                                                                            series
-                                                                            ·{' '}
-                                                                            {
-                                                                                itemCount
-                                                                            }{' '}
-                                                                            items
-                                                                        </p>
-                                                                    </div>
-                                                                    <CategoryActions
-                                                                        type="class"
-                                                                        id={
-                                                                            classCategory.inv_class_cat_id
-                                                                        }
-                                                                        category={
-                                                                            classCategory
-                                                                        }
-                                                                        dependencyCount={
-                                                                            classCategory.series_categories_count ??
-                                                                            0
-                                                                        }
-                                                                        onAddChild={() =>
-                                                                            openCreate(
-                                                                                'series',
-                                                                                classCategory.inv_class_cat_id,
-                                                                            )
-                                                                        }
-                                                                        onEdit={() =>
-                                                                            openEdit(
-                                                                                'class',
-                                                                                classCategory.inv_class_cat_id,
-                                                                                classCategory,
-                                                                                major.inv_mjr_cat_id,
-                                                                            )
-                                                                        }
-                                                                        onConfirm={
-                                                                            setConfirmation
-                                                                        }
-                                                                    />
-                                                                </div>
-                                                                <CollapsibleContent>
-                                                                    <div className="divide-y border-t pl-8">
-                                                                        {seriesCategories.map(
-                                                                            (
-                                                                                series,
-                                                                            ) => (
-                                                                                <div
-                                                                                    key={
-                                                                                        series.inv_series_cat_id
-                                                                                    }
-                                                                                    className="flex items-center gap-2 p-2.5"
-                                                                                >
-                                                                                    <div className="size-2 rounded-full bg-primary/50" />
-                                                                                    <div className="min-w-0 flex-1">
-                                                                                        <div className="flex flex-wrap items-center gap-2 text-sm">
-                                                                                            <span className="font-mono text-xs text-muted-foreground">
-                                                                                                {
-                                                                                                    series.code
-                                                                                                }
-                                                                                            </span>
-                                                                                            <span>
-                                                                                                {
-                                                                                                    series.name
-                                                                                                }
-                                                                                            </span>
-                                                                                            <CategoryStatus
-                                                                                                active={
-                                                                                                    series.is_active
-                                                                                                }
-                                                                                            />
-                                                                                        </div>
-                                                                                        <p className="truncate text-xs text-muted-foreground">
-                                                                                            {series.description ||
-                                                                                                'No description'}{' '}
-                                                                                            ·{' '}
-                                                                                            {series.items_count ??
-                                                                                                0}{' '}
-                                                                                            items
-                                                                                        </p>
-                                                                                    </div>
-                                                                                    <CategoryActions
-                                                                                        type="series"
-                                                                                        id={
-                                                                                            series.inv_series_cat_id
-                                                                                        }
-                                                                                        category={
-                                                                                            series
-                                                                                        }
-                                                                                        dependencyCount={
-                                                                                            series.items_count ??
-                                                                                            0
-                                                                                        }
-                                                                                        onEdit={() =>
-                                                                                            openEdit(
-                                                                                                'series',
-                                                                                                series.inv_series_cat_id,
-                                                                                                series,
-                                                                                                classCategory.inv_class_cat_id,
-                                                                                            )
-                                                                                        }
-                                                                                        onConfirm={
-                                                                                            setConfirmation
-                                                                                        }
-                                                                                    />
-                                                                                </div>
-                                                                            ),
-                                                                        )}
-                                                                        {seriesCategories.length ===
-                                                                            0 && (
-                                                                            <p className="p-4 text-sm text-muted-foreground">
-                                                                                No
-                                                                                matching
-                                                                                series.
-                                                                            </p>
-                                                                        )}
-                                                                    </div>
-                                                                </CollapsibleContent>
-                                                            </Collapsible>
-                                                        );
-                                                    },
-                                                )}
-                                                {classes.length === 0 && (
-                                                    <div className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">
-                                                        No matching class
-                                                        categories.
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </CollapsibleContent>
-                                    </Collapsible>
-                                );
-                            })}
-                            {visibleMajors.length === 0 && (
-                                <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
-                                    No item categories match the current
-                                    filters.
-                                </div>
-                            )}
+                        <CardContent className="p-0">
+                            <CategoryDataTable
+                                rows={itemCategoryRows}
+                                emptyMessage="No item categories match the current filters."
+                                canManageInventory={canManageInventory}
+                                onCreateChild={openCreate}
+                                onEdit={openEdit}
+                                onConfirm={setConfirmation}
+                            />
                         </CardContent>
                     </Card>
                 ) : (
@@ -849,58 +872,15 @@ export default function CategoriesIndex({
                                 </div>
                             </div>
                         </CardHeader>
-                        <CardContent className="grid gap-3 lg:grid-cols-2">
-                            {visibleAssets.map((category) => (
-                                <div
-                                    key={category.inv_asset_cat_id}
-                                    className="flex items-center gap-3 rounded-xl border p-4"
-                                >
-                                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                                        <Boxes className="size-5" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className="font-mono text-xs text-muted-foreground">
-                                                {category.code}
-                                            </span>
-                                            <span className="font-medium">
-                                                {category.name}
-                                            </span>
-                                            <CategoryStatus
-                                                active={category.is_active}
-                                            />
-                                        </div>
-                                        <p className="truncate text-xs text-muted-foreground">
-                                            {category.description ||
-                                                'No description'}{' '}
-                                            · {category.assets_count ?? 0}{' '}
-                                            assets
-                                        </p>
-                                    </div>
-                                    <CategoryActions
-                                        type="asset"
-                                        id={category.inv_asset_cat_id}
-                                        category={category}
-                                        dependencyCount={
-                                            category.assets_count ?? 0
-                                        }
-                                        onEdit={() =>
-                                            openEdit(
-                                                'asset',
-                                                category.inv_asset_cat_id,
-                                                category,
-                                            )
-                                        }
-                                        onConfirm={setConfirmation}
-                                    />
-                                </div>
-                            ))}
-                            {visibleAssets.length === 0 && (
-                                <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground lg:col-span-2">
-                                    No asset categories match the current
-                                    filters.
-                                </div>
-                            )}
+                        <CardContent className="p-0">
+                            <CategoryDataTable
+                                rows={assetCategoryRows}
+                                emptyMessage="No asset categories match the current filters."
+                                canManageInventory={canManageInventory}
+                                onCreateChild={openCreate}
+                                onEdit={openEdit}
+                                onConfirm={setConfirmation}
+                            />
                         </CardContent>
                     </Card>
                 )}
@@ -946,7 +926,9 @@ export default function CategoriesIndex({
                                         />
                                     )}
                                     {(editor.type === 'class' ||
-                                        editor.type === 'series') && (
+                                        editor.type === 'series' ||
+                                        editor.type ===
+                                            'asset_subcategory') && (
                                         <div className="grid gap-1.5">
                                             <label
                                                 htmlFor="category-parent"

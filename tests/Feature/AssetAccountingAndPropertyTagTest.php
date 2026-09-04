@@ -4,6 +4,7 @@ use App\AssetAccountingClassification;
 use App\Models\HrisReference;
 use App\Models\InventoryAsset;
 use App\Models\InventoryAssetCategory;
+use App\Models\InventoryAssetSubcategory;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -47,8 +48,12 @@ test('only PPE is depreciated and its configurable residual percentage is applie
 test('PPE registration requires depreciation inputs while semi-expendable property does not', function () {
     $manager = User::factory()->inventoryManager()->create();
     $category = InventoryAssetCategory::factory()->create();
+    $subcategory = InventoryAssetSubcategory::factory()->create([
+        'inventory_asset_category_id' => $category->getKey(),
+    ]);
     $baseData = [
         'category_id' => $category->getKey(),
+        'subcategory_id' => $subcategory->getKey(),
         'serial_number' => 'ACCOUNTING-TEST-001',
         'name' => 'Accounting Test Asset',
         'unit_of_measure' => 'unit',
@@ -189,10 +194,10 @@ test('an active accountability document prevents crossing the capitalization thr
 
     $this->patch(route('inventory.assets.update', $asset), [
         'category_id' => $asset->category_id,
+        'subcategory_id' => $asset->subcategory_id,
         'serial_number' => $asset->serial_number,
         'property_number' => $asset->property_number,
         'name' => $asset->name,
-        'type' => $asset->type,
         'unit_of_measure' => $asset->unit_of_measure,
         'fund_cluster' => $asset->fund_cluster,
         'brand' => $asset->brand,

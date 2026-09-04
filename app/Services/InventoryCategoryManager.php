@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\InventoryCategoryType;
 use App\Models\InventoryAssetCategory;
+use App\Models\InventoryAssetSubcategory;
 use App\Models\InventoryClassCategory;
 use App\Models\InventoryMajorCategory;
 use App\Models\InventorySeriesCategory;
@@ -51,7 +52,11 @@ class InventoryCategoryManager
                 ? 'Archive this series category instead. Inventory items still use it.'
                 : null,
             InventoryCategoryType::Asset => $this->assetCategory($category)->assets()->exists()
-                ? 'Archive this asset category instead. Assets still use it.'
+                || $this->assetCategory($category)->subcategories()->exists()
+                ? 'Archive this asset category instead. It still contains subcategories or assets.'
+                : null,
+            InventoryCategoryType::AssetSubcategory => $this->assetSubcategory($category)->assets()->exists()
+                ? 'Archive this asset subcategory instead. Assets still use it.'
                 : null,
         };
     }
@@ -65,7 +70,8 @@ class InventoryCategoryManager
                 InventoryCategoryType::Major => $this->updateMajorStatus($this->majorCategory($category), $isActive),
                 InventoryCategoryType::ClassCategory => $this->updateClassStatus($this->classCategory($category), $isActive),
                 InventoryCategoryType::Series => $this->updateSeriesStatus($this->seriesCategory($category), $isActive),
-                InventoryCategoryType::Asset => $this->setStatus($category, $isActive),
+                InventoryCategoryType::Asset => $this->updateAssetCategoryStatus($this->assetCategory($category), $isActive),
+                InventoryCategoryType::AssetSubcategory => $this->updateAssetSubcategoryStatus($this->assetSubcategory($category), $isActive),
             };
         });
     }
@@ -115,6 +121,23 @@ class InventoryCategoryManager
         $this->setStatus($category, $isActive);
     }
 
+    private function updateAssetCategoryStatus(InventoryAssetCategory $category, bool $isActive): void
+    {
+        $this->setStatus($category, $isActive);
+        $category->subcategories()->get()->each(
+            fn (InventoryAssetSubcategory $subcategory) => $this->setStatus($subcategory, $isActive),
+        );
+    }
+
+    private function updateAssetSubcategoryStatus(InventoryAssetSubcategory $subcategory, bool $isActive): void
+    {
+        if ($isActive) {
+            $this->setStatus($subcategory->category()->firstOrFail(), true);
+        }
+
+        $this->setStatus($subcategory, $isActive);
+    }
+
     private function setStatus(Model $category, bool $isActive): void
     {
         if ((bool) $category->getAttribute('is_active') !== $isActive) {
@@ -153,6 +176,15 @@ class InventoryCategoryManager
     {
         if (! $category instanceof InventoryAssetCategory) {
             throw new LogicException('The resolved category is not an asset category.');
+        }
+
+        return $category;
+    }
+
+    private function assetSubcategory(Model $category): InventoryAssetSubcategory
+    {
+        if (! $category instanceof InventoryAssetSubcategory) {
+            throw new LogicException('The resolved category is not an asset subcategory.');
         }
 
         return $category;

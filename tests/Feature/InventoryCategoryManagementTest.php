@@ -2,6 +2,7 @@
 
 use App\Models\InventoryAsset;
 use App\Models\InventoryAssetCategory;
+use App\Models\InventoryAssetSubcategory;
 use App\Models\InventoryClassCategory;
 use App\Models\InventoryItem;
 use App\Models\InventoryMajorCategory;
@@ -16,7 +17,13 @@ test('category page returns the complete hierarchy with usage counts', function 
     $series = InventorySeriesCategory::factory()->create(['inv_class_cat_id' => $class->getKey()]);
     InventoryItem::factory()->count(2)->create(['series_category_id' => $series->getKey()]);
     $assetCategory = InventoryAssetCategory::factory()->create();
-    InventoryAsset::factory()->create(['category_id' => $assetCategory->getKey()]);
+    $assetSubcategory = InventoryAssetSubcategory::factory()->create([
+        'inventory_asset_category_id' => $assetCategory->getKey(),
+    ]);
+    InventoryAsset::factory()->create([
+        'category_id' => $assetCategory->getKey(),
+        'subcategory_id' => $assetSubcategory->getKey(),
+    ]);
 
     $this->actingAs($user)
         ->get(route('inventory.categories.index'))
@@ -28,7 +35,21 @@ test('category page returns the complete hierarchy with usage counts', function 
             ->where('majorCategories.0.class_categories_count', 1)
             ->where('majorCategories.0.class_categories.0.series_categories_count', 1)
             ->where('majorCategories.0.class_categories.0.series_categories.0.items_count', 2)
-            ->where('assetCategories.0.assets_count', 1));
+            ->where('assetCategories.0.assets_count', 1)
+            ->where('assetCategories.0.subcategories_count', 1)
+            ->where('assetCategories.0.subcategories.0.assets_count', 1));
+});
+
+test('category page uses the shared data table and kebab action menu', function () {
+    $source = file_get_contents(resource_path('js/pages/Inventory/Categories/Index.tsx'));
+
+    expect($source)
+        ->toContain("from '@/components/shared/data-table'")
+        ->toContain('<CategoryDataTable')
+        ->toContain('<DropdownMenuTrigger')
+        ->toContain('<EllipsisVertical')
+        ->toContain('aria-expanded={expandedRows.has(')
+        ->toContain('<ChevronRight');
 });
 
 test('categories can be created and edited with normalized unique values', function () {
@@ -71,6 +92,44 @@ test('categories can be created and edited with normalized unique values', funct
         'code' => 'OTHER',
         'name' => 'IT Equipment',
     ])->assertSessionHasErrors('name');
+});
+
+test('asset subcategories are managed under their parent category', function () {
+    $user = User::factory()->inventoryManager()->create();
+    $category = InventoryAssetCategory::factory()->create();
+
+    $this->actingAs($user)->post(route('inventory.categories.store'), [
+        'type' => 'asset_subcategory',
+        'parent_id' => $category->getKey(),
+        'code' => ' laptop ',
+        'name' => ' Business   Laptops ',
+        'description' => ' Portable computers ',
+    ])->assertRedirect(route('inventory.categories.index'));
+
+    $subcategory = InventoryAssetSubcategory::query()->sole();
+
+    expect($subcategory->inventory_asset_category_id)->toBe($category->getKey())
+        ->and($subcategory->code)->toBe('LAPTOP')
+        ->and($subcategory->name)->toBe('Business Laptops');
+});
+
+test('an asset subcategory must belong to the selected category', function () {
+    $user = User::factory()->inventoryManager()->create();
+    $selectedCategory = InventoryAssetCategory::factory()->create();
+    $otherSubcategory = InventoryAssetSubcategory::factory()->create();
+
+    $this->actingAs($user)->post(route('inventory.assets.store'), [
+        'category_id' => $selectedCategory->getKey(),
+        'subcategory_id' => $otherSubcategory->getKey(),
+        'serial_number' => 'SUBCATEGORY-001',
+        'name' => 'Mismatched asset',
+        'unit_of_measure' => 'unit',
+        'acquisition_date' => now()->toDateString(),
+        'acquisition_cost' => 1000,
+        'depreciation_useful_life_months' => 60,
+        'lifecycle_status' => 'active',
+        'condition_status' => 'good',
+    ])->assertSessionHasErrors('subcategory_id');
 });
 
 test('archiving a hierarchy cascades downward and activation restores required parents', function () {

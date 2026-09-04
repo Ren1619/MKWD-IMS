@@ -29,7 +29,11 @@ class InventoryCategoryController extends Controller
                     ->orderBy('name')])
                 ->orderBy('name')
                 ->get(),
-            'assetCategories' => InventoryAssetCategory::query()->withCount('assets')->orderBy('name')->get(),
+            'assetCategories' => InventoryAssetCategory::query()
+                ->withCount(['assets', 'subcategories'])
+                ->with(['subcategories' => fn ($query) => $query->withCount('assets')->orderBy('name')])
+                ->orderBy('name')
+                ->get(),
         ]);
     }
 

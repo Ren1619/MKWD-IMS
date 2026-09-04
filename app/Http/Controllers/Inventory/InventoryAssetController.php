@@ -32,7 +32,7 @@ class InventoryAssetController extends Controller
     {
         $assets = InventoryAsset::query()
             ->when($request->string('records')->toString() === 'archived', fn ($query) => $query->onlyTrashed())
-            ->with(['category', 'currentCustodian:id,name,code', 'activeBorrowing.borrowerReference:id,name,code'])
+            ->with(['category', 'subcategory', 'currentCustodian:id,name,code', 'activeBorrowing.borrowerReference:id,name,code'])
             ->when($request->string('search')->isNotEmpty(), fn ($query) => $query->where(function ($nested) use ($request) {
                 $search = '%'.$request->string('search')->toString().'%';
                 $nested->where('name', 'like', $search)
@@ -51,7 +51,11 @@ class InventoryAssetController extends Controller
 
         return Inertia::render('Inventory/Assets/Index', [
             'assets' => $assets,
-            'categories' => InventoryAssetCategory::query()->active()->orderBy('name')->get(),
+            'categories' => InventoryAssetCategory::query()
+                ->active()
+                ->with(['subcategories' => fn ($query) => $query->active()->orderBy('name')])
+                ->orderBy('name')
+                ->get(),
             'employees' => HrisReference::query()
                 ->where('type', HrisReference::TYPE_EMPLOYEE)
                 ->where('is_active', true)
