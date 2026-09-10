@@ -11,6 +11,11 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import type { RouteDefinition } from '@/wayfinder';
 
 export function ArchiveRecordDialog({
@@ -33,17 +38,24 @@ export function ArchiveRecordDialog({
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             {showTrigger && (
-                <DialogTrigger
-                    render={
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-label={`Archive ${recordName}`}
-                        />
-                    }
-                >
-                    <Archive />
-                </DialogTrigger>
+                <Tooltip>
+                    <DialogTrigger
+                        render={
+                            <TooltipTrigger
+                                render={
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        aria-label={`Archive ${recordName}`}
+                                    />
+                                }
+                            />
+                        }
+                    >
+                        <Archive />
+                    </DialogTrigger>
+                    <TooltipContent>Archive record</TooltipContent>
+                </Tooltip>
             )}
             <DialogContent onClick={(event) => event.stopPropagation()}>
                 <DialogHeader>

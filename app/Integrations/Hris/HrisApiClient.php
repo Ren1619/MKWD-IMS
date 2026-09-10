@@ -9,7 +9,6 @@ use App\Services\HrisEndpointGuard;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 use LogicException;
 
 class HrisApiClient implements HrisReferenceSource
@@ -21,31 +20,59 @@ class HrisApiClient implements HrisReferenceSource
      */
     public function references(): array
     {
-        return [
-            ...$this->fetch(config('services.hris.employees_path'), HrisReference::TYPE_EMPLOYEE),
-        ];
+        return $this->fetch(config('services.hris.employees_path'));
     }
 
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function fetch(?string $path, ?string $defaultType = null): array
+    private function fetch(?string $path): array
     {
         if (! is_string($path) || $path === '') {
             throw new LogicException('The HRIS API paths are not configured.');
         }
 
-        $payload = $this->request()->get($path)->throw()->json('data', []);
+        $request = $this->request();
+        $references = [];
+        $cursor = null;
+        $seenCursors = [];
 
-        if (! is_array($payload)) {
-            throw new LogicException('The HRIS API response must contain a data array.');
-        }
+        do {
+            $payload = $request->get($path, [
+                'per_page' => 250,
+                'cursor' => $cursor,
+            ])->throw()->json();
 
-        return collect($payload)
-            ->filter(fn (mixed $record): bool => is_array($record))
-            ->map(fn (array $record): array => $this->normalize($record, $defaultType))
-            ->values()
-            ->all();
+            if (! is_array($payload) || ! isset($payload['data'])
+                || ! is_array($payload['data']) || ! array_is_list($payload['data'])) {
+                throw new LogicException('The HRIS API response must contain a data array.');
+            }
+
+            if (! isset($payload['meta']) || ! is_array($payload['meta'])
+                || ! array_key_exists('next_cursor', $payload['meta'])) {
+                throw new LogicException('The HRIS API response must contain meta.next_cursor.');
+            }
+
+            foreach ($payload['data'] as $record) {
+                if (! is_array($record)) {
+                    throw new LogicException('Every HRIS employee must be an object.');
+                }
+
+                $references[] = $this->normalize($record);
+            }
+
+            $cursor = $payload['meta']['next_cursor'];
+
+            if ($cursor !== null) {
+                if (! is_string($cursor) || $cursor === '' || in_array($cursor, $seenCursors, true)) {
+                    throw new LogicException('The HRIS API returned an invalid or repeated cursor.');
+                }
+
+                $seenCursors[] = $cursor;
+            }
+        } while ($cursor !== null);
+
+        return $references;
     }
 
     private function request(): PendingRequest
@@ -53,7 +80,7 @@ class HrisApiClient implements HrisReferenceSource
         $baseUrl = HrisIntegrationSetting::configuredBaseUrl();
 
         if (! is_string($baseUrl) || $baseUrl === '') {
-            throw new LogicException('HRIS_API_BASE_URL is not configured.');
+            throw new LogicException('HRIS_API_URL is not configured.');
         }
 
         $validationError = $this->endpointGuard->validationError($baseUrl);
@@ -65,8 +92,8 @@ class HrisApiClient implements HrisReferenceSource
         $request = Http::baseUrl($this->endpointGuard->normalize($baseUrl))
             ->acceptJson()
             ->connectTimeout((int) config('services.hris.connect_timeout', 3))
-            ->timeout((int) config('services.hris.timeout', 10))
-            ->retry([100, 500, 1000])
+            ->timeout((int) config('services.hris.timeout', 15))
+            ->retry(3, 250)
             ->withOptions(['allow_redirects' => false]);
 
         $token = config('services.hris.token');
@@ -78,47 +105,48 @@ class HrisApiClient implements HrisReferenceSource
      * @param  array<string, mixed>  $record
      * @return array<string, mixed>
      */
-    private function normalize(array $record, ?string $defaultType): array
+    private function normalize(array $record): array
     {
-        $type = Str::of((string) ($record['type'] ?? $defaultType))->lower()->singular()->toString();
-        $externalId = (string) ($record['id'] ?? $record['external_id'] ?? '');
-        $name = trim((string) ($record['name'] ?? $record['full_name'] ?? ''));
+        $employeeId = $record['employee_id'] ?? null;
 
-        if ($name === '' && $type === HrisReference::TYPE_EMPLOYEE) {
-            $name = trim(implode(' ', array_filter([
-                $record['first_name'] ?? null,
-                $record['middle_name'] ?? null,
-                $record['last_name'] ?? null,
-                $record['name_suffix'] ?? null,
-            ])));
+        if ((! is_string($employeeId) && ! is_int($employeeId)) || trim((string) $employeeId) === '') {
+            throw new LogicException('Every HRIS employee requires an employee_id.');
         }
 
-        if ($externalId === '' || $name === '') {
-            throw new LogicException('Every HRIS reference requires an id and name.');
+        $name = trim(implode(' ', array_filter([
+            $record['first_name'] ?? null,
+            $record['middle_name'] ?? null,
+            $record['last_name'] ?? null,
+            $record['name_extension'] ?? null,
+        ])));
+
+        if ($name === '') {
+            throw new LogicException('Every HRIS employee requires a name.');
         }
 
         return [
-            'external_id' => $externalId,
-            'type' => $type,
-            'code' => $record['code'] ?? $record['employee_number'] ?? null,
+            'external_id' => (string) $employeeId,
+            'type' => HrisReference::TYPE_EMPLOYEE,
+            'code' => (string) $employeeId,
             'name' => $name,
             'email' => $record['email'] ?? null,
-            'parent_external_id' => isset($record['parent_id']) ? (string) $record['parent_id'] : null,
-            'is_active' => (bool) ($record['is_active'] ?? $record['active'] ?? true),
-            'source_updated_at' => $record['updated_at'] ?? null,
-            'metadata' => Arr::except($record, [
+            'parent_external_id' => null,
+            'is_active' => true,
+            'source_updated_at' => null,
+            'metadata' => Arr::only($record, [
+                'employee_id',
+                'first_name',
+                'middle_name',
+                'last_name',
+                'name_extension',
+                'phone_number',
+                'position',
                 'id',
-                'external_id',
-                'type',
-                'code',
-                'employee_number',
                 'name',
-                'full_name',
-                'email',
-                'parent_id',
-                'is_active',
-                'active',
-                'updated_at',
+                'classification',
+                'department',
+                'division',
+                'section',
             ]),
         ];
     }

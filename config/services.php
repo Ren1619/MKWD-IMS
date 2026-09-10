@@ -36,15 +36,15 @@ return [
     ],
 
     'hris' => [
-        'base_url' => env('HRIS_API_BASE_URL'),
+        'url' => env('HRIS_API_URL', env('HRIS_API_BASE_URL')),
         'allowed_hosts' => array_values(array_filter(array_map(
             'trim',
             explode(',', (string) env('HRIS_API_ALLOWED_HOSTS', '')),
         ))),
         'token' => env('HRIS_API_TOKEN'),
-        'employees_path' => env('HRIS_API_EMPLOYEES_PATH', '/api/v1/employees'),
+        'employees_path' => env('HRIS_API_EMPLOYEES_PATH', '/api/v1/inventory/employees'),
         'connect_timeout' => (int) env('HRIS_API_CONNECT_TIMEOUT', 3),
-        'timeout' => (int) env('HRIS_API_TIMEOUT', 10),
+        'timeout' => (int) env('HRIS_API_TIMEOUT', 15),
     ],
 
 ];

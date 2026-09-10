@@ -32,6 +32,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -43,6 +44,7 @@ import {
 import {
     DropdownMenu,
     DropdownMenuContent,
+    DropdownMenuGroup,
     DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuSeparator,
@@ -76,6 +78,7 @@ type EditorState = {
     code?: string;
     name?: string;
     description?: string | null;
+    isVehicle?: boolean;
 };
 
 type ConfirmationState = {
@@ -91,6 +94,7 @@ type CommonCategory = {
     name: string;
     description?: string | null;
     is_active: boolean;
+    is_vehicle?: boolean;
 };
 
 type CategoryTableRowData = {
@@ -186,48 +190,54 @@ function CategoryActions({
                 <EllipsisVertical className="size-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {onAddChild && category.is_active && (
-                    <DropdownMenuItem onClick={onAddChild}>
-                        <Plus /> Add child category
+                <DropdownMenuGroup>
+                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {onAddChild && category.is_active && (
+                        <DropdownMenuItem onClick={onAddChild}>
+                            <Plus /> Add child category
+                        </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={onEdit}>
+                        <Pencil /> Edit
                     </DropdownMenuItem>
-                )}
-                <DropdownMenuItem onClick={onEdit}>
-                    <Pencil /> Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                    onClick={() =>
-                        onConfirm({
-                            action: 'status',
-                            type,
-                            id,
-                            name: category.name,
-                            nextActive: !category.is_active,
-                        })
-                    }
-                >
-                    {category.is_active ? <ArchiveIcon /> : <ArchiveRestore />}
-                    {category.is_active ? 'Archive' : 'Activate'}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                    variant="destructive"
-                    disabled={dependencyCount > 0}
-                    onClick={() =>
-                        onConfirm({
-                            action: 'delete',
-                            type,
-                            id,
-                            name: category.name,
-                        })
-                    }
-                >
-                    <Trash2 />
-                    {dependencyCount > 0
-                        ? 'In use — archive instead'
-                        : 'Delete permanently'}
-                </DropdownMenuItem>
+                    <DropdownMenuItem
+                        onClick={() =>
+                            onConfirm({
+                                action: 'status',
+                                type,
+                                id,
+                                name: category.name,
+                                nextActive: !category.is_active,
+                            })
+                        }
+                    >
+                        {category.is_active ? (
+                            <ArchiveIcon />
+                        ) : (
+                            <ArchiveRestore />
+                        )}
+                        {category.is_active ? 'Archive' : 'Activate'}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                        variant="destructive"
+                        disabled={dependencyCount > 0}
+                        onClick={() =>
+                            onConfirm({
+                                action: 'delete',
+                                type,
+                                id,
+                                name: category.name,
+                            })
+                        }
+                    >
+                        <Trash2 />
+                        {dependencyCount > 0
+                            ? 'In use — archive instead'
+                            : 'Delete permanently'}
+                    </DropdownMenuItem>
+                </DropdownMenuGroup>
             </DropdownMenuContent>
         </DropdownMenu>
     );
@@ -338,6 +348,12 @@ function CategoryDataTable({
                                                 {row.category.code}
                                             </span>
                                             <span>{row.category.name}</span>
+                                            {row.type === 'asset' &&
+                                                row.category.is_vehicle && (
+                                                    <Badge variant="outline">
+                                                        Vehicles API
+                                                    </Badge>
+                                                )}
                                         </div>
                                         <p className="max-w-xl truncate text-xs text-muted-foreground">
                                             {row.category.description ||
@@ -402,13 +418,15 @@ function CategoryDataTable({
 export default function CategoriesIndex({
     majorCategories,
     assetCategories,
+    initialWorkspace,
 }: {
     majorCategories: MajorCategory[];
     assetCategories: AssetCategory[];
+    initialWorkspace: Workspace;
 }) {
     const { auth } = useAppPage().props;
     const canManageInventory = auth.permissions.manage_inventory;
-    const [workspace, setWorkspace] = useState<Workspace>('items');
+    const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace);
     const [itemSearch, setItemSearch] = useState('');
     const [assetSearch, setAssetSearch] = useState('');
     const [itemStatusFilter, setItemStatusFilter] =
@@ -511,6 +529,7 @@ export default function CategoriesIndex({
             code: category.code,
             name: category.name,
             description: category.description,
+            isVehicle: category.is_vehicle,
         });
 
     const runConfirmation = () => {
@@ -1019,6 +1038,32 @@ export default function CategoriesIndex({
                                             message={errors.description}
                                         />
                                     </div>
+                                    {editor.type === 'asset' && (
+                                        <label
+                                            htmlFor="category-is-vehicle"
+                                            className="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+                                        >
+                                            <Checkbox
+                                                id="category-is-vehicle"
+                                                name="is_vehicle"
+                                                value="1"
+                                                defaultChecked={
+                                                    editor.isVehicle ?? false
+                                                }
+                                                className="mt-0.5"
+                                            />
+                                            <span className="grid gap-1">
+                                                <span className="text-sm font-medium">
+                                                    Include in vehicles API
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    Assets assigned to this
+                                                    category will be returned by
+                                                    the vehicles integration.
+                                                </span>
+                                            </span>
+                                        </label>
+                                    )}
                                     <DialogFooter>
                                         <Button
                                             type="button"
@@ -1027,7 +1072,11 @@ export default function CategoriesIndex({
                                         >
                                             Cancel
                                         </Button>
-                                        <Button disabled={processing}>
+                                        <Button
+                                            type="submit"
+                                            data-test="category-submit-button"
+                                            disabled={processing}
+                                        >
                                             {processing
                                                 ? 'Saving…'
                                                 : editor.mode === 'edit'

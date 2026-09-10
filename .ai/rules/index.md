@@ -5,6 +5,8 @@ Before planning or editing, find the row whose globs match the file's path and r
 | Applies to | Rule file |
 | --- | --- |
 | app/** | .ai/rules/app.md |
+| routes/api.php,app/Console/Commands/*VehicleApiTokenCommand.php | .ai/rules/commands.md |
+| app/Integrations/Hris/** | .ai/rules/hris.md |
 | app/{Models,Services,Http/Controllers/Inventory}/**/*Accountability*.php | .ai/rules/inventory.md |
 | {app,database,resources/js}/** | .ai/rules/js.md |
 | database/migrations/*property_accountability*.php | .ai/rules/migrations.md |

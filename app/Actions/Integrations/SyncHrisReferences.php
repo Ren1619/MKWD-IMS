@@ -20,7 +20,7 @@ class SyncHrisReferences
         return DB::transaction(function () use ($references): array {
             $created = 0;
             $updated = 0;
-            $seenByType = [];
+            $seenByType = [HrisReference::TYPE_EMPLOYEE => []];
 
             foreach ($references as $data) {
                 $reference = HrisReference::query()->updateOrCreate(

@@ -29,7 +29,12 @@ class HrisEndpointGuard
 
         $host = Str::of((string) $uri->host())->trim('[]')->lower()->toString();
 
-        if ($uri->scheme() !== 'https' || $host === '') {
+        $isLocalDevelopmentUrl = app()->environment('local')
+            && $uri->scheme() === 'http'
+            && in_array($host, ['localhost', '127.0.0.1', '::1'], true)
+            && $url === $this->normalize((string) config('services.hris.url'));
+
+        if (($uri->scheme() !== 'https' && ! $isLocalDevelopmentUrl) || $host === '') {
             return 'The HRIS API base URL must use HTTPS.';
         }
 
@@ -69,7 +74,7 @@ class HrisEndpointGuard
             }
         }
 
-        $environmentBaseUrl = config('services.hris.base_url');
+        $environmentBaseUrl = config('services.hris.url');
 
         if (is_string($environmentBaseUrl) && $environmentBaseUrl !== '') {
             try {

@@ -22,8 +22,20 @@ import {
 } from '@/components/shared/data-table';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { WorkflowActionDialog } from '@/components/workflow-action-dialog';
 import { WorkflowStatus } from '@/components/workflow-status';
 import { index, store, transition } from '@/routes/inventory/procurement';
@@ -274,6 +286,9 @@ export default function ProcurementIndex({
         status: filters.status ?? '',
         queue: filters.queue ?? '',
     });
+    const [prepareDialogOpen, setPrepareDialogOpen] = useState(false);
+    const [selectedProcurement, setSelectedProcurement] =
+        useState<ProcurementRecord | null>(null);
     const [selectedAction, setSelectedAction] = useState<{
         record: ProcurementRecord;
         action: WorkflowAction;
@@ -400,6 +415,7 @@ export default function ProcurementIndex({
                 form.reset();
                 setEntirelyNewCatalogItems(false);
                 setExpandedNewItemKeys(new Set());
+                setPrepareDialogOpen(false);
             },
             onError: () =>
                 requestAnimationFrame(() => errorSummary.current?.focus()),
@@ -475,18 +491,26 @@ export default function ProcurementIndex({
                     </Button>
                 </div>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Plus className="size-5" /> Prepare purchase request
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
+                <Dialog
+                    open={prepareDialogOpen}
+                    onOpenChange={setPrepareDialogOpen}
+                >
+                    <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-5xl">
                         <form
                             onSubmit={submit}
                             className="grid gap-5"
                             noValidate
                         >
+                            <DialogHeader className="pr-12">
+                                <DialogTitle>
+                                    Prepare purchase request
+                                </DialogTitle>
+                                <DialogDescription>
+                                    Prepare a draft purchase request from
+                                    existing inventory needs and new catalog
+                                    items.
+                                </DialogDescription>
+                            </DialogHeader>
                             <div className="grid gap-4 md:grid-cols-3">
                                 <Field
                                     id="procurement-type"
@@ -1299,105 +1323,225 @@ export default function ProcurementIndex({
                                     : 'Prepare draft PR'}
                             </Button>
                         </form>
-                    </CardContent>
-                </Card>
+                    </DialogContent>
+                </Dialog>
 
                 <Card>
-                    <CardHeader>
-                        <CardTitle>Procurement queue</CardTitle>
-                    </CardHeader>
                     <CardContent>
-                        <form
-                            onSubmit={applyFilters}
-                            className="grid gap-3 md:grid-cols-[minmax(0,2fr)_1fr_1fr_auto]"
-                        >
-                            <Field id="procurement-search" label="Search">
-                                <div className="relative">
-                                    <Search className="pointer-events-none absolute top-3.5 left-3 size-4 text-muted-foreground" />
-                                    <Input
-                                        id="procurement-search"
-                                        className="min-h-11 pl-9"
-                                        placeholder="PR, PO, preparer, purpose, item…"
-                                        value={filterValues.search}
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                            <form
+                                onSubmit={applyFilters}
+                                className="grid w-full max-w-4xl gap-3 md:grid-cols-[minmax(0,2fr)_1fr_1fr_auto]"
+                            >
+                                <Field id="procurement-search" label="Search">
+                                    <div className="relative">
+                                        <Search className="pointer-events-none absolute top-3.5 left-3 size-4 text-muted-foreground" />
+                                        <Input
+                                            id="procurement-search"
+                                            className="min-h-11 pl-9"
+                                            maxLength={100}
+                                            placeholder="PR, PO, preparer, purpose, item…"
+                                            value={filterValues.search}
+                                            onChange={(event) =>
+                                                setFilterValues({
+                                                    ...filterValues,
+                                                    search: event.target.value,
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                </Field>
+                                <Field id="procurement-status" label="Status">
+                                    <select
+                                        id="procurement-status"
+                                        className={fieldClassName}
+                                        value={filterValues.status}
                                         onChange={(event) =>
                                             setFilterValues({
                                                 ...filterValues,
-                                                search: event.target.value,
+                                                status: event.target.value,
                                             })
                                         }
-                                    />
-                                </div>
-                            </Field>
-                            <Field id="procurement-status" label="Status">
-                                <select
-                                    id="procurement-status"
-                                    className={fieldClassName}
-                                    value={filterValues.status}
-                                    onChange={(event) =>
-                                        setFilterValues({
-                                            ...filterValues,
-                                            status: event.target.value,
-                                        })
-                                    }
-                                >
-                                    <option value="">All statuses</option>
-                                    {[
-                                        ...workflowSteps,
-                                        ...terminalStatuses,
-                                    ].map((status) => (
-                                        <option key={status} value={status}>
-                                            {statusLabel(status)}
+                                    >
+                                        <option value="">All statuses</option>
+                                        {[
+                                            ...workflowSteps,
+                                            ...terminalStatuses,
+                                        ].map((status) => (
+                                            <option key={status} value={status}>
+                                                {statusLabel(status)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </Field>
+                                <Field id="procurement-queue" label="Queue">
+                                    <select
+                                        id="procurement-queue"
+                                        className={fieldClassName}
+                                        value={filterValues.queue}
+                                        onChange={(event) =>
+                                            setFilterValues({
+                                                ...filterValues,
+                                                queue: event.target.value,
+                                            })
+                                        }
+                                    >
+                                        <option value="">All records</option>
+                                        <option value="needs_action">
+                                            Needs action
                                         </option>
-                                    ))}
-                                </select>
-                            </Field>
-                            <Field id="procurement-queue" label="Queue">
-                                <select
-                                    id="procurement-queue"
-                                    className={fieldClassName}
-                                    value={filterValues.queue}
-                                    onChange={(event) =>
-                                        setFilterValues({
-                                            ...filterValues,
-                                            queue: event.target.value,
-                                        })
-                                    }
-                                >
-                                    <option value="">All records</option>
-                                    <option value="needs_action">
-                                        Needs action
-                                    </option>
-                                    <option value="completed">Completed</option>
-                                </select>
-                            </Field>
-                            <div className="flex gap-2 md:items-end">
-                                <Button className="min-h-11 flex-1 md:flex-none">
-                                    Apply
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    className="size-11"
-                                    aria-label="Clear filters"
-                                    onClick={clearFilters}
-                                >
-                                    <FilterX />
-                                </Button>
-                            </div>
-                        </form>
-                        <p
-                            role="status"
-                            className="mt-3 text-sm text-muted-foreground"
-                        >
-                            {procurementRequests.total.toLocaleString()}{' '}
-                            purchase request
-                            {procurementRequests.total === 1 ? '' : 's'} found.
-                        </p>
+                                        <option value="completed">
+                                            Completed
+                                        </option>
+                                    </select>
+                                </Field>
+                                <div className="flex gap-2 md:items-end">
+                                    <Button className="min-h-11 flex-1 md:flex-none">
+                                        Apply
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        className="size-11"
+                                        aria-label="Clear filters"
+                                        onClick={clearFilters}
+                                    >
+                                        <FilterX />
+                                    </Button>
+                                </div>
+                            </form>
+                            <Button
+                                type="button"
+                                className="min-h-11 w-full shrink-0 lg:w-auto"
+                                onClick={() => setPrepareDialogOpen(true)}
+                            >
+                                <Plus /> Prepare purchase request
+                            </Button>
+                        </div>  
                     </CardContent>
                 </Card>
 
-                <div className="grid gap-4">
+                <Card className="hidden lg:flex">
+                    <CardHeader>
+                        <CardTitle>Procurement Queue</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <Table>
+                            <caption className="sr-only">
+                                Procurement request queue
+                            </caption>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead scope="col">PR number</TableHead>
+                                    <TableHead scope="col">
+                                        Prepared by
+                                    </TableHead>
+                                    <TableHead scope="col">Type</TableHead>
+                                    <TableHead scope="col">Funding</TableHead>
+                                    <TableHead
+                                        scope="col"
+                                        className="text-center"
+                                    >
+                                        Items
+                                    </TableHead>
+                                    <TableHead
+                                        scope="col"
+                                        className="text-right"
+                                    >
+                                        Estimated total
+                                    </TableHead>
+                                    <TableHead scope="col">Status</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {procurementRequests.data.map((record) => (
+                                    <Tooltip key={record.id}>
+                                        <TooltipTrigger
+                                            render={
+                                                <TableRow
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    aria-haspopup="dialog"
+                                                    aria-label={`View details for ${record.pr_no}`}
+                                                    className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                                                    onClick={() =>
+                                                        setSelectedProcurement(
+                                                            record,
+                                                        )
+                                                    }
+                                                    onKeyDown={(event) => {
+                                                        if (
+                                                            event.key ===
+                                                                'Enter' ||
+                                                            event.key === ' '
+                                                        ) {
+                                                            event.preventDefault();
+                                                            setSelectedProcurement(
+                                                                record,
+                                                            );
+                                                        }
+                                                    }}
+                                                />
+                                            }
+                                        >
+                                            <TableCell className="font-medium">
+                                                {record.pr_no}
+                                            </TableCell>
+                                            <TableCell>
+                                                {record.creator.name}
+                                            </TableCell>
+                                            <TableCell className="capitalize">
+                                                {statusLabel(record.type)}
+                                            </TableCell>
+                                            <TableCell>
+                                                {record.funding_source ?? '—'}
+                                            </TableCell>
+                                            <TableCell className="text-center tabular-nums">
+                                                {record.lines.length}
+                                            </TableCell>
+                                            <TableCell className="text-right tabular-nums">
+                                                ₱
+                                                {record.lines
+                                                    .reduce(
+                                                        (total, line) =>
+                                                            total +
+                                                            Number(
+                                                                line.estimated_unit_cost,
+                                                            ) *
+                                                                line.quantity,
+                                                        0,
+                                                    )
+                                                    .toLocaleString()}
+                                            </TableCell>
+                                            <TableCell>
+                                                <span className="inline-flex rounded-full border px-3 py-1 text-xs font-medium capitalize">
+                                                    {statusLabel(record.status)}
+                                                </span>
+                                            </TableCell>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            Click for more info
+                                        </TooltipContent>
+                                    </Tooltip>
+                                ))}
+                                {procurementRequests.data.length === 0 && (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={7}
+                                            className="h-32 text-center text-muted-foreground"
+                                        >
+                                            No purchase requests match the
+                                            selected filters.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
+
+                <div className="grid gap-4 lg:hidden">
                     {procurementRequests.data.map((record) => (
                         <Card key={record.id}>
                             <CardHeader>
@@ -1640,6 +1784,213 @@ export default function ProcurementIndex({
                 </div>
                 <DataPagination links={procurementRequests.links} />
             </div>
+
+            <Dialog
+                open={selectedProcurement !== null}
+                onOpenChange={(open) => !open && setSelectedProcurement(null)}
+            >
+                <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-5xl">
+                    {selectedProcurement && (
+                        <div className="grid gap-5">
+                            <DialogHeader className="pr-12">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <DialogTitle>
+                                        {selectedProcurement.pr_no}
+                                    </DialogTitle>
+                                    <span className="rounded-full border px-3 py-1 text-xs font-medium capitalize">
+                                        {statusLabel(
+                                            selectedProcurement.status,
+                                        )}
+                                    </span>
+                                </div>
+                                <DialogDescription>
+                                    Prepared by{' '}
+                                    {selectedProcurement.creator.name} for{' '}
+                                    {selectedProcurement.purpose}.
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <WorkflowStatus
+                                steps={workflowSteps}
+                                current={selectedProcurement.status}
+                                terminal={terminalStatuses}
+                            />
+
+                            <div className="rounded-lg bg-muted/60 p-3 text-sm">
+                                <p className="font-medium">What happens next</p>
+                                <p className="text-muted-foreground">
+                                    {nextAction(selectedProcurement.status)}
+                                </p>
+                            </div>
+
+                            <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                                <div>
+                                    <dt className="font-medium">Type</dt>
+                                    <dd className="text-muted-foreground capitalize">
+                                        {statusLabel(selectedProcurement.type)}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt className="font-medium">Funding</dt>
+                                    <dd className="text-muted-foreground">
+                                        {selectedProcurement.funding_source ??
+                                            'Not recorded'}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt className="font-medium">
+                                        Planning references
+                                    </dt>
+                                    <dd className="text-muted-foreground">
+                                        {selectedProcurement.ppmp_reference ??
+                                            'No PPMP'}{' '}
+                                        ·{' '}
+                                        {selectedProcurement.app_reference ??
+                                            'No APP'}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt className="font-medium">
+                                        Purchase order
+                                    </dt>
+                                    <dd className="text-muted-foreground">
+                                        {selectedProcurement.purchase_order_no ??
+                                            'Not recorded'}
+                                    </dd>
+                                </div>
+                            </dl>
+
+                            <div className="overflow-x-auto rounded-lg border">
+                                <Table>
+                                    <caption className="sr-only">
+                                        Items under {selectedProcurement.pr_no}
+                                    </caption>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead scope="col">
+                                                Item
+                                            </TableHead>
+                                            <TableHead scope="col">
+                                                Quantity
+                                            </TableHead>
+                                            <TableHead scope="col">
+                                                Unit cost
+                                            </TableHead>
+                                            <TableHead scope="col">
+                                                Estimated total
+                                            </TableHead>
+                                            <TableHead scope="col">
+                                                Received
+                                            </TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {selectedProcurement.lines.map(
+                                            (line) => (
+                                                <TableRow key={line.id}>
+                                                    <TableCell className="font-medium">
+                                                        {line.item_name}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {line.quantity}{' '}
+                                                        {line.unit_of_measure}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        ₱
+                                                        {Number(
+                                                            line.estimated_unit_cost,
+                                                        ).toLocaleString()}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        ₱
+                                                        {(
+                                                            Number(
+                                                                line.estimated_unit_cost,
+                                                            ) * line.quantity
+                                                        ).toLocaleString()}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {line.quantity_received}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ),
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+
+                            {actionsFor(selectedProcurement.status).length >
+                                0 && (
+                                <div className="flex flex-wrap gap-2">
+                                    {actionsFor(selectedProcurement.status).map(
+                                        (action) => (
+                                            <Button
+                                                key={action.action}
+                                                className="min-h-11"
+                                                variant={
+                                                    action.destructive
+                                                        ? 'destructive'
+                                                        : action.action ===
+                                                            'accept'
+                                                          ? 'default'
+                                                          : 'outline'
+                                                }
+                                                onClick={() => {
+                                                    setSelectedProcurement(
+                                                        null,
+                                                    );
+                                                    openAction(
+                                                        selectedProcurement,
+                                                        action,
+                                                    );
+                                                }}
+                                            >
+                                                {action.label}
+                                            </Button>
+                                        ),
+                                    )}
+                                </div>
+                            )}
+
+                            <details>
+                                <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">
+                                    Attested decision history (
+                                    {selectedProcurement.actions.length})
+                                </summary>
+                                <div className="mt-2 grid gap-2">
+                                    {selectedProcurement.actions.map(
+                                        (action) => (
+                                            <div
+                                                key={action.id}
+                                                className="rounded-lg border p-3 text-xs"
+                                            >
+                                                <p>
+                                                    <b>{action.actor.name}</b> —{' '}
+                                                    {statusLabel(action.action)}{' '}
+                                                    to{' '}
+                                                    {statusLabel(
+                                                        action.to_status,
+                                                    )}
+                                                </p>
+                                                <p className="text-muted-foreground">
+                                                    {new Date(
+                                                        action.created_at,
+                                                    ).toLocaleString()}
+                                                </p>
+                                                {action.remarks && (
+                                                    <p className="mt-1">
+                                                        {action.remarks}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        ),
+                                    )}
+                                </div>
+                            </details>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
 
             <WorkflowActionDialog
                 key={

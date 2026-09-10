@@ -41,17 +41,24 @@ class StoreInventoryCategoryRequest extends FormRequest
             'code' => ['required', 'string', 'max:20', Rule::unique($type->table(), 'code')],
             'name' => ['required', 'string', 'max:255', $nameRule],
             'description' => ['nullable', 'string', 'max:2000'],
+            'is_vehicle' => [Rule::requiredIf($type === InventoryCategoryType::Asset), 'boolean'],
         ];
     }
 
     protected function prepareForValidation(): void
     {
-        $this->merge([
+        $data = [
             'code' => Str::upper(trim((string) $this->input('code'))),
             'name' => Str::squish((string) $this->input('name')),
             'description' => filled($this->input('description'))
                 ? Str::squish((string) $this->input('description'))
                 : null,
-        ]);
+        ];
+
+        if ($this->string('type')->toString() === InventoryCategoryType::Asset->value) {
+            $data['is_vehicle'] = $this->boolean('is_vehicle');
+        }
+
+        $this->merge($data);
     }
 }

@@ -47,7 +47,10 @@ test('category page uses the shared data table and kebab action menu', function 
         ->toContain("from '@/components/shared/data-table'")
         ->toContain('<CategoryDataTable')
         ->toContain('<DropdownMenuTrigger')
+        ->toContain('<DropdownMenuGroup>')
         ->toContain('<EllipsisVertical')
+        ->toContain('data-test="category-submit-button"')
+        ->toContain('type="submit"')
         ->toContain('aria-expanded={expandedRows.has(')
         ->toContain('<ChevronRight');
 });
@@ -104,13 +107,48 @@ test('asset subcategories are managed under their parent category', function () 
         'code' => ' laptop ',
         'name' => ' Business   Laptops ',
         'description' => ' Portable computers ',
-    ])->assertRedirect(route('inventory.categories.index'));
+    ])->assertRedirect(route('inventory.categories.index', ['workspace' => 'assets']));
 
     $subcategory = InventoryAssetSubcategory::query()->sole();
 
     expect($subcategory->inventory_asset_category_id)->toBe($category->getKey())
         ->and($subcategory->code)->toBe('LAPTOP')
         ->and($subcategory->name)->toBe('Business Laptops');
+});
+
+test('asset categories can be managed as vehicle sources for the API', function () {
+    $user = User::factory()->inventoryManager()->create();
+
+    $this->actingAs($user)->post(route('inventory.categories.store'), [
+        'type' => 'asset',
+        'code' => 'FLEET',
+        'name' => 'Fleet Equipment',
+        'is_vehicle' => true,
+    ])->assertRedirect(route('inventory.categories.index', ['workspace' => 'assets']));
+
+    $category = InventoryAssetCategory::query()->sole();
+
+    expect($category->is_vehicle)->toBeTrue();
+
+    $this->actingAs($user)->patch(
+        route('inventory.categories.update', ['type' => 'asset', 'category' => $category->getKey()]),
+        [
+            'code' => 'FLEET-RENAMED',
+            'name' => 'Renamed Fleet Equipment',
+            'is_vehicle' => false,
+        ],
+    )->assertRedirect(route('inventory.categories.index', ['workspace' => 'assets']));
+
+    expect($category->fresh()->is_vehicle)->toBeFalse();
+});
+
+test('asset category workspace can be opened directly after a redirect', function () {
+    $this->actingAs(User::factory()->create())
+        ->get(route('inventory.categories.index', ['workspace' => 'assets']))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('Inventory/Categories/Index')
+            ->where('initialWorkspace', 'assets'));
 });
 
 test('an asset subcategory must belong to the selected category', function () {

@@ -17,7 +17,7 @@ class HrisIntegrationController extends Controller
     public function edit(): Response
     {
         $setting = HrisIntegrationSetting::query()->find(HrisIntegrationSetting::SINGLETON_ID);
-        $environmentBaseUrl = config('services.hris.base_url');
+        $environmentBaseUrl = config('services.hris.url');
         $employeesPath = config('services.hris.employees_path');
 
         return Inertia::render('settings/hris-integration', [

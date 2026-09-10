@@ -191,7 +191,7 @@ function AssetStateDialog({
                                     {formatStateLabel(asset.custody_status)}
                                 </span>
                             </div>
-                            <Button disabled={processing}>
+                            <Button type="submit" disabled={processing}>
                                 {processing ? 'Updating…' : 'Update state'}
                             </Button>
                         </>
@@ -293,7 +293,7 @@ function AssetAccountingDialog({
                                     message={errors.residual_value_basis}
                                 />
                             </div>
-                            <Button disabled={processing}>
+                            <Button type="submit" disabled={processing}>
                                 {processing
                                     ? 'Updating…'
                                     : 'Update accounting settings'}
@@ -362,7 +362,7 @@ function CustodianDialog({
                                     message={errors.hris_reference_id}
                                 />
                             </div>
-                            <Button disabled={processing}>
+                            <Button type="submit" disabled={processing}>
                                 {processing ? 'Assigning…' : 'Assign custodian'}
                             </Button>
                         </>
@@ -473,7 +473,7 @@ function BorrowDialog({
                                 />
                                 <InputError message={errors.notes} />
                             </div>
-                            <Button disabled={processing}>
+                            <Button type="submit" disabled={processing}>
                                 {processing ? 'Recording…' : 'Record borrowing'}
                             </Button>
                         </>
@@ -913,7 +913,9 @@ export default function AssetsIndex({
                                                                     subcategory.inventory_asset_subcategory_id
                                                                 }
                                                             >
-                                                                {subcategory.name}
+                                                                {
+                                                                    subcategory.name
+                                                                }
                                                             </option>
                                                         ),
                                                     )}
@@ -1230,6 +1232,8 @@ export default function AssetsIndex({
                                                 />
                                             </div>
                                             <Button
+                                                type="submit"
+                                                data-test="register-asset-submit"
                                                 disabled={processing}
                                                 className="md:col-span-2"
                                             >

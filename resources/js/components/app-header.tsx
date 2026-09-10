@@ -82,7 +82,7 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="mr-2 h-[34px] w-[34px]"
+                                        className="mr-2"
                                     />
                                 }
                             >
@@ -184,7 +184,7 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="group h-9 w-9 cursor-pointer"
+                                className="group cursor-pointer"
                             >
                                 <Search className="!size-5 opacity-80 group-hover:opacity-100" />
                             </Button>
@@ -220,7 +220,8 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                 render={
                                     <Button
                                         variant="ghost"
-                                        className="size-10 rounded-full p-1"
+                                        size="icon"
+                                        className="rounded-full p-1"
                                     />
                                 }
                             >

@@ -137,6 +137,7 @@ export type AssetCategory = {
     name: string;
     description?: string | null;
     is_active: boolean;
+    is_vehicle: boolean;
     assets_count?: number;
     subcategories_count?: number;
     subcategories?: AssetSubcategory[];

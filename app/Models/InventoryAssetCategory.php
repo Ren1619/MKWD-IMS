@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['code', 'name', 'description', 'is_active'])]
+#[Fillable(['code', 'name', 'description', 'is_active', 'is_vehicle'])]
 class InventoryAssetCategory extends Model
 {
     /** @use HasFactory<InventoryAssetCategoryFactory> */
@@ -20,11 +20,17 @@ class InventoryAssetCategory extends Model
 
     protected $primaryKey = 'inv_asset_cat_id';
 
-    protected $attributes = ['is_active' => true];
+    protected $attributes = [
+        'is_active' => true,
+        'is_vehicle' => false,
+    ];
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean'];
+        return [
+            'is_active' => 'boolean',
+            'is_vehicle' => 'boolean',
+        ];
     }
 
     /**

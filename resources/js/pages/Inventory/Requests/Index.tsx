@@ -22,8 +22,20 @@ import {
 } from '@/components/shared/data-table';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { WorkflowActionDialog } from '@/components/workflow-action-dialog';
 import { WorkflowStatus } from '@/components/workflow-status';
 import { index as procurementIndex } from '@/routes/inventory/procurement';
@@ -230,6 +242,9 @@ export default function RequestsIndex({
         status: filters.status ?? '',
         queue: filters.queue ?? '',
     });
+    const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+    const [selectedRequest, setSelectedRequest] =
+        useState<RequestRecord | null>(null);
     const [selectedAction, setSelectedAction] = useState<{
         record: RequestRecord;
         action: WorkflowAction;
@@ -257,7 +272,10 @@ export default function RequestsIndex({
         event.preventDefault();
         form.post(store.url(), {
             preserveScroll: true,
-            onSuccess: () => form.reset(),
+            onSuccess: () => {
+                form.reset();
+                setRequestDialogOpen(false);
+            },
             onError: () =>
                 requestAnimationFrame(() => errorSummary.current?.focus()),
         });
@@ -326,18 +344,23 @@ export default function RequestsIndex({
                     )}
                 </div>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Plus className="size-5" /> Submit a request
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
+                <Dialog
+                    open={requestDialogOpen}
+                    onOpenChange={setRequestDialogOpen}
+                >
+                    <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-4xl">
                         <form
                             onSubmit={submit}
                             className="grid gap-5"
                             noValidate
                         >
+                            <DialogHeader className="pr-8">
+                                <DialogTitle>Submit a request</DialogTitle>
+                                <DialogDescription>
+                                    Provide the request details and add up to 25
+                                    existing or new supply items.
+                                </DialogDescription>
+                            </DialogHeader>
                             <div className="grid gap-4 md:grid-cols-3">
                                 <Field
                                     id="office-name"
@@ -854,99 +877,111 @@ export default function RequestsIndex({
                                     : 'Submit and attest'}
                             </Button>
                         </form>
-                    </CardContent>
-                </Card>
+                    </DialogContent>
+                </Dialog>
 
                 <Card>
                     <CardHeader>
                         <CardTitle>Request queue</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <form
-                            onSubmit={applyFilters}
-                            className="grid gap-3 md:grid-cols-[minmax(0,2fr)_1fr_1fr_auto]"
-                        >
-                            <Field id="request-search" label="Search">
-                                <div className="relative">
-                                    <Search className="pointer-events-none absolute top-3.5 left-3 size-4 text-muted-foreground" />
-                                    <Input
-                                        id="request-search"
-                                        className="min-h-11 pl-9"
-                                        placeholder="RIS no., requester, office, item…"
-                                        value={filterValues.search}
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                            <form
+                                onSubmit={applyFilters}
+                                className="grid w-full max-w-4xl gap-3 md:grid-cols-[minmax(0,2fr)_1fr_1fr_auto]"
+                            >
+                                <Field id="request-search" label="Search">
+                                    <div className="relative">
+                                        <Search className="pointer-events-none absolute top-3.5 left-3 size-4 text-muted-foreground" />
+                                        <Input
+                                            id="request-search"
+                                            className="min-h-11 pl-9"
+                                            maxLength={100}
+                                            placeholder="RIS no., requester, office, item…"
+                                            value={filterValues.search}
+                                            onChange={(event) =>
+                                                setFilterValues({
+                                                    ...filterValues,
+                                                    search: event.target.value,
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                </Field>
+                                <Field id="request-status" label="Status">
+                                    <select
+                                        id="request-status"
+                                        className={fieldClassName}
+                                        value={filterValues.status}
                                         onChange={(event) =>
                                             setFilterValues({
                                                 ...filterValues,
-                                                search: event.target.value,
+                                                status: event.target.value,
                                             })
                                         }
-                                    />
-                                </div>
-                            </Field>
-                            <Field id="request-status" label="Status">
-                                <select
-                                    id="request-status"
-                                    className={fieldClassName}
-                                    value={filterValues.status}
-                                    onChange={(event) =>
-                                        setFilterValues({
-                                            ...filterValues,
-                                            status: event.target.value,
-                                        })
-                                    }
-                                >
-                                    <option value="">All statuses</option>
-                                    {[
-                                        'submitted',
-                                        'approved',
-                                        'awaiting_replenishment',
-                                        'ready_for_release',
-                                        'partially_released',
-                                        'released',
-                                        'rejected',
-                                        'cancelled',
-                                    ].map((status) => (
-                                        <option key={status} value={status}>
-                                            {statusLabel(status)}
+                                    >
+                                        <option value="">All statuses</option>
+                                        {[
+                                            'submitted',
+                                            'approved',
+                                            'awaiting_replenishment',
+                                            'ready_for_release',
+                                            'partially_released',
+                                            'released',
+                                            'rejected',
+                                            'cancelled',
+                                        ].map((status) => (
+                                            <option key={status} value={status}>
+                                                {statusLabel(status)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </Field>
+                                <Field id="request-queue" label="Queue">
+                                    <select
+                                        id="request-queue"
+                                        className={fieldClassName}
+                                        value={filterValues.queue}
+                                        onChange={(event) =>
+                                            setFilterValues({
+                                                ...filterValues,
+                                                queue: event.target.value,
+                                            })
+                                        }
+                                    >
+                                        <option value="">All records</option>
+                                        <option value="needs_action">
+                                            Needs action
                                         </option>
-                                    ))}
-                                </select>
-                            </Field>
-                            <Field id="request-queue" label="Queue">
-                                <select
-                                    id="request-queue"
-                                    className={fieldClassName}
-                                    value={filterValues.queue}
-                                    onChange={(event) =>
-                                        setFilterValues({
-                                            ...filterValues,
-                                            queue: event.target.value,
-                                        })
-                                    }
-                                >
-                                    <option value="">All records</option>
-                                    <option value="needs_action">
-                                        Needs action
-                                    </option>
-                                    <option value="completed">Completed</option>
-                                </select>
-                            </Field>
-                            <div className="flex gap-2 md:items-end">
-                                <Button className="min-h-11 flex-1 md:flex-none">
-                                    Apply
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    className="size-11"
-                                    aria-label="Clear filters"
-                                    onClick={clearFilters}
-                                >
-                                    <FilterX />
-                                </Button>
-                            </div>
-                        </form>
+                                        <option value="completed">
+                                            Completed
+                                        </option>
+                                    </select>
+                                </Field>
+                                <div className="flex gap-2 md:items-end">
+                                    <Button className="min-h-11 flex-1 md:flex-none">
+                                        Apply
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        className="size-11"
+                                        aria-label="Clear filters"
+                                        onClick={clearFilters}
+                                    >
+                                        <FilterX />
+                                    </Button>
+                                </div>
+                            </form>
+                            <Button
+                                type="button"
+                                className="min-h-11 w-full shrink-0 lg:w-auto"
+                                onClick={() => setRequestDialogOpen(true)}
+                            >
+                                <Plus /> Submit a request
+                            </Button>
+                        </div>
                         <p
                             role="status"
                             className="mt-3 text-sm text-muted-foreground"
@@ -957,7 +992,105 @@ export default function RequestsIndex({
                     </CardContent>
                 </Card>
 
-                <div className="grid gap-4">
+                <Card className="hidden lg:flex">
+                    <CardContent>
+                        <Table>
+                            <caption className="sr-only">
+                                Supply request queue
+                            </caption>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead scope="col">
+                                        RIS number
+                                    </TableHead>
+                                    <TableHead scope="col">Requester</TableHead>
+                                    <TableHead scope="col">Office</TableHead>
+                                    <TableHead scope="col">Submitted</TableHead>
+                                    <TableHead
+                                        scope="col"
+                                        className="text-center"
+                                    >
+                                        Items
+                                    </TableHead>
+                                    <TableHead scope="col">Status</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {requests.data.map((record) => (
+                                    <Tooltip key={record.id}>
+                                        <TooltipTrigger
+                                            render={
+                                                <TableRow
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    aria-haspopup="dialog"
+                                                    aria-label={`View details for ${record.ris_no}`}
+                                                    className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                                                    onClick={() =>
+                                                        setSelectedRequest(
+                                                            record,
+                                                        )
+                                                    }
+                                                    onKeyDown={(event) => {
+                                                        if (
+                                                            event.key ===
+                                                                'Enter' ||
+                                                            event.key === ' '
+                                                        ) {
+                                                            event.preventDefault();
+                                                            setSelectedRequest(
+                                                                record,
+                                                            );
+                                                        }
+                                                    }}
+                                                />
+                                            }
+                                        >
+                                            <TableCell className="font-medium">
+                                                {record.ris_no}
+                                            </TableCell>
+                                            <TableCell>
+                                                {record.requester_name}
+                                            </TableCell>
+                                            <TableCell>
+                                                {record.office_name ?? '—'}
+                                            </TableCell>
+                                            <TableCell className="whitespace-nowrap">
+                                                {new Date(
+                                                    record.submitted_at,
+                                                ).toLocaleDateString()}
+                                            </TableCell>
+                                            <TableCell className="text-center tabular-nums">
+                                                {record.lines.length}
+                                            </TableCell>
+                                            <TableCell>
+                                                <span className="inline-flex rounded-full border px-3 py-1 text-xs font-medium capitalize">
+                                                    {statusLabel(record.status)}
+                                                </span>
+                                            </TableCell>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            Click for more info
+                                        </TooltipContent>
+                                    </Tooltip>
+                                ))}
+                                {requests.data.length === 0 && (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={6}
+                                            className="h-32 text-center text-muted-foreground"
+                                        >
+                                            No requests match the selected
+                                            filters.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
+
+                <div className="grid gap-4 lg:hidden">
                     {requests.data.map((record) => (
                         <Card key={record.id}>
                             <CardHeader>
@@ -1202,6 +1335,183 @@ export default function RequestsIndex({
                 </div>
                 <DataPagination links={requests.links} />
             </div>
+            <Dialog
+                open={selectedRequest !== null}
+                onOpenChange={(open) => !open && setSelectedRequest(null)}
+            >
+                <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-5xl">
+                    {selectedRequest && (
+                        <div className="grid gap-5">
+                            <DialogHeader className="pr-8">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <DialogTitle>
+                                        {selectedRequest.ris_no}
+                                    </DialogTitle>
+                                    <span className="rounded-full border px-3 py-1 text-xs font-medium capitalize">
+                                        {statusLabel(selectedRequest.status)}
+                                    </span>
+                                </div>
+                                <DialogDescription>
+                                    Submitted by{' '}
+                                    {selectedRequest.requester_name}
+                                    {selectedRequest.office_name
+                                        ? ` — ${selectedRequest.office_name}`
+                                        : ''}
+                                    .
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <WorkflowStatus
+                                steps={workflowSteps}
+                                current={selectedRequest.status}
+                                terminal={terminalStatuses}
+                            />
+
+                            <div className="rounded-lg bg-muted/60 p-3 text-sm">
+                                <p className="font-medium">What happens next</p>
+                                <p className="text-muted-foreground">
+                                    {nextAction(selectedRequest.status)}
+                                </p>
+                            </div>
+
+                            <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                                <div>
+                                    <dt className="font-medium">Purpose</dt>
+                                    <dd className="text-muted-foreground">
+                                        {selectedRequest.purpose}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt className="font-medium">Submitted</dt>
+                                    <dd className="text-muted-foreground">
+                                        {new Date(
+                                            selectedRequest.submitted_at,
+                                        ).toLocaleString()}
+                                    </dd>
+                                </div>
+                            </dl>
+
+                            <div className="overflow-x-auto rounded-lg border">
+                                <Table>
+                                    <caption className="sr-only">
+                                        Items requested under{' '}
+                                        {selectedRequest.ris_no}
+                                    </caption>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead scope="col">
+                                                Item
+                                            </TableHead>
+                                            <TableHead scope="col">
+                                                Requested
+                                            </TableHead>
+                                            <TableHead scope="col">
+                                                Approved
+                                            </TableHead>
+                                            <TableHead scope="col">
+                                                Reserved
+                                            </TableHead>
+                                            <TableHead scope="col">
+                                                Released
+                                            </TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {selectedRequest.lines.map((line) => (
+                                            <TableRow key={line.id}>
+                                                <TableCell className="font-medium">
+                                                    {line.item_name}
+                                                    {line.is_new_item
+                                                        ? ' (new)'
+                                                        : ''}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {line.quantity_requested}{' '}
+                                                    {line.unit_of_measure}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {line.quantity_approved}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {line.quantity_reserved}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {line.quantity_released}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+
+                            {canManage &&
+                                actionsFor(selectedRequest.status).length >
+                                    0 && (
+                                    <div className="flex flex-wrap gap-2">
+                                        {actionsFor(selectedRequest.status).map(
+                                            (action) => (
+                                                <Button
+                                                    key={action.action}
+                                                    className="min-h-11"
+                                                    variant={
+                                                        action.destructive
+                                                            ? 'destructive'
+                                                            : action.action ===
+                                                                'release'
+                                                              ? 'default'
+                                                              : 'outline'
+                                                    }
+                                                    onClick={() => {
+                                                        setSelectedRequest(
+                                                            null,
+                                                        );
+                                                        openAction(
+                                                            selectedRequest,
+                                                            action,
+                                                        );
+                                                    }}
+                                                >
+                                                    {action.label}
+                                                </Button>
+                                            ),
+                                        )}
+                                    </div>
+                                )}
+
+                            <details>
+                                <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">
+                                    Decision history (
+                                    {selectedRequest.actions.length})
+                                </summary>
+                                <div className="mt-2 grid gap-2">
+                                    {selectedRequest.actions.map((action) => (
+                                        <div
+                                            key={action.id}
+                                            className="rounded-lg border p-3 text-xs"
+                                        >
+                                            <p>
+                                                <b>{action.actor.name}</b> —{' '}
+                                                {statusLabel(action.action)} to{' '}
+                                                {statusLabel(action.to_status)}
+                                            </p>
+                                            <p className="text-muted-foreground">
+                                                {new Date(
+                                                    action.created_at,
+                                                ).toLocaleString()}
+                                            </p>
+                                            {action.remarks && (
+                                                <p className="mt-1">
+                                                    {action.remarks}
+                                                </p>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </details>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
             <WorkflowActionDialog
                 key={
                     selectedAction

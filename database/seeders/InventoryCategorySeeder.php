@@ -57,6 +57,7 @@ class InventoryCategorySeeder extends Seeder
                     'name' => $assetCategoryData['name'],
                     'description' => $assetCategoryData['description'],
                     'is_active' => true,
+                    'is_vehicle' => $assetCategoryData['is_vehicle'] ?? false,
                 ],
             );
         }
@@ -206,7 +207,7 @@ class InventoryCategorySeeder extends Seeder
         ];
     }
 
-    /** @return array<int, array{code: string, name: string, description: string}> */
+    /** @return array<int, array{code: string, name: string, description: string, is_vehicle?: bool}> */
     private function assetCategories(): array
     {
         return [
@@ -214,7 +215,7 @@ class InventoryCategorySeeder extends Seeder
             ['code' => 'AST-OFF', 'name' => 'Office Equipment', 'description' => 'Machines and devices used for administrative work.'],
             ['code' => 'AST-FNF', 'name' => 'Furniture and Fixtures', 'description' => 'Movable office furniture and installed fixtures.'],
             ['code' => 'AST-MCH', 'name' => 'Machinery and Technical Equipment', 'description' => 'Operational machinery and specialized technical equipment.'],
-            ['code' => 'AST-TRN', 'name' => 'Transportation Equipment', 'description' => 'Vehicles and other transportation-related equipment.'],
+            ['code' => 'AST-TRN', 'name' => 'Transportation Equipment', 'description' => 'Vehicles and other transportation-related equipment.', 'is_vehicle' => true],
         ];
     }
 }

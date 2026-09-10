@@ -83,6 +83,10 @@ class InventoryCategoryManager
     {
         $attributes = Arr::only($data, ['code', 'name', 'description']);
 
+        if ($type === InventoryCategoryType::Asset) {
+            $attributes['is_vehicle'] = $data['is_vehicle'];
+        }
+
         if ($parentColumn = $type->parentColumn()) {
             $attributes[$parentColumn] = $data['parent_id'];
         }

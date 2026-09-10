@@ -23,6 +23,14 @@ test('inventory routes require authentication', function () {
     $this->get(route('inventory.assets.index'))->assertRedirect(route('login'));
 });
 
+test('the register asset modal has an explicit form submit control', function () {
+    $source = file_get_contents(resource_path('js/pages/Inventory/Assets/Index.tsx'));
+
+    expect($source)
+        ->toContain('data-test="register-asset-submit"')
+        ->toContain('type="submit"');
+});
+
 test('authenticated users can view the IMS dashboard', function () {
     $asset = InventoryAsset::factory()->create();
     InventoryAssetBorrowing::factory()->create([

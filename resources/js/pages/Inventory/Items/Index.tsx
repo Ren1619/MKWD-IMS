@@ -80,9 +80,24 @@ function isInteractiveRowTarget(target: EventTarget | null): boolean {
 function StockInDialog({ item }: { item: InventoryItem }) {
     return (
         <Dialog>
-            <DialogTrigger render={<Button size="sm" variant="outline" />}>
-                <ArrowDownToLine /> Receive
-            </DialogTrigger>
+            <Tooltip>
+                <DialogTrigger
+                    render={
+                        <TooltipTrigger
+                            render={
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    aria-label={`Receive stock for ${item.name}`}
+                                />
+                            }
+                        />
+                    }
+                >
+                    <ArrowDownToLine />
+                </DialogTrigger>
+                <TooltipContent>Receive stock</TooltipContent>
+            </Tooltip>
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
                 <DialogHeader>
                     <DialogTitle>Receive {item.name}</DialogTitle>
@@ -234,9 +249,24 @@ function StockOutDialog({
 }) {
     return (
         <Dialog>
-            <DialogTrigger render={<Button size="sm" variant="outline" />}>
-                <ArrowUpFromLine /> Release
-            </DialogTrigger>
+            <Tooltip>
+                <DialogTrigger
+                    render={
+                        <TooltipTrigger
+                            render={
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    aria-label={`Release stock for ${item.name}`}
+                                />
+                            }
+                        />
+                    }
+                >
+                    <ArrowUpFromLine />
+                </DialogTrigger>
+                <TooltipContent>Release stock</TooltipContent>
+            </Tooltip>
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Release {item.name}</DialogTitle>
@@ -377,17 +407,24 @@ function StockOutDialog({
 function ReplenishmentDialog({ item }: { item: InventoryItem }) {
     return (
         <Dialog>
-            <DialogTrigger
-                render={
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        aria-label={`Configure replenishment for ${item.name}`}
-                    />
-                }
-            >
-                <SlidersHorizontal />
-            </DialogTrigger>
+            <Tooltip>
+                <DialogTrigger
+                    render={
+                        <TooltipTrigger
+                            render={
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    aria-label={`Configure replenishment for ${item.name}`}
+                                />
+                            }
+                        />
+                    }
+                >
+                    <SlidersHorizontal />
+                </DialogTrigger>
+                <TooltipContent>Replenishment settings</TooltipContent>
+            </Tooltip>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Replenishment settings</DialogTitle>
@@ -1240,18 +1277,27 @@ export default function ItemsIndex({
                                                                     {({
                                                                         processing,
                                                                     }) => (
-                                                                        <Button
-                                                                            size="sm"
-                                                                            variant="outline"
-                                                                            disabled={
-                                                                                processing
-                                                                            }
-                                                                        >
-                                                                            <RotateCcw />
-                                                                            {processing
-                                                                                ? 'Restoring…'
-                                                                                : 'Restore'}
-                                                                        </Button>
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger
+                                                                                render={
+                                                                                    <Button
+                                                                                        size="icon"
+                                                                                        variant="ghost"
+                                                                                        aria-label={`Restore ${item.name}`}
+                                                                                        disabled={
+                                                                                            processing
+                                                                                        }
+                                                                                    />
+                                                                                }
+                                                                            >
+                                                                                <RotateCcw />
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                {processing
+                                                                                    ? 'Restoring…'
+                                                                                    : 'Restore item'}
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
                                                                     )}
                                                                 </Form>
                                                             ) : (

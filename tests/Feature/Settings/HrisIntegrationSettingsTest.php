@@ -4,12 +4,15 @@ use App\Actions\Integrations\SyncHrisReferences;
 use App\Models\AuditLog;
 use App\Models\HrisIntegrationSetting;
 use App\Models\User;
+use App\Services\HrisEndpointGuard;
 use App\UserRole;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 
 beforeEach(function () {
+    config()->set('services.hris.url', null);
+    config()->set('services.hris.employees_path', '/api/v1/inventory/employees');
     config()->set('services.hris.allowed_hosts', [
         'hris.example.test',
         'new-hris.example.test',
@@ -33,7 +36,7 @@ test('the HRIS integration setting requires a recently confirmed password', func
 });
 
 test('an expired password confirmation cannot reveal the HRIS API URL', function () {
-    config()->set('services.hris.base_url', 'https://hris.example.test');
+    config()->set('services.hris.url', 'https://hris.example.test');
 
     $superAdmin = User::factory()->superAdmin()->create();
 
@@ -58,7 +61,7 @@ test('only super admins can access the HRIS integration setting', function (User
 ]);
 
 test('a super admin can view and update the HRIS API base URL', function () {
-    config()->set('services.hris.base_url', 'https://hris.example.test');
+    config()->set('services.hris.url', 'https://hris.example.test');
 
     $superAdmin = User::factory()->superAdmin()->create();
 
@@ -69,7 +72,7 @@ test('a super admin can view and update the HRIS API base URL', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('settings/hris-integration')
             ->where('baseUrl', 'https://hris.example.test')
-            ->where('employeesPath', '/api/v1/employees')
+            ->where('employeesPath', '/api/v1/inventory/employees')
             ->where('usingDatabaseOverride', false)
             ->where('allowedHosts', [
                 'hris.example.test',
@@ -117,7 +120,7 @@ test('unsafe HRIS API destinations are rejected', function (string $baseUrl) {
 ]);
 
 test('the HRIS client prefers the password-protected database setting', function () {
-    config()->set('services.hris.base_url', 'https://hris.example.test');
+    config()->set('services.hris.url', 'https://hris.example.test');
 
     HrisIntegrationSetting::query()->create([
         'id' => HrisIntegrationSetting::SINGLETON_ID,
@@ -126,15 +129,30 @@ test('the HRIS client prefers the password-protected database setting', function
 
     Http::preventStrayRequests();
     Http::fake([
-        'https://new-hris.example.test/api/v1/employees' => Http::response(['data' => [[
-            'id' => 'emp-200',
-            'name' => 'Maria Santos',
+        'https://new-hris.example.test/api/v1/inventory/employees*' => Http::response(['data' => [[
+            'employee_id' => 'emp-200',
+            'first_name' => 'Maria',
+            'last_name' => 'Santos',
             'email' => 'maria@example.test',
-        ]]]),
+        ]], 'meta' => ['next_cursor' => null]]),
     ]);
 
     app(SyncHrisReferences::class)->handle();
 
     Http::assertSent(fn (Request $request): bool => $request->url()
-        === 'https://new-hris.example.test/api/v1/employees');
+        === 'https://new-hris.example.test/api/v1/inventory/employees?per_page=250');
 });
+
+test('HTTP loopback HRIS URLs are allowed only for the configured local development endpoint', function (string $environment, string $url, bool $allowed) {
+    app()->instance('env', $environment);
+    config()->set('services.hris.url', 'http://localhost:8000');
+
+    $error = app(HrisEndpointGuard::class)->validationError($url);
+
+    expect($error === null)->toBe($allowed);
+})->with([
+    'configured local endpoint' => ['local', 'http://localhost:8000', true],
+    'production endpoint' => ['production', 'http://localhost:8000', false],
+    'different local port' => ['local', 'http://localhost:9000', false],
+    'public HTTP endpoint' => ['local', 'http://hris.example.test', false],
+]);

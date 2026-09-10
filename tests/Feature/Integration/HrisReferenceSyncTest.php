@@ -4,33 +4,162 @@ use App\Actions\Integrations\SyncHrisReferences;
 use App\Contracts\HrisReferenceSource;
 use App\Models\HrisReference;
 use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 
+beforeEach(function () {
+    config()->set('services.hris.url', 'https://hris.example.test');
+    config()->set('services.hris.token', 'test-token');
+    config()->set('services.hris.employees_path', '/api/v1/inventory/employees');
+    Http::preventStrayRequests();
+});
+
 test('employee references are received through the configured API', function () {
-    config()->set('services.hris.base_url', 'https://hris.example.test');
+    config()->set('services.hris.url', 'https://hris.example.test');
     config()->set('services.hris.token', 'test-token');
 
     Http::preventStrayRequests();
     Http::fake([
-        'https://hris.example.test/api/v1/employees' => Http::response(['data' => [[
-            'id' => 'emp-100',
-            'employee_number' => '2026-0100',
+        'https://hris.example.test/api/v1/inventory/employees*' => Http::response(['data' => [[
+            'employee_id' => 'emp-100',
             'first_name' => 'Ana',
+            'middle_name' => 'Cruz',
             'last_name' => 'Reyes',
+            'name_extension' => 'Jr.',
             'email' => 'ana@example.test',
-            'active' => true,
-            'updated_at' => '2026-08-10T08:00:00+08:00',
-        ]]]),
+            'phone_number' => '09123456789',
+            'position' => [
+                'id' => 42,
+                'name' => 'Engineer',
+                'classification' => 'Permanent',
+                'department' => ['id' => 1, 'name' => 'Operations'],
+                'division' => ['id' => 2, 'name' => 'Engineering'],
+                'section' => ['id' => 3, 'name' => 'Maintenance'],
+            ],
+        ]], 'meta' => ['next_cursor' => null]]),
     ]);
 
     $result = app(SyncHrisReferences::class)->handle();
 
     expect($result)->toMatchArray(['created' => 1, 'total' => 1])
-        ->and(HrisReference::query()->where('external_id', 'emp-100')->value('name'))->toBe('Ana Reyes')
+        ->and(HrisReference::query()->where('external_id', 'emp-100')->value('name'))->toBe('Ana Cruz Reyes Jr.')
         ->and(HrisReference::query()->where('type', '!=', HrisReference::TYPE_EMPLOYEE)->exists())->toBeFalse();
 
-    Http::assertSent(fn (Request $request): bool => $request->hasHeader('Authorization', 'Bearer test-token'));
+    $reference = HrisReference::query()->sole();
+    expect($reference->code)->toBe('emp-100')
+        ->and($reference->email)->toBe('ana@example.test')
+        ->and($reference->metadata['phone_number'])->toBe('09123456789')
+        ->and($reference->metadata['position']['name'])->toBe('Engineer')
+        ->and($reference->metadata['position']['section']['name'])->toBe('Maintenance');
+
+    Http::assertSent(fn (Request $request): bool => $request->hasHeader('Authorization', 'Bearer test-token')
+        && $request->hasHeader('Accept', 'application/json')
+        && $request['per_page'] === 250);
+    Http::assertSentCount(1);
 });
+
+test('cursor pages are fully synchronized using employee_id even when other ids change', function () {
+    $existing = HrisReference::factory()->create(['external_id' => '0001']);
+    $missing = HrisReference::factory()->create();
+
+    Http::fakeSequence()
+        ->push(['data' => [hrisEmployeePayload('0001', ['id' => 10])], 'meta' => ['next_cursor' => 'next+/=']])
+        ->push(['data' => [hrisEmployeePayload('0002')], 'meta' => ['next_cursor' => null]])
+        ->push(['data' => [hrisEmployeePayload('0001', ['id' => 99, 'first_name' => 'Updated'])], 'meta' => ['next_cursor' => 'next+/=']])
+        ->push(['data' => [hrisEmployeePayload('0002')], 'meta' => ['next_cursor' => null]]);
+
+    expect(app(SyncHrisReferences::class)->handle())->toMatchArray([
+        'created' => 1, 'updated' => 1, 'deactivated' => 1, 'total' => 2,
+    ]);
+
+    $this->artisan('ims:sync-hris')->assertSuccessful();
+
+    expect($existing->fresh()->name)->toBe('Updated Reyes')
+        ->and($existing->fresh()->is_active)->toBeTrue()
+        ->and($missing->fresh()->is_active)->toBeFalse()
+        ->and(HrisReference::query()->count())->toBe(3);
+
+    Http::assertSent(fn (Request $request): bool => $request['cursor'] === 'next+/='
+        && $request['per_page'] === 250);
+    Http::assertSentCount(4);
+});
+
+test('a failure on a later page leaves all cached references unchanged', function () {
+    $existing = HrisReference::factory()->create(['external_id' => '0001', 'name' => 'Original Name']);
+    $missing = HrisReference::factory()->create();
+
+    Http::fakeSequence()
+        ->push(['data' => [hrisEmployeePayload('0001')], 'meta' => ['next_cursor' => 'page2']])
+        ->pushStatus(503)->pushStatus(503)->pushStatus(503);
+
+    expect(fn () => app(SyncHrisReferences::class)->handle())->toThrow(RequestException::class);
+    expect($existing->fresh()->name)->toBe('Original Name')
+        ->and($missing->fresh()->is_active)->toBeTrue();
+    Http::assertSentCount(4);
+});
+
+test('transient HRIS failures are retried', function () {
+    Http::fakeSequence()->pushStatus(503)
+        ->push(['data' => [hrisEmployeePayload('0001')], 'meta' => ['next_cursor' => null]]);
+
+    expect(app(SyncHrisReferences::class)->handle()['created'])->toBe(1);
+    Http::assertSentCount(2);
+});
+
+test('malformed responses do not modify cached employees', function (array $payload) {
+    $existing = HrisReference::factory()->create();
+    Http::fakeSequence()->push($payload);
+
+    expect(fn () => app(SyncHrisReferences::class)->handle())->toThrow(LogicException::class);
+    expect($existing->fresh()->is_active)->toBeTrue()
+        ->and(HrisReference::query()->count())->toBe(1);
+})->with([
+    'missing data' => [['meta' => ['next_cursor' => null]]],
+    'missing cursor metadata' => [['data' => []]],
+    'invalid record' => [['data' => [null], 'meta' => ['next_cursor' => null]]],
+    'id is not an employee_id' => [['data' => [['id' => 1, 'first_name' => 'Ana']], 'meta' => ['next_cursor' => null]]],
+    'invalid cursor' => [['data' => [], 'meta' => ['next_cursor' => []]]],
+]);
+
+test('repeated cursors abort without modifying cached employees', function () {
+    $existing = HrisReference::factory()->create();
+    Http::fakeSequence()
+        ->push(['data' => [hrisEmployeePayload('0001')], 'meta' => ['next_cursor' => 'same']])
+        ->push(['data' => [], 'meta' => ['next_cursor' => 'same']]);
+
+    expect(fn () => app(SyncHrisReferences::class)->handle())->toThrow(LogicException::class);
+    expect($existing->fresh()->is_active)->toBeTrue()
+        ->and(HrisReference::query()->count())->toBe(1);
+    Http::assertSentCount(2);
+});
+
+test('a valid empty employee snapshot deactivates employees only', function () {
+    $employee = HrisReference::factory()->create();
+    $department = HrisReference::factory()->create(['type' => HrisReference::TYPE_DEPARTMENT]);
+    Http::fakeSequence()->push(['data' => [], 'meta' => ['next_cursor' => null]]);
+
+    expect(app(SyncHrisReferences::class)->handle())->toMatchArray(['total' => 0, 'deactivated' => 1]);
+    expect($employee->fresh()->is_active)->toBeFalse()
+        ->and($department->fresh()->is_active)->toBeTrue();
+});
+
+/**
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function hrisEmployeePayload(string $employeeId, array $overrides = []): array
+{
+    return array_replace([
+        'employee_id' => $employeeId,
+        'first_name' => 'Ana',
+        'middle_name' => null,
+        'last_name' => 'Reyes',
+        'name_extension' => null,
+        'email' => null,
+        'phone_number' => null,
+        'position' => null,
+    ], $overrides);
+}
 
 test('a complete sync updates present references and deactivates missing ones', function () {
     $source = new class implements HrisReferenceSource

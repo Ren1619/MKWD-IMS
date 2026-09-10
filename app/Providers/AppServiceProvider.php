@@ -59,6 +59,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-integrations', fn (User $user): bool => $user->isSuperAdmin());
         Gate::define('view-audit-logs', fn (User $user): bool => $user->isSuperAdmin());
         Gate::define('manage-inventory', fn (User $user): bool => $user->canManageInventory());
+        Gate::define('access-vehicle-api', fn (User $user): bool => $user->is_active);
     }
 
     protected function configureAuditing(): void

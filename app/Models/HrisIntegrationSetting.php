@@ -24,7 +24,7 @@ class HrisIntegrationSetting extends Model
             return $databaseBaseUrl;
         }
 
-        $environmentBaseUrl = config('services.hris.base_url');
+        $environmentBaseUrl = config('services.hris.url');
 
         return is_string($environmentBaseUrl) && $environmentBaseUrl !== ''
             ? $environmentBaseUrl

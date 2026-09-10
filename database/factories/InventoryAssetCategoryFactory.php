@@ -21,6 +21,7 @@ class InventoryAssetCategoryFactory extends Factory
             'code' => fake()->unique()->bothify('A-###'),
             'name' => fake()->unique()->words(2, true),
             'description' => fake()->optional()->sentence(),
+            'is_vehicle' => false,
         ];
     }
 }
