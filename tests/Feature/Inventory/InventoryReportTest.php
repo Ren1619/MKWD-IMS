@@ -16,13 +16,15 @@ test('inventory report routes require authentication', function () {
 });
 
 test('reports page exposes the complete COA audit document catalog', function () {
-    $this->actingAs(User::factory()->employee()->create())
+    $this->actingAs(User::factory()->inventoryManager()->create())
         ->get(route('inventory.reports.index'))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->has('documents', 24)
+            ->has('documents', 54)
             ->where('documents.0.key', 'rpcppe')
-            ->where('documents.0.code', 'RPCPPE'));
+            ->where('documents.0.code', 'RPCPPE')
+            ->where('documents.24.key', 'semi-master-register')
+            ->where('documents.24.code', 'SE-MR'));
 });
 
 test('COA documents render printable audit tables', function (string $document, string $heading) {
@@ -32,7 +34,7 @@ test('COA documents render printable audit tables', function (string $document, 
         'quantity_per_physical_count' => 1,
     ]);
 
-    $this->actingAs(User::factory()->employee()->create())
+    $this->actingAs(User::factory()->inventoryManager()->create())
         ->get(route('inventory.reports.print', [
             'document' => $document,
             'as_of' => '2026-12-31',
@@ -50,7 +52,7 @@ test('COA documents render printable audit tables', function (string $document, 
 ]);
 
 test('print filters reject invalid reporting periods and unknown documents', function () {
-    $user = User::factory()->employee()->create();
+    $user = User::factory()->inventoryManager()->create();
 
     $this->actingAs($user)
         ->get(route('inventory.reports.print', [
@@ -66,7 +68,7 @@ test('print filters reject invalid reporting periods and unknown documents', fun
 });
 
 test('every registered COA document has a working printable response', function () {
-    $this->actingAs(User::factory()->employee()->create());
+    $this->actingAs(User::factory()->inventoryManager()->create());
 
     foreach (InventoryReportService::documentKeys() as $document) {
         $this->get(route('inventory.reports.print', $document))
@@ -87,7 +89,7 @@ test('printable transaction reports support all-time and quarterly periods', fun
         'ris_no' => 'RIS-Q4',
         'stocked_out_at' => '2026-11-15',
     ]);
-    $user = User::factory()->employee()->create();
+    $user = User::factory()->inventoryManager()->create();
 
     $this->actingAs($user)
         ->get(route('inventory.reports.print', [
@@ -112,7 +114,7 @@ test('printable transaction reports support all-time and quarterly periods', fun
 });
 
 test('custom report periods require both valid dates', function () {
-    $this->actingAs(User::factory()->employee()->create())
+    $this->actingAs(User::factory()->inventoryManager()->create())
         ->get(route('inventory.reports.print', [
             'document' => 'rsmi',
             'period' => 'custom',
@@ -121,7 +123,7 @@ test('custom report periods require both valid dates', function () {
         ->assertSessionHasErrors('to');
 });
 
-test('employees can review live inventory valuation and depreciation summaries', function () {
+test('property governance users can review live inventory valuation and depreciation summaries', function () {
     $this->travelTo(Carbon::parse('2026-08-14 09:00:00'));
 
     $item = InventoryItem::factory()->create([
@@ -142,7 +144,7 @@ test('employees can review live inventory valuation and depreciation summaries',
         'depreciation_useful_life_months' => 60,
     ]);
 
-    $this->actingAs(User::factory()->employee()->create())
+    $this->actingAs(User::factory()->inventoryManager()->create())
         ->get(route('inventory.reports.index'))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
@@ -166,7 +168,7 @@ test('employees can review live inventory valuation and depreciation summaries',
 });
 
 test('reports apply operational filters to consumables and assets', function () {
-    $user = User::factory()->employee()->create();
+    $user = User::factory()->inventoryManager()->create();
     $lowStock = InventoryItem::factory()->create([
         'name' => 'Low Stock Toner',
         'quantity' => 2,
@@ -226,7 +228,7 @@ test('filtered CSV exports neutralize spreadsheet formulas', function () {
     ]);
     InventoryItem::factory()->create(['name' => 'Excluded Record']);
 
-    $response = $this->actingAs(User::factory()->employee()->create())
+    $response = $this->actingAs(User::factory()->inventoryManager()->create())
         ->get(route('inventory.reports.export', [
             'report' => 'consumables',
             'search' => 'FormulaPayload',
@@ -248,7 +250,7 @@ test('filtered CSV exports neutralize spreadsheet formulas', function () {
 });
 
 test('inventory report filters reject invalid input', function (array $query, string $field) {
-    $this->actingAs(User::factory()->employee()->create())
+    $this->actingAs(User::factory()->inventoryManager()->create())
         ->get(route('inventory.reports.index', $query))
         ->assertSessionHasErrors($field);
 })->with([

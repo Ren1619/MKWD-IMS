@@ -26,11 +26,12 @@ class ProcurementRequestIndexRequest extends FormRequest
         return [
             'search' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', Rule::in([
+                'intake', 'for_document_review', 'returned_for_compliance', 'ready_for_preparation', 'for_signatures',
                 'draft', 'for_budget_review', 'for_approval', 'approved',
                 'forwarded_to_procurement', 'ordered', 'delivered', 'accepted',
-                'rejected', 'cancelled',
+                'rejected', 'cancelled', 'endorsed',
             ])],
-            'queue' => ['nullable', Rule::in(['needs_action', 'completed'])],
+            'queue' => ['nullable', Rule::in(['needs_action', 'completed', 'archived'])],
         ];
     }
 }

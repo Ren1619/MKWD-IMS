@@ -6,6 +6,8 @@ use Laravel\Fortify\Features;
 
 beforeEach(function () {
     $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
+    config()->set('services.hris.auth_enabled', false);
+    config()->set('services.hris.development_fallback_enabled', true);
 });
 
 test('two factor challenge redirects to login when not authenticated', function () {

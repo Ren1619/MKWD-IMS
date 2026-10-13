@@ -39,7 +39,8 @@ class UserController extends Controller
                 ->where('type', HrisReference::TYPE_EMPLOYEE)
                 ->where('is_active', true)
                 ->orderBy('name')
-                ->get(['id', 'code', 'name', 'email']),
+                ->get(['id', 'type', 'code', 'name', 'email', 'metadata'])
+                ->map(fn (HrisReference $employee): array => $employee->toSelectionOption()),
             'roles' => collect(UserRole::cases())->map(fn (UserRole $role): array => [
                 'value' => $role->value,
                 'label' => $role->label(),

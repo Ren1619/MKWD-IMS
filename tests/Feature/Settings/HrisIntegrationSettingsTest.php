@@ -13,6 +13,7 @@ use Inertia\Testing\AssertableInertia as Assert;
 beforeEach(function () {
     config()->set('services.hris.url', null);
     config()->set('services.hris.employees_path', '/api/v1/inventory/employees');
+    config()->set('services.hris.reference_data_path', '/api/v1/inventory/reference-data');
     config()->set('services.hris.allowed_hosts', [
         'hris.example.test',
         'new-hris.example.test',
@@ -135,6 +136,12 @@ test('the HRIS client prefers the password-protected database setting', function
             'last_name' => 'Santos',
             'email' => 'maria@example.test',
         ]], 'meta' => ['next_cursor' => null]]),
+        'https://new-hris.example.test/api/v1/inventory/reference-data' => Http::response(['data' => [
+            'departments' => [],
+            'divisions' => [],
+            'units' => [],
+            'roles' => [],
+        ]]),
     ]);
 
     app(SyncHrisReferences::class)->handle();

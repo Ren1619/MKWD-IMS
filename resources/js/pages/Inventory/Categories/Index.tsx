@@ -50,6 +50,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { FormSelect } from '@/components/ui/form-select';
 import { Input } from '@/components/ui/input';
 import { useAppPage } from '@/hooks/use-app-page';
 import {
@@ -79,6 +80,10 @@ type EditorState = {
     name?: string;
     description?: string | null;
     isVehicle?: boolean;
+    accountCode?: string | null;
+    defaultUsefulLifeMonths?: number;
+    defaultResidualValuePercentage?: string;
+    isDepreciable?: boolean;
 };
 
 type ConfirmationState = {
@@ -95,6 +100,10 @@ type CommonCategory = {
     description?: string | null;
     is_active: boolean;
     is_vehicle?: boolean;
+    account_code?: string | null;
+    default_useful_life_months?: number;
+    default_residual_value_percentage?: string;
+    is_depreciable?: boolean;
 };
 
 type CategoryTableRowData = {
@@ -530,6 +539,11 @@ export default function CategoriesIndex({
             name: category.name,
             description: category.description,
             isVehicle: category.is_vehicle,
+            accountCode: category.account_code,
+            defaultUsefulLifeMonths: category.default_useful_life_months,
+            defaultResidualValuePercentage:
+                category.default_residual_value_percentage,
+            isDepreciable: category.is_depreciable,
         });
 
     const runConfirmation = () => {
@@ -783,7 +797,7 @@ export default function CategoriesIndex({
                                     >
                                         Status
                                     </label>
-                                    <select
+                                    <FormSelect
                                         id="item-category-status"
                                         value={itemStatusFilter}
                                         onChange={(event) =>
@@ -801,7 +815,7 @@ export default function CategoriesIndex({
                                         <option value="archived">
                                             Archived
                                         </option>
-                                    </select>
+                                    </FormSelect>
                                 </div>
                             </div>
                         </CardHeader>
@@ -869,7 +883,7 @@ export default function CategoriesIndex({
                                     >
                                         Status
                                     </label>
-                                    <select
+                                    <FormSelect
                                         id="asset-category-status"
                                         value={assetStatusFilter}
                                         onChange={(event) =>
@@ -887,7 +901,7 @@ export default function CategoriesIndex({
                                         <option value="archived">
                                             Archived
                                         </option>
-                                    </select>
+                                    </FormSelect>
                                 </div>
                             </div>
                         </CardHeader>
@@ -955,7 +969,7 @@ export default function CategoriesIndex({
                                             >
                                                 Parent category
                                             </label>
-                                            <select
+                                            <FormSelect
                                                 id="category-parent"
                                                 name="parent_id"
                                                 className={selectClass}
@@ -975,7 +989,7 @@ export default function CategoriesIndex({
                                                         {option.label}
                                                     </option>
                                                 ))}
-                                            </select>
+                                            </FormSelect>
                                             <InputError
                                                 message={errors.parent_id}
                                             />
@@ -1038,6 +1052,112 @@ export default function CategoriesIndex({
                                             message={errors.description}
                                         />
                                     </div>
+                                    {editor.type === 'asset' && (
+                                        <div className="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
+                                            <div className="grid gap-1.5 sm:col-span-2">
+                                                <label
+                                                    htmlFor="category-account-code"
+                                                    className="text-sm font-medium"
+                                                >
+                                                    Default account code
+                                                </label>
+                                                <Input
+                                                    id="category-account-code"
+                                                    name="account_code"
+                                                    defaultValue={
+                                                        editor.accountCode ?? ''
+                                                    }
+                                                    maxLength={50}
+                                                    placeholder="e.g. 10605020"
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.account_code
+                                                    }
+                                                />
+                                            </div>
+                                            <div className="grid gap-1.5">
+                                                <label
+                                                    htmlFor="category-useful-life"
+                                                    className="text-sm font-medium"
+                                                >
+                                                    Default useful life (months)
+                                                </label>
+                                                <Input
+                                                    id="category-useful-life"
+                                                    name="default_useful_life_months"
+                                                    type="number"
+                                                    min="1"
+                                                    max="1200"
+                                                    defaultValue={
+                                                        editor.defaultUsefulLifeMonths ??
+                                                        60
+                                                    }
+                                                    required
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.default_useful_life_months
+                                                    }
+                                                />
+                                            </div>
+                                            <div className="grid gap-1.5">
+                                                <label
+                                                    htmlFor="category-residual"
+                                                    className="text-sm font-medium"
+                                                >
+                                                    Default residual value (%)
+                                                </label>
+                                                <Input
+                                                    id="category-residual"
+                                                    name="default_residual_value_percentage"
+                                                    type="number"
+                                                    min="0"
+                                                    max="99.99"
+                                                    step="0.01"
+                                                    defaultValue={
+                                                        editor.defaultResidualValuePercentage ??
+                                                        '5.00'
+                                                    }
+                                                    required
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.default_residual_value_percentage
+                                                    }
+                                                />
+                                            </div>
+                                            <label
+                                                htmlFor="category-is-depreciable"
+                                                className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 sm:col-span-2"
+                                            >
+                                                <Checkbox
+                                                    id="category-is-depreciable"
+                                                    name="is_depreciable"
+                                                    value="1"
+                                                    defaultChecked={
+                                                        editor.isDepreciable ??
+                                                        true
+                                                    }
+                                                    className="mt-0.5"
+                                                />
+                                                <span className="grid gap-1">
+                                                    <span className="text-sm font-medium">
+                                                        Depreciable PPE class
+                                                    </span>
+                                                    <span className="text-xs text-muted-foreground">
+                                                        Turn this off for land,
+                                                        heritage assets, and
+                                                        construction in
+                                                        progress.
+                                                    </span>
+                                                </span>
+                                            </label>
+                                            <InputError
+                                                message={errors.is_depreciable}
+                                            />
+                                        </div>
+                                    )}
                                     {editor.type === 'asset' && (
                                         <label
                                             htmlFor="category-is-vehicle"

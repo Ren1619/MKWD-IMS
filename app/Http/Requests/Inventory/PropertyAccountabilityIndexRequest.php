@@ -25,7 +25,7 @@ class PropertyAccountabilityIndexRequest extends FormRequest
     {
         return [
             'search' => ['nullable', 'string', 'max:100'],
-            'status' => ['nullable', Rule::in(['pending_recipient', 'active', 'superseded', 'returned', 'cancelled'])],
+            'status' => ['nullable', Rule::in(['pending_recipient', 'active', 'superseded', 'returned', 'cancelled', 'expired', 'relieved', 'transferred_out'])],
             'document_type' => ['nullable', Rule::in(['PAR', 'ICS'])],
             'queue' => ['nullable', Rule::in(['needs_action', 'completed'])],
         ];

@@ -8,6 +8,17 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateInventoryAssetAccountingRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $asset = $this->route('asset');
+
+        if ($asset instanceof InventoryAsset && ! $this->exists('depreciation_useful_life_months')) {
+            $this->merge([
+                'depreciation_useful_life_months' => $asset->depreciation_useful_life_months,
+            ]);
+        }
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -34,8 +45,9 @@ class UpdateInventoryAssetAccountingRequest extends FormRequest
                 'date',
                 'after_or_equal:'.$acquisitionDate,
             ],
-            'residual_value_percentage' => ['required', 'numeric', 'min:5', 'max:99.99'],
+            'residual_value_percentage' => ['required', 'numeric', 'min:0', 'max:99.99'],
             'residual_value_basis' => ['required', 'string', 'max:1000'],
+            'depreciation_useful_life_months' => ['required', 'integer', 'min:1', 'max:1200'],
         ];
     }
 }

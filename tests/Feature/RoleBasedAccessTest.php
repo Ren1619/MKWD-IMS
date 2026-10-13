@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\HrisReference;
 use App\Models\InventoryAsset;
 use App\Models\InventoryItem;
 use App\Models\InventoryMajorCategory;
@@ -50,6 +51,13 @@ test('employees have read-only inventory access', function () {
     $this->actingAs($employee)->get(route('inventory.categories.index'))->assertOk();
     $this->actingAs($employee)->get(route('inventory.items.index'))->assertOk();
     $this->actingAs($employee)->get(route('inventory.assets.index'))->assertOk();
+    $this->actingAs($employee)->get(route('inventory.semi_expendable.index'))->assertOk();
+    $this->actingAs($employee)->get(route('inventory.accountability.index'))->assertForbidden();
+    $this->actingAs($employee)->get(route('inventory.reports.index'))->assertForbidden();
+
+    $this->actingAs($employee)
+        ->post(route('inventory.semi_expendable.store'))
+        ->assertForbidden();
 
     $this->actingAs($employee)
         ->post(route('inventory.categories.store'), [
@@ -76,6 +84,67 @@ test('employees have read-only inventory access', function () {
             'condition_status' => 'fair',
         ])
         ->assertForbidden();
+});
+
+test('employees see only PPE and semi-expendable property assigned to them', function () {
+    $employeeReference = HrisReference::factory()->create();
+    $otherReference = HrisReference::factory()->create();
+    $employee = User::factory()->employee()->create([
+        'hris_reference_id' => $employeeReference->id,
+    ]);
+    $assignedPpe = InventoryAsset::factory()->create([
+        'acquisition_cost' => 50000,
+        'current_custodian_reference_id' => $employeeReference->id,
+    ]);
+    $otherPpe = InventoryAsset::factory()->create([
+        'acquisition_cost' => 50000,
+        'current_custodian_reference_id' => $otherReference->id,
+    ]);
+    $assignedSemiExpendable = InventoryAsset::factory()->create([
+        'acquisition_cost' => 49999.99,
+        'current_custodian_reference_id' => $employeeReference->id,
+    ]);
+    $otherSemiExpendable = InventoryAsset::factory()->create([
+        'acquisition_cost' => 49999.99,
+        'current_custodian_reference_id' => $otherReference->id,
+    ]);
+
+    $this->actingAs($employee)->get(route('inventory.assets.index'))->assertInertia(fn ($page) => $page
+        ->has('assets.data', 1)
+        ->where('assets.data.0.inventory_asset_id', $assignedPpe->inventory_asset_id));
+    $this->get(route('inventory.semi_expendable.index'))->assertInertia(fn ($page) => $page
+        ->has('assets.data', 1)
+        ->where('assets.data.0.inventory_asset_id', $assignedSemiExpendable->inventory_asset_id)
+        ->where('registrySummary.total', 1)
+        ->where('registrySummary.acquisition_cost', 49999.99));
+
+    expect([$otherPpe->inventory_asset_id, $otherSemiExpendable->inventory_asset_id])
+        ->not->toContain($assignedPpe->inventory_asset_id, $assignedSemiExpendable->inventory_asset_id);
+});
+
+test('property governance access is limited to designated HRIS positions and inventory leadership', function (string $position, bool $allowed) {
+    $reference = HrisReference::factory()->create([
+        'metadata' => ['position' => ['name' => $position]],
+    ]);
+    $user = User::factory()->employee()->create(['hris_reference_id' => $reference->id]);
+
+    $this->actingAs($user)->get(route('inventory.accountability.index'))
+        ->when($allowed, fn ($response) => $response->assertOk(), fn ($response) => $response->assertForbidden());
+    $this->get(route('inventory.reports.index'))
+        ->when($allowed, fn ($response) => $response->assertOk(), fn ($response) => $response->assertForbidden());
+})->with([
+    'PPE chairman' => ['PPE Chairman', true],
+    'supply division manager' => ['Supply Division Manager', true],
+    'HR department manager' => ['HR Department Manager', true],
+    'existing HR manager title' => ['HR Manager', true],
+    'unrelated employee' => ['Systems Analyst', false],
+]);
+
+test('inventory leaders retain property governance access', function () {
+    foreach ([User::factory()->inventoryManager()->create(), User::factory()->superAdmin()->create()] as $user) {
+        $this->actingAs($user)->get(route('inventory.accountability.index'))->assertOk();
+        $this->get(route('inventory.reports.index'))->assertOk();
+    }
 });
 
 test('inventory managers can modify inventory but cannot administer users', function () {

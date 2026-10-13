@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/** @property array<string, mixed>|null $metadata */
 #[Fillable(['procurement_request_id', 'actor_user_id', 'action', 'from_status', 'to_status', 'remarks', 'attestation', 'metadata'])]
 class ProcurementRequestAction extends Model
 {

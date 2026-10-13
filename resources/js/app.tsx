@@ -10,6 +10,12 @@ import SettingsLayout from '@/layouts/settings/layout';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
+declare global {
+    interface Window {
+        __mkwdInertiaStarted?: boolean;
+    }
+}
+
 function AppProviders({ children }: { children: ReactNode }) {
     useFlashToast();
 
@@ -21,28 +27,34 @@ function AppProviders({ children }: { children: ReactNode }) {
     );
 }
 
-createInertiaApp({
-    title: (title) => (title ? `${title} - ${appName}` : appName),
-    layout: (name) => {
-        switch (true) {
-            case name === 'welcome':
-                return null;
-            case name.startsWith('auth/'):
-                return AuthLayout;
-            case name.startsWith('settings/'):
-                return [AppLayout, SettingsLayout];
-            default:
-                return AppLayout;
-        }
-    },
-    strictMode: true,
-    withApp(app) {
-        return <AppProviders>{app}</AppProviders>;
-    },
-    progress: {
-        color: '#4B5563',
-    },
-});
+if (typeof window === 'undefined' || !window.__mkwdInertiaStarted) {
+    if (typeof window !== 'undefined') {
+        window.__mkwdInertiaStarted = true;
+    }
+
+    void createInertiaApp({
+        title: (title) => (title ? `${title} - ${appName}` : appName),
+        layout: (name) => {
+            switch (true) {
+                case name === 'welcome':
+                    return null;
+                case name.startsWith('auth/'):
+                    return AuthLayout;
+                case name.startsWith('settings/'):
+                    return [AppLayout, SettingsLayout];
+                default:
+                    return AppLayout;
+            }
+        },
+        strictMode: true,
+        withApp(app) {
+            return <AppProviders>{app}</AppProviders>;
+        },
+        progress: {
+            color: '#4B5563',
+        },
+    });
+}
 
 // This will set light / dark mode on load...
 initializeTheme();

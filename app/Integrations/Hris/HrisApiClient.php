@@ -20,13 +20,16 @@ class HrisApiClient implements HrisReferenceSource
      */
     public function references(): array
     {
-        return $this->fetch(config('services.hris.employees_path'));
+        return [
+            ...$this->fetchEmployees(config('services.hris.employees_path')),
+            ...$this->fetchReferenceData(config('services.hris.reference_data_path')),
+        ];
     }
 
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function fetch(?string $path): array
+    private function fetchEmployees(?string $path): array
     {
         if (! is_string($path) || $path === '') {
             throw new LogicException('The HRIS API paths are not configured.');
@@ -58,7 +61,7 @@ class HrisApiClient implements HrisReferenceSource
                     throw new LogicException('Every HRIS employee must be an object.');
                 }
 
-                $references[] = $this->normalize($record);
+                $references[] = $this->normalizeEmployee($record);
             }
 
             $cursor = $payload['meta']['next_cursor'];
@@ -71,6 +74,48 @@ class HrisApiClient implements HrisReferenceSource
                 $seenCursors[] = $cursor;
             }
         } while ($cursor !== null);
+
+        return $references;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchReferenceData(?string $path): array
+    {
+        if (! is_string($path) || $path === '') {
+            throw new LogicException('The HRIS reference data API path is not configured.');
+        }
+
+        $payload = $this->request()->get($path)->throw()->json();
+
+        if (! is_array($payload) || ! isset($payload['data']) || ! is_array($payload['data'])) {
+            throw new LogicException('The HRIS reference data response must contain a data object.');
+        }
+
+        $references = [];
+        $collections = [
+            'departments' => [HrisReference::TYPE_DEPARTMENT, null],
+            'divisions' => [HrisReference::TYPE_DIVISION, 'department_id'],
+            'units' => [HrisReference::TYPE_UNIT, 'division_id'],
+            'roles' => [HrisReference::TYPE_ROLE, null],
+        ];
+
+        foreach ($collections as $key => [$type, $parentKey]) {
+            $records = $payload['data'][$key] ?? null;
+
+            if (! is_array($records) || ! array_is_list($records)) {
+                throw new LogicException("The HRIS reference data response must contain a {$key} array.");
+            }
+
+            foreach ($records as $record) {
+                if (! is_array($record)) {
+                    throw new LogicException("Every HRIS {$type} reference must be an object.");
+                }
+
+                $references[] = $this->normalizeReference($record, $type, $parentKey);
+            }
+        }
 
         return $references;
     }
@@ -105,7 +150,7 @@ class HrisApiClient implements HrisReferenceSource
      * @param  array<string, mixed>  $record
      * @return array<string, mixed>
      */
-    private function normalize(array $record): array
+    private function normalizeEmployee(array $record): array
     {
         $employeeId = $record['employee_id'] ?? null;
 
@@ -148,6 +193,53 @@ class HrisApiClient implements HrisReferenceSource
                 'division',
                 'section',
             ]),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     * @return array<string, mixed>
+     */
+    private function normalizeReference(array $record, string $type, ?string $parentKey): array
+    {
+        $externalId = $record['id'] ?? null;
+        $name = $record['name'] ?? null;
+
+        if ((! is_string($externalId) && ! is_int($externalId)) || trim((string) $externalId) === '') {
+            throw new LogicException("Every HRIS {$type} reference requires an id.");
+        }
+
+        if (! is_string($name) || trim($name) === '') {
+            throw new LogicException("Every HRIS {$type} reference requires a name.");
+        }
+
+        $parentExternalId = null;
+
+        if ($parentKey !== null) {
+            $parentExternalId = $record[$parentKey] ?? null;
+
+            if ((! is_string($parentExternalId) && ! is_int($parentExternalId))
+                || trim((string) $parentExternalId) === '') {
+                throw new LogicException("Every HRIS {$type} reference requires a {$parentKey}.");
+            }
+        }
+
+        $code = $type === HrisReference::TYPE_ROLE ? $name : ($record['acronym'] ?? null);
+
+        if ($code !== null && ! is_string($code)) {
+            throw new LogicException("The HRIS {$type} reference acronym must be a string or null.");
+        }
+
+        return [
+            'external_id' => (string) $externalId,
+            'type' => $type,
+            'code' => $code,
+            'name' => trim($name),
+            'email' => null,
+            'parent_external_id' => $parentExternalId === null ? null : (string) $parentExternalId,
+            'is_active' => true,
+            'source_updated_at' => null,
+            'metadata' => $record,
         ];
     }
 }

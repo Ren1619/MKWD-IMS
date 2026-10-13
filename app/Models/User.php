@@ -28,7 +28,11 @@ use Laravel\Sanctum\HasApiTokens;
  * @property string|null $remember_token
  * @property UserRole $role
  * @property bool $is_active
+ * @property bool $local_fallback_enabled
  * @property Carbon|null $last_login_at
+ * @property Carbon|null $last_hris_authenticated_at
+ * @property Carbon|null $fallback_valid_until
+ * @property Carbon|null $last_fallback_authenticated_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -38,6 +42,10 @@ class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable, TwoFactorAuthenticatable;
+
+    protected $attributes = [
+        'local_fallback_enabled' => true,
+    ];
 
     /**
      * Get the attributes that should be cast.
@@ -52,7 +60,11 @@ class User extends Authenticatable
             'two_factor_confirmed_at' => 'datetime',
             'role' => UserRole::class,
             'is_active' => 'boolean',
+            'local_fallback_enabled' => 'boolean',
             'last_login_at' => 'datetime',
+            'last_hris_authenticated_at' => 'datetime',
+            'fallback_valid_until' => 'datetime',
+            'last_fallback_authenticated_at' => 'datetime',
         ];
     }
 
@@ -64,6 +76,31 @@ class User extends Authenticatable
     public function canManageInventory(): bool
     {
         return $this->role->canManageInventory();
+    }
+
+    public function canViewPropertyGovernance(): bool
+    {
+        if ($this->canManageInventory()) {
+            return true;
+        }
+
+        $positionName = data_get($this->employee?->metadata, 'position.name');
+        if (! is_string($positionName)) {
+            return false;
+        }
+
+        foreach (config('inventory.property_access.oversight_positions', []) as $position) {
+            if (is_string($position) && strcasecmp($positionName, $position) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function canViewAllPropertyAssets(): bool
+    {
+        return $this->canViewPropertyGovernance();
     }
 
     /** @return BelongsTo<HrisReference, $this> */

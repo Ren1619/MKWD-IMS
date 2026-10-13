@@ -4,6 +4,7 @@ use App\Models\HrisReference;
 use App\Models\InventoryAsset;
 use App\Models\PropertyAccountabilityDocument;
 use App\Models\User;
+use App\Services\InventoryPropertyTransferService;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('the accountability register filters by document type and current custody queue', function () {
@@ -35,7 +36,7 @@ test('the accountability register filters by document type and current custody q
             ->where('filters.document_type', 'PAR'));
 });
 
-test('assigning property issues the correct frozen PAR and the recipient can acknowledge it', function () {
+test('assigning property issues the correct frozen PAR and requires a governance user to acknowledge it', function () {
     $manager = User::factory()->inventoryManager()->create();
     $recipientReference = HrisReference::factory()->create([
         'code' => 'EMP-1001',
@@ -73,12 +74,20 @@ test('assigning property issues the correct frozen PAR and the recipient can ack
             'action' => 'acknowledge',
             'attested' => true,
         ])
+        ->assertForbidden();
+
+    $this->actingAs($manager)
+        ->patch(route('inventory.accountability.transition', $document), [
+            'action' => 'witnessed_acknowledge',
+            'attested' => true,
+            'remarks' => 'Recipient signed the printed form in the presence of the property officer.',
+        ])
         ->assertSessionHasNoErrors();
 
     expect($document->fresh()->status)->toBe('active')
         ->and($document->fresh()->asset_name)->toBe('Engineering Workstation')
-        ->and($document->fresh()->acknowledged_by_user_id)->toBe($recipient->id)
-        ->and($document->actions()->where('action', 'acknowledge')->exists())->toBeTrue();
+        ->and($document->fresh()->acknowledged_by_user_id)->toBe($manager->id)
+        ->and($document->actions()->where('action', 'record_witnessed_acknowledgment')->exists())->toBeTrue();
 
     $this->get(route('inventory.accountability.print', $document))
         ->assertOk()
@@ -86,7 +95,7 @@ test('assigning property issues the correct frozen PAR and the recipient can ack
         ->assertSee('Engineering Workstation');
 });
 
-test('lower valued durable property uses an ICS and the employee sees only their documents', function () {
+test('lower valued durable property uses an ICS and normal employees cannot access accountability documents', function () {
     $manager = User::factory()->inventoryManager()->create();
     $firstReference = HrisReference::factory()->create();
     $secondReference = HrisReference::factory()->create();
@@ -117,12 +126,7 @@ test('lower valued durable property uses an ICS and the employee sees only their
 
     $this->actingAs($employee)
         ->get(route('inventory.accountability.index'))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('Inventory/Accountability/Index')
-            ->has('documents.data', 1)
-            ->where('documents.data.0.document_no', $firstDocument->document_no)
-            ->where('canManage', false));
+        ->assertForbidden();
 });
 
 test('custody transfer supersedes and links the prior document', function () {
@@ -136,9 +140,19 @@ test('custody transfer supersedes and links the prior document', function () {
     ]);
     $priorDocument = PropertyAccountabilityDocument::query()->sole();
 
-    $this->post(route('inventory.assets.assign', $asset), [
-        'hris_reference_id' => $secondReference->id,
-    ])->assertSessionHasNoErrors();
+    $workflow = app(InventoryPropertyTransferService::class);
+    $transfer = $workflow->create([
+        'inventory_asset_id' => $asset->getKey(), 'recipient_reference_id' => $secondReference->id,
+        'transfer_type' => 'reassignment', 'reason' => 'Successor appointed.',
+        'destination_location' => 'New office', 'desired_date' => today()->toDateString(),
+    ], $manager);
+    $workflow->transition($transfer, ['action' => 'verify', 'attestation' => 'Property checked.', 'inspection_reference' => 'INSPECT'], User::factory()->inventoryManager()->create());
+    $workflow->transition($transfer, ['action' => 'approve', 'attestation' => 'Transfer approved.'], User::factory()->inventoryManager()->create());
+    $workflow->transition($transfer, [
+        'action' => 'complete', 'attestation' => 'Joint handover witnessed.',
+        'inspection_reference' => 'JOINT', 'condition_status' => 'good',
+        'handover_date' => today()->toDateString(), 'release_reference' => 'SIGNED-RELEASE', 'receipt_reference' => 'SIGNED-RECEIPT',
+    ], $manager);
 
     $replacement = PropertyAccountabilityDocument::query()
         ->whereKeyNot($priorDocument->getKey())
@@ -210,7 +224,7 @@ test('another employee cannot acknowledge and managers must document witnessed a
             'action' => 'acknowledge',
             'attested' => true,
         ])
-        ->assertSessionHasErrors('action');
+        ->assertForbidden();
 
     $this->actingAs($manager)
         ->patch(route('inventory.accountability.transition', $document), [

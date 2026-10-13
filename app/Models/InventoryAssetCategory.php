@@ -10,7 +10,17 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['code', 'name', 'description', 'is_active', 'is_vehicle'])]
+#[Fillable([
+    'code',
+    'name',
+    'description',
+    'account_code',
+    'default_useful_life_months',
+    'default_residual_value_percentage',
+    'is_depreciable',
+    'is_active',
+    'is_vehicle',
+])]
 class InventoryAssetCategory extends Model
 {
     /** @use HasFactory<InventoryAssetCategoryFactory> */
@@ -23,6 +33,9 @@ class InventoryAssetCategory extends Model
     protected $attributes = [
         'is_active' => true,
         'is_vehicle' => false,
+        'is_depreciable' => true,
+        'default_useful_life_months' => 60,
+        'default_residual_value_percentage' => 5,
     ];
 
     protected function casts(): array
@@ -30,6 +43,9 @@ class InventoryAssetCategory extends Model
         return [
             'is_active' => 'boolean',
             'is_vehicle' => 'boolean',
+            'is_depreciable' => 'boolean',
+            'default_useful_life_months' => 'integer',
+            'default_residual_value_percentage' => 'decimal:2',
         ];
     }
 

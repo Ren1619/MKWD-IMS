@@ -22,6 +22,7 @@ export type Auth = {
         manage_users: boolean;
         manage_integrations: boolean;
         view_audit_logs: boolean;
+        view_property_governance: boolean;
     };
 };
 

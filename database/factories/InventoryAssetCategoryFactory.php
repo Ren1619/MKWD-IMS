@@ -22,6 +22,9 @@ class InventoryAssetCategoryFactory extends Factory
             'name' => fake()->unique()->words(2, true),
             'description' => fake()->optional()->sentence(),
             'is_vehicle' => false,
+            'is_depreciable' => true,
+            'default_useful_life_months' => 60,
+            'default_residual_value_percentage' => 5,
         ];
     }
 }

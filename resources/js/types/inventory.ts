@@ -7,6 +7,11 @@ export type HrisReference = {
     email?: string | null;
     is_active?: boolean;
     last_synced_at?: string;
+    first_name?: string | null;
+    middle_name?: string | null;
+    last_name?: string | null;
+    name_extension?: string | null;
+    office_name?: string | null;
 };
 
 export type PaginationLink = {
@@ -97,6 +102,7 @@ export type InventoryItemStockOut = {
 };
 
 export type InventoryItem = {
+    issuable_quantity: number;
     inventory_item_id: number;
     series_category_id: number;
     accountable_reference_id: number | null;
@@ -138,6 +144,10 @@ export type AssetCategory = {
     description?: string | null;
     is_active: boolean;
     is_vehicle: boolean;
+    account_code: string | null;
+    default_useful_life_months: number;
+    default_residual_value_percentage: string;
+    is_depreciable: boolean;
     assets_count?: number;
     subcategories_count?: number;
     subcategories?: AssetSubcategory[];
@@ -154,15 +164,77 @@ export type AssetSubcategory = {
 };
 
 export type AssetLifecycleStatus =
-    'active' | 'under_maintenance' | 'retired' | 'disposed' | 'lost';
+    | 'active'
+    | 'idle'
+    | 'under_maintenance'
+    | 'retired'
+    | 'for_disposal'
+    | 'disposed'
+    | 'lost'
+    | 'transferred_out';
 
 export type AssetConditionStatus =
     'good' | 'fair' | 'needs_repair' | 'defective' | 'non_usable' | 'unknown';
 
-export type AssetCustodyStatus = 'available' | 'assigned' | 'borrowed';
+export type AssetCustodyStatus =
+    'available' | 'assigned' | 'borrowed' | 'transferred_out';
 
 export type AssetAccountingClassification =
     'ppe' | 'semi_expendable' | 'needs_review';
+
+export type AssetAccountingStatus =
+    | 'recognized'
+    | 'derecognized'
+    | 'on_hand'
+    | 'issued_and_expensed'
+    | 'disposed'
+    | 'adjusted';
+
+export type InventoryAssetEventType =
+    | 'registered'
+    | 'accepted'
+    | 'capital_addition'
+    | 'transfer'
+    | 'maintenance'
+    | 'impairment'
+    | 'impairment_reversal'
+    | 'physical_count'
+    | 'loss'
+    | 'unserviceable'
+    | 'disposal'
+    | 'derecognition'
+    | 'assignment'
+    | 'return'
+    | 'borrowed'
+    | 'borrowing_return'
+    | 'state_changed'
+    | 'accounting_policy_changed'
+    | 'receipt'
+    | 'issuance'
+    | 'ics_created'
+    | 'ics_renewed'
+    | 'reissue'
+    | 'accountability_expired'
+    | 'accountability_extinguished'
+    | 'relief_requested'
+    | 'relief_approved'
+    | 'relief_denied';
+
+export type InventoryAssetEvent = {
+    id: number;
+    event_type: InventoryAssetEventType;
+    event_date: string;
+    reference_no: string | null;
+    amount: string | null;
+    quantity: number | null;
+    from_location: string | null;
+    to_location: string | null;
+    condition_status: AssetConditionStatus | null;
+    notes: string | null;
+    details: Record<string, unknown> | null;
+    created_at: string;
+    recorded_by: { id: number; name: string } | null;
+};
 
 export type AssetStateOption = {
     value: string;
@@ -179,8 +251,10 @@ export type InventoryAsset = {
     category_id: number;
     subcategory_id: number | null;
     current_custodian_reference_id: number | null;
-    serial_number: string;
+    serial_number: string | null;
     property_number: string | null;
+    old_property_number: string | null;
+    account_code: string | null;
     property_tag_uuid: string;
     name: string;
     unit_of_measure: string;
@@ -188,21 +262,42 @@ export type InventoryAsset = {
     quantity_per_property_card: number;
     quantity_per_physical_count: number;
     brand: string | null;
+    manufacturer: string | null;
     model: string | null;
     description: string | null;
+    specifications: string | null;
     location: string | null;
     nature_of_occupancy: string | null;
     acquisition_date: string;
+    acquisition_method: string | null;
+    supplier_name: string | null;
+    purchase_order_no: string | null;
+    inspection_acceptance_report_no: string | null;
+    invoice_no: string | null;
+    disbursement_voucher_no: string | null;
+    delivery_date: string | null;
+    inspection_date: string | null;
+    acceptance_date: string | null;
     available_for_use_date: string | null;
     acquisition_cost: string | null;
+    directly_attributable_costs: string;
     accounting_classification: AssetAccountingClassification;
+    accounting_policy_version: string | null;
+    capitalization_threshold_applied: string | null;
+    depreciation_method: string | null;
+    depreciation_start_rule: string | null;
+    accounting_status: AssetAccountingStatus;
+    derecognized_at: string | null;
     residual_value_percentage: string | null;
     residual_value_basis: string | null;
     depreciation_useful_life_months: number;
     depreciation_amount: number;
+    gross_carrying_amount: number;
+    monthly_depreciation: number;
     residual_value: number;
     book_value: number;
     is_depreciable: boolean;
+    is_fully_depreciated: boolean;
     appraised_value: string | null;
     appraisal_date: string | null;
     impairment_losses: string;
@@ -215,6 +310,31 @@ export type InventoryAsset = {
     loss_circumstances: string | null;
     lifecycle_status: AssetLifecycleStatus;
     condition_status: AssetConditionStatus;
+    semi_expendable_value_class: 'low' | 'high' | null;
+    physical_status:
+        | 'in_property_custody'
+        | 'issued'
+        | 'returned'
+        | 'transferred'
+        | 'for_disposal'
+        | 'disposed'
+        | 'missing'
+        | null;
+    accountability_status:
+        | 'unassigned'
+        | 'pending_recipient'
+        | 'accountable'
+        | 'returned'
+        | 'accountability_extinguished'
+        | 'pending_relief'
+        | 'relieved'
+        | 'transferred_out'
+        | null;
+    accountability_expires_at: string | null;
+    useful_life_effective_date: string | null;
+    relief_status: 'none' | 'pending' | 'approved' | 'denied' | null;
+    incident_reported_at: string | null;
+    available_for_reissue: boolean;
     custody_status: AssetCustodyStatus;
     is_assignable: boolean;
     is_borrowable: boolean;
@@ -230,6 +350,15 @@ export type InventoryAsset = {
         borrowed_at: string;
         due_at: string | null;
         borrower_reference: HrisReference | null;
+    } | null;
+    events: InventoryAssetEvent[];
+    latest_ics_document: {
+        id: number;
+        document_no: string;
+        status: string;
+        issued_at: string;
+        renewal_due_at: string | null;
+        accountability_expires_at: string | null;
     } | null;
 };
 

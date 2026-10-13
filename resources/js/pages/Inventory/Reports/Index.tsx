@@ -30,6 +30,8 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
+import { FormSelect } from '@/components/ui/form-select';
 import { Input } from '@/components/ui/input';
 import { useFilterSubmit } from '@/hooks/use-filter-submit';
 import { dashboard } from '@/routes';
@@ -89,7 +91,7 @@ function FilterSelect({
     value: string;
     emptyLabel: string;
     options: AssetStateOption[];
-    onChange: ChangeEventHandler<HTMLSelectElement>;
+    onChange: ChangeEventHandler<HTMLInputElement>;
     error?: string;
 }) {
     return (
@@ -97,7 +99,7 @@ function FilterSelect({
             <label htmlFor={id} className="text-sm font-medium">
                 {label}
             </label>
-            <select
+            <FormSelect
                 id={id}
                 name={name}
                 defaultValue={value}
@@ -110,7 +112,7 @@ function FilterSelect({
                         {option.label}
                     </option>
                 ))}
-            </select>
+            </FormSelect>
             <InputError message={error} />
         </div>
     );
@@ -479,14 +481,13 @@ export default function ReportsIndex({
                                 >
                                     Physical count as of
                                 </label>
-                                <Input
+                                <DatePicker
                                     id="coa-as-of"
-                                    type="date"
                                     value={printFilters.as_of}
-                                    onChange={(event) =>
+                                    onChange={(value) =>
                                         setPrintFilters((current) => ({
                                             ...current,
-                                            as_of: event.target.value,
+                                            as_of: value,
                                         }))
                                     }
                                 />
@@ -498,7 +499,7 @@ export default function ReportsIndex({
                                 >
                                     Report period
                                 </label>
-                                <select
+                                <FormSelect
                                     id="coa-from"
                                     value={printFilters.period}
                                     className={selectClass}
@@ -523,7 +524,7 @@ export default function ReportsIndex({
                                     <option value="custom">
                                         Custom date range
                                     </option>
-                                </select>
+                                </FormSelect>
                             </div>
                             <div className="grid gap-1.5">
                                 <label
@@ -578,14 +579,13 @@ export default function ReportsIndex({
                                         >
                                             Custom from
                                         </label>
-                                        <Input
+                                        <DatePicker
                                             id="coa-custom-from"
-                                            type="date"
                                             value={printFilters.from}
-                                            onChange={(event) =>
+                                            onChange={(value) =>
                                                 setPrintFilters((current) => ({
                                                     ...current,
-                                                    from: event.target.value,
+                                                    from: value,
                                                 }))
                                             }
                                         />
@@ -597,14 +597,13 @@ export default function ReportsIndex({
                                         >
                                             Custom to
                                         </label>
-                                        <Input
+                                        <DatePicker
                                             id="coa-custom-to"
-                                            type="date"
                                             value={printFilters.to}
-                                            onChange={(event) =>
+                                            onChange={(value) =>
                                                 setPrintFilters((current) => ({
                                                     ...current,
-                                                    to: event.target.value,
+                                                    to: value,
                                                 }))
                                             }
                                         />
@@ -716,13 +715,17 @@ export default function ReportsIndex({
                             </CardDescription>
                         </div>
                         <div
-                            className="flex w-full rounded-lg bg-muted p-1 sm:w-auto"
+                            className="flex w-full gap-1 rounded-lg border bg-muted/70 p-1 sm:w-auto"
                             role="group"
                             aria-label="Report register"
                         >
                             <Button
-                                className="flex-1 sm:flex-none"
-                                variant={showingAssets ? 'ghost' : 'secondary'}
+                                className={
+                                    showingAssets
+                                        ? 'flex-1 text-muted-foreground sm:flex-none'
+                                        : 'flex-1 shadow-sm ring-1 ring-primary/30 sm:flex-none'
+                                }
+                                variant={showingAssets ? 'ghost' : 'default'}
                                 nativeButton={false}
                                 render={
                                     <Link
@@ -739,8 +742,12 @@ export default function ReportsIndex({
                                 <Boxes /> Consumables
                             </Button>
                             <Button
-                                className="flex-1 sm:flex-none"
-                                variant={showingAssets ? 'secondary' : 'ghost'}
+                                className={
+                                    showingAssets
+                                        ? 'flex-1 shadow-sm ring-1 ring-primary/30 sm:flex-none'
+                                        : 'flex-1 text-muted-foreground sm:flex-none'
+                                }
+                                variant={showingAssets ? 'default' : 'ghost'}
                                 nativeButton={false}
                                 render={
                                     <Link
@@ -838,7 +845,7 @@ export default function ReportsIndex({
                                                 >
                                                     Status
                                                 </label>
-                                                <select
+                                                <FormSelect
                                                     id="report-item-status"
                                                     name="item_status"
                                                     defaultValue={
@@ -856,7 +863,7 @@ export default function ReportsIndex({
                                                     <option value="inactive">
                                                         Inactive
                                                     </option>
-                                                </select>
+                                                </FormSelect>
                                                 <InputError
                                                     message={errors.item_status}
                                                 />
@@ -868,7 +875,7 @@ export default function ReportsIndex({
                                                 >
                                                     Attention
                                                 </label>
-                                                <select
+                                                <FormSelect
                                                     id="report-attention"
                                                     name="attention"
                                                     defaultValue={
@@ -889,7 +896,7 @@ export default function ReportsIndex({
                                                     <option value="expired">
                                                         Expired stock
                                                     </option>
-                                                </select>
+                                                </FormSelect>
                                                 <InputError
                                                     message={errors.attention}
                                                 />
@@ -904,7 +911,7 @@ export default function ReportsIndex({
                                         >
                                             Records
                                         </label>
-                                        <select
+                                        <FormSelect
                                             id="report-records"
                                             name="records"
                                             defaultValue={filters.records}
@@ -917,7 +924,7 @@ export default function ReportsIndex({
                                             <option value="archived">
                                                 Archived records
                                             </option>
-                                        </select>
+                                        </FormSelect>
                                         <InputError message={errors.records} />
                                     </div>
                                     <Button

@@ -58,7 +58,17 @@ class InventoryItem extends Model
         ];
     }
 
-    protected $appends = ['inventory_value', 'next_expiration_date', 'is_low_stock', 'expiration_status'];
+    protected $appends = ['inventory_value', 'next_expiration_date', 'is_low_stock', 'expiration_status', 'issuable_quantity'];
+
+    public function getIssuableQuantityAttribute(): int
+    {
+        $today = now('Asia/Manila')->toDateString();
+        if ($this->relationLoaded('batches') && $this->batches->every(fn (InventoryItemBatch $batch): bool => array_key_exists('received_at', $batch->getAttributes()) && array_key_exists('expiration_date', $batch->getAttributes()))) {
+            return (int) $this->batches->filter(fn (InventoryItemBatch $batch): bool => $batch->canIssueOn($today))->sum('quantity_remaining');
+        }
+
+        return (int) $this->batches()->eligibleForIssue($today)->sum('quantity_remaining');
+    }
 
     public function getIsLowStockAttribute(): bool
     {

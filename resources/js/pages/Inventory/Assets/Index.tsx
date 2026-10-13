@@ -1,9 +1,9 @@
-import { Form, Head, router } from '@inertiajs/react';
+import { Form, Head, Link, router } from '@inertiajs/react';
 import {
     Archive,
     Calculator,
     EllipsisVertical,
-    Handshake,
+    History,
     Plus,
     QrCode,
     RotateCcw,
@@ -15,6 +15,7 @@ import { useState } from 'react';
 import { ArchiveRecordDialog } from '@/components/archive-record-dialog';
 import { AssetDetailsDialog } from '@/components/asset-details-dialog';
 import { DataPagination } from '@/components/data-pagination';
+import { HrisReferenceCombobox } from '@/components/hris-reference-combobox';
 import InputError from '@/components/input-error';
 import {
     Table,
@@ -33,6 +34,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
     Dialog,
     DialogContent,
@@ -50,8 +52,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { FormSelect } from '@/components/ui/form-select';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Tooltip,
     TooltipContent,
@@ -59,9 +61,9 @@ import {
 } from '@/components/ui/tooltip';
 import { useAppPage } from '@/hooks/use-app-page';
 import { useFilterSubmit } from '@/hooks/use-filter-submit';
+import { index as transfersIndex } from '@/routes/inventory/transfers';
 import {
     assign,
-    borrow,
     destroy,
     index,
     restore,
@@ -72,8 +74,15 @@ import {
     update_state,
     update_accounting,
 } from '@/routes/inventory/assets';
+import { store as storeAssetEvent } from '@/routes/inventory/assets/events';
+import {
+    index as semiExpendableIndex,
+    store as storeSemiExpendable,
+} from '@/routes/inventory/semi_expendable';
+import { store as storeSemiExpendableEvent } from '@/routes/inventory/semi_expendable/events';
 import type {
     AssetCategory,
+    AssetStateOption,
     AssetStateOptions,
     HrisReference,
     InventoryAsset,
@@ -83,17 +92,11 @@ import type {
 const selectClass =
     'border-input bg-background h-9 w-full rounded-md border px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
-const registryTabs = [
-    { value: 'all', label: 'All durable property' },
-    { value: 'ppe', label: 'PPE' },
-    { value: 'semi_expendable', label: 'Semi-expendable' },
-    { value: 'needs_review', label: 'Needs review' },
-] as const;
-
-type RegistryTab = (typeof registryTabs)[number]['value'];
-
-function isRegistryTab(value: unknown): value is RegistryTab {
-    return registryTabs.some((tab) => tab.value === value);
+function formatPhilippinePeso(value: number): string {
+    return `PHP ${value.toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
 }
 
 function isInteractiveRowTarget(target: EventTarget | null): boolean {
@@ -142,22 +145,29 @@ function AssetStateDialog({
                                 >
                                     Lifecycle
                                 </label>
-                                <select
+                                <FormSelect
                                     id={`lifecycle-${asset.inventory_asset_id}`}
                                     name="lifecycle_status"
                                     className={selectClass}
                                     defaultValue={asset.lifecycle_status}
                                     required
                                 >
-                                    {options.lifecycles.map((option) => (
-                                        <option
-                                            key={option.value}
-                                            value={option.value}
-                                        >
-                                            {option.label}
-                                        </option>
-                                    ))}
-                                </select>
+                                    {options.lifecycles
+                                        .filter(
+                                            (option) =>
+                                                !['disposed', 'lost'].includes(
+                                                    option.value,
+                                                ),
+                                        )
+                                        .map((option) => (
+                                            <option
+                                                key={option.value}
+                                                value={option.value}
+                                            >
+                                                {option.label}
+                                            </option>
+                                        ))}
+                                </FormSelect>
                                 <InputError message={errors.lifecycle_status} />
                             </div>
                             <div>
@@ -167,7 +177,7 @@ function AssetStateDialog({
                                 >
                                     Physical condition
                                 </label>
-                                <select
+                                <FormSelect
                                     id={`condition-${asset.inventory_asset_id}`}
                                     name="condition_status"
                                     className={selectClass}
@@ -182,7 +192,7 @@ function AssetStateDialog({
                                             {option.label}
                                         </option>
                                     ))}
-                                </select>
+                                </FormSelect>
                                 <InputError message={errors.condition_status} />
                             </div>
                             <div className="rounded-lg border bg-muted/40 p-3 text-sm">
@@ -232,10 +242,9 @@ function AssetAccountingDialog({
                                 >
                                     Available-for-use date
                                 </label>
-                                <Input
+                                <DatePicker
                                     id={`accounting-available-${asset.inventory_asset_id}`}
                                     name="available_for_use_date"
-                                    type="date"
                                     defaultValue={
                                         asset.available_for_use_date?.slice(
                                             0,
@@ -259,7 +268,7 @@ function AssetAccountingDialog({
                                     id={`accounting-residual-${asset.inventory_asset_id}`}
                                     name="residual_value_percentage"
                                     type="number"
-                                    min="5"
+                                    min="0"
                                     max="99.99"
                                     step="0.01"
                                     defaultValue={
@@ -269,6 +278,30 @@ function AssetAccountingDialog({
                                 />
                                 <InputError
                                     message={errors.residual_value_percentage}
+                                />
+                            </div>
+                            <div>
+                                <label
+                                    htmlFor={`accounting-life-${asset.inventory_asset_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Useful life (months)
+                                </label>
+                                <Input
+                                    id={`accounting-life-${asset.inventory_asset_id}`}
+                                    name="depreciation_useful_life_months"
+                                    type="number"
+                                    min="1"
+                                    max="1200"
+                                    defaultValue={
+                                        asset.depreciation_useful_life_months
+                                    }
+                                    required
+                                />
+                                <InputError
+                                    message={
+                                        errors.depreciation_useful_life_months
+                                    }
                                 />
                             </div>
                             <div>
@@ -317,6 +350,33 @@ function CustodianDialog({
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }) {
+    if (asset.current_custodian_reference_id !== null) {
+        return (
+            <Dialog open={open} onOpenChange={onOpenChange}>
+                <DialogContent onClick={(event) => event.stopPropagation()}>
+                    <DialogHeader>
+                        <DialogTitle>Transfer accountability</DialogTitle>
+                        <DialogDescription>
+                            Prepare a PTR for {asset.name}. Custody changes
+                            after verification, approval, and recorded handover.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <Button
+                        nativeButton={false}
+                        render={
+                            <Link
+                                href={transfersIndex({
+                                    query: { asset: asset.inventory_asset_id },
+                                })}
+                            />
+                        }
+                    >
+                        Prepare property transfer
+                    </Button>
+                </DialogContent>
+            </Dialog>
+        );
+    }
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent onClick={(event) => event.stopPropagation()}>
@@ -336,32 +396,42 @@ function CustodianDialog({
                                 >
                                     Custodian
                                 </label>
-                                <select
+                                <HrisReferenceCombobox
                                     id={`custodian-${asset.inventory_asset_id}`}
                                     name="hris_reference_id"
-                                    className={selectClass}
-                                    defaultValue=""
+                                    references={employees}
                                     required
-                                >
-                                    <option value="" disabled>
-                                        Select employee
-                                    </option>
-                                    {employees.map((employee) => (
-                                        <option
-                                            key={employee.id}
-                                            value={employee.id}
-                                        >
-                                            {employee.name}
-                                            {employee.code
-                                                ? ` (${employee.code})`
-                                                : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                                    aria-invalid={Boolean(
+                                        errors.hris_reference_id,
+                                    )}
+                                />
                                 <InputError
                                     message={errors.hris_reference_id}
                                 />
                             </div>
+                            {asset.accounting_classification ===
+                                'semi_expendable' && (
+                                <div>
+                                    <label
+                                        htmlFor={`replacement-justification-${asset.inventory_asset_id}`}
+                                        className="mb-1.5 block text-sm font-medium"
+                                    >
+                                        Replacement justification (if needed)
+                                    </label>
+                                    <textarea
+                                        id={`replacement-justification-${asset.inventory_asset_id}`}
+                                        name="replacement_justification"
+                                        className={`${selectClass} min-h-20 py-2`}
+                                        placeholder="Required only when the employee already has an active low-valued item of the same type."
+                                        maxLength={2000}
+                                    />
+                                    <InputError
+                                        message={
+                                            errors.replacement_justification
+                                        }
+                                    />
+                                </div>
+                            )}
                             <Button type="submit" disabled={processing}>
                                 {processing ? 'Assigning…' : 'Assign custodian'}
                             </Button>
@@ -373,6 +443,7 @@ function CustodianDialog({
     );
 }
 
+/*
 function BorrowDialog({
     asset,
     employees,
@@ -396,7 +467,7 @@ function BorrowDialog({
                         {formatStateLabel(asset.condition_status)}
                     </DialogDescription>
                 </DialogHeader>
-                <Form action={borrow(asset)} className="grid gap-4">
+                <Form action={returnMethod(asset)} className="grid gap-4">
                     {({ errors, processing }) => (
                         <>
                             <div>
@@ -406,24 +477,15 @@ function BorrowDialog({
                                 >
                                     Borrower
                                 </label>
-                                <select
+                                <HrisReferenceCombobox
                                     id={`borrower-${asset.inventory_asset_id}`}
                                     name="borrower_reference_id"
-                                    className={selectClass}
-                                    defaultValue=""
-                                >
-                                    <option value="">
-                                        External/manual borrower
-                                    </option>
-                                    {employees.map((employee) => (
-                                        <option
-                                            key={employee.id}
-                                            value={employee.id}
-                                        >
-                                            {employee.name}
-                                        </option>
-                                    ))}
-                                </select>
+                                    references={employees}
+                                    placeholder="External/manual borrower"
+                                    aria-invalid={Boolean(
+                                        errors.borrower_reference_id,
+                                    )}
+                                />
                                 <InputError
                                     message={errors.borrower_reference_id}
                                 />
@@ -450,10 +512,10 @@ function BorrowDialog({
                                 >
                                     Due date and time
                                 </label>
-                                <Input
+                                <DatePicker
                                     id={`due-at-${asset.inventory_asset_id}`}
                                     name="due_at"
-                                    type="datetime-local"
+                                    includeTime
                                     min={new Date().toISOString().slice(0, 16)}
                                 />
                                 <InputError message={errors.due_at} />
@@ -483,19 +545,672 @@ function BorrowDialog({
         </Dialog>
     );
 }
+*/
+
+function AssetEventDialog({
+    asset,
+    eventOptions: availableEventOptions,
+    conditionOptions,
+    open,
+    onOpenChange,
+}: {
+    asset: InventoryAsset;
+    eventOptions: AssetStateOption[];
+    conditionOptions: AssetStateOption[];
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+}) {
+    const eventOptions = availableEventOptions.filter(
+        (option) =>
+            option.value !== 'transfer' ||
+            asset.current_custodian_reference_id === null,
+    );
+    const [eventType, setEventType] = useState(
+        eventOptions[0]?.value ?? 'transfer',
+    );
+    const [idempotencyKey, setIdempotencyKey] = useState(() =>
+        crypto.randomUUID(),
+    );
+    const requiresAmount = [
+        'capital_addition',
+        'maintenance',
+        'impairment',
+        'impairment_reversal',
+    ].includes(eventType);
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent
+                className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"
+                onClick={(event) => event.stopPropagation()}
+            >
+                <DialogHeader>
+                    <DialogTitle>
+                        Record{' '}
+                        {asset.accounting_classification === 'ppe'
+                            ? 'PPE'
+                            : 'semi-expendable'}{' '}
+                        lifecycle transaction
+                    </DialogTitle>
+                    <DialogDescription>
+                        Add an immutable, dated record for {asset.name}. Use a
+                        correcting transaction if a posted record needs to be
+                        superseded. Use Disposal / Waste Materials in the
+                        navigation for committee approval and witnessed
+                        disposal.
+                    </DialogDescription>
+                </DialogHeader>
+                <Form
+                    action={
+                        asset.accounting_classification === 'ppe'
+                            ? storeAssetEvent(asset)
+                            : storeSemiExpendableEvent(asset)
+                    }
+                    resetOnSuccess
+                    onSuccess={() => {
+                        setIdempotencyKey(crypto.randomUUID());
+                        onOpenChange(false);
+                    }}
+                    className="grid gap-4 sm:grid-cols-2"
+                >
+                    {({ errors, processing }) => (
+                        <>
+                            <input
+                                type="hidden"
+                                name="idempotency_key"
+                                value={idempotencyKey}
+                            />
+                            <div>
+                                <label
+                                    htmlFor={`event-type-${asset.inventory_asset_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Transaction type
+                                </label>
+                                <FormSelect
+                                    id={`event-type-${asset.inventory_asset_id}`}
+                                    name="event_type"
+                                    className={selectClass}
+                                    value={eventType}
+                                    onChange={(event) =>
+                                        setEventType(event.target.value)
+                                    }
+                                    required
+                                >
+                                    {eventOptions.map((option) => (
+                                        <option
+                                            key={option.value}
+                                            value={option.value}
+                                        >
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </FormSelect>
+                                <InputError message={errors.event_type} />
+                            </div>
+                            <div>
+                                <label
+                                    htmlFor={`event-date-${asset.inventory_asset_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Effective date
+                                </label>
+                                <DatePicker
+                                    id={`event-date-${asset.inventory_asset_id}`}
+                                    name="event_date"
+                                    max={new Date().toISOString().slice(0, 10)}
+                                    required
+                                />
+                                <InputError message={errors.event_date} />
+                            </div>
+                            <div className="sm:col-span-2">
+                                <label
+                                    htmlFor={`event-reference-${asset.inventory_asset_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    Source document / reference number
+                                </label>
+                                <Input
+                                    id={`event-reference-${asset.inventory_asset_id}`}
+                                    name="reference_no"
+                                    placeholder="e.g. JEV, PTR, IIRUP, inspection or approval no."
+                                    maxLength={120}
+                                    required
+                                />
+                                <InputError message={errors.reference_no} />
+                            </div>
+                            {requiresAmount && (
+                                <div>
+                                    <label
+                                        htmlFor={`event-amount-${asset.inventory_asset_id}`}
+                                        className="mb-1.5 block text-sm font-medium"
+                                    >
+                                        {eventType === 'maintenance'
+                                            ? 'Maintenance cost'
+                                            : 'Recognized amount'}
+                                    </label>
+                                    <Input
+                                        id={`event-amount-${asset.inventory_asset_id}`}
+                                        name="amount"
+                                        type="number"
+                                        min="0.01"
+                                        step="0.01"
+                                        required
+                                    />
+                                    <InputError message={errors.amount} />
+                                </div>
+                            )}
+                            {eventType === 'capital_addition' && (
+                                <div>
+                                    <label
+                                        htmlFor={`event-life-${asset.inventory_asset_id}`}
+                                        className="mb-1.5 block text-sm font-medium"
+                                    >
+                                        Remaining useful life (months)
+                                    </label>
+                                    <Input
+                                        id={`event-life-${asset.inventory_asset_id}`}
+                                        name="remaining_useful_life_months"
+                                        type="number"
+                                        min="1"
+                                        max="1200"
+                                        placeholder="Uses remaining original life if blank"
+                                    />
+                                    <InputError
+                                        message={
+                                            errors.remaining_useful_life_months
+                                        }
+                                    />
+                                </div>
+                            )}
+                            {eventType === 'maintenance' && (
+                                <>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Vendor / service provider
+                                        </label>
+                                        <Input name="vendor" maxLength={255} />
+                                        <InputError message={errors.vendor} />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Downtime (hours)
+                                        </label>
+                                        <Input
+                                            name="downtime_hours"
+                                            type="number"
+                                            min="0"
+                                            step="0.25"
+                                        />
+                                        <InputError
+                                            message={errors.downtime_hours}
+                                        />
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Parts used
+                                        </label>
+                                        <textarea
+                                            name="parts_used"
+                                            className={`${selectClass} min-h-20 py-2`}
+                                            maxLength={3000}
+                                        />
+                                        <InputError
+                                            message={errors.parts_used}
+                                        />
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Recommendations
+                                        </label>
+                                        <textarea
+                                            name="recommendations"
+                                            className={`${selectClass} min-h-20 py-2`}
+                                            maxLength={3000}
+                                        />
+                                        <InputError
+                                            message={errors.recommendations}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            {['impairment', 'impairment_reversal'].includes(
+                                eventType,
+                            ) && (
+                                <>
+                                    <div className="sm:col-span-2">
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Impairment indicator / trigger
+                                        </label>
+                                        <Input
+                                            name="impairment_trigger"
+                                            maxLength={1000}
+                                            required
+                                        />
+                                        <InputError
+                                            message={errors.impairment_trigger}
+                                        />
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Assessment basis
+                                        </label>
+                                        <textarea
+                                            name="assessment_basis"
+                                            className={`${selectClass} min-h-20 py-2`}
+                                            maxLength={3000}
+                                            required
+                                        />
+                                        <InputError
+                                            message={errors.assessment_basis}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            {eventType === 'transfer' && (
+                                <div className="sm:col-span-2">
+                                    <label
+                                        htmlFor={`event-location-${asset.inventory_asset_id}`}
+                                        className="mb-1.5 block text-sm font-medium"
+                                    >
+                                        New office / location
+                                    </label>
+                                    <Input
+                                        id={`event-location-${asset.inventory_asset_id}`}
+                                        name="to_location"
+                                        maxLength={255}
+                                        required
+                                    />
+                                    <InputError message={errors.to_location} />
+                                </div>
+                            )}
+                            {eventType === 'physical_count' && (
+                                <>
+                                    <div>
+                                        <label
+                                            htmlFor={`event-quantity-${asset.inventory_asset_id}`}
+                                            className="mb-1.5 block text-sm font-medium"
+                                        >
+                                            Quantity found
+                                        </label>
+                                        <Input
+                                            id={`event-quantity-${asset.inventory_asset_id}`}
+                                            name="quantity"
+                                            type="number"
+                                            min="0"
+                                            required
+                                        />
+                                        <InputError message={errors.quantity} />
+                                    </div>
+                                    <div>
+                                        <label
+                                            htmlFor={`event-condition-${asset.inventory_asset_id}`}
+                                            className="mb-1.5 block text-sm font-medium"
+                                        >
+                                            Observed condition
+                                        </label>
+                                        <FormSelect
+                                            id={`event-condition-${asset.inventory_asset_id}`}
+                                            name="condition_status"
+                                            className={selectClass}
+                                            required
+                                        >
+                                            {conditionOptions.map((option) => (
+                                                <option
+                                                    key={option.value}
+                                                    value={option.value}
+                                                >
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </FormSelect>
+                                        <InputError
+                                            message={errors.condition_status}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Counted by / committee
+                                        </label>
+                                        <Input
+                                            name="counted_by"
+                                            maxLength={255}
+                                            required
+                                        />
+                                        <InputError
+                                            message={errors.counted_by}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Count location
+                                        </label>
+                                        <Input
+                                            name="count_location"
+                                            maxLength={255}
+                                            defaultValue={asset.location ?? ''}
+                                            required
+                                        />
+                                        <InputError
+                                            message={errors.count_location}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            {eventType === 'unserviceable' && (
+                                <>
+                                    <input
+                                        type="hidden"
+                                        name="condition_status"
+                                        value="non_usable"
+                                    />
+                                    <div>
+                                        <label
+                                            htmlFor={`event-appraisal-${asset.inventory_asset_id}`}
+                                            className="mb-1.5 block text-sm font-medium"
+                                        >
+                                            Appraised value
+                                        </label>
+                                        <Input
+                                            id={`event-appraisal-${asset.inventory_asset_id}`}
+                                            name="appraised_value"
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                        />
+                                        <InputError
+                                            message={errors.appraised_value}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            {eventType === 'loss' && (
+                                <>
+                                    <div>
+                                        <label
+                                            htmlFor={`event-loss-type-${asset.inventory_asset_id}`}
+                                            className="mb-1.5 block text-sm font-medium"
+                                        >
+                                            Incident type
+                                        </label>
+                                        <FormSelect
+                                            id={`event-loss-type-${asset.inventory_asset_id}`}
+                                            name="loss_type"
+                                            className={selectClass}
+                                            required
+                                        >
+                                            <option value="lost">Lost</option>
+                                            <option value="stolen">
+                                                Stolen
+                                            </option>
+                                            <option value="damaged">
+                                                Damaged
+                                            </option>
+                                            <option value="destroyed">
+                                                Destroyed
+                                            </option>
+                                        </FormSelect>
+                                        <InputError
+                                            message={errors.loss_type}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Incident date
+                                        </label>
+                                        <DatePicker
+                                            id={`incident-date-${asset.inventory_asset_id}`}
+                                            name="incident_date"
+                                            required
+                                        />
+                                        <InputError
+                                            message={errors.incident_date}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Date discovered
+                                        </label>
+                                        <DatePicker
+                                            id={`date-discovered-${asset.inventory_asset_id}`}
+                                            name="date_discovered"
+                                            required
+                                        />
+                                        <InputError
+                                            message={errors.date_discovered}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Police / security reference
+                                        </label>
+                                        <Input
+                                            name="security_reference"
+                                            maxLength={120}
+                                        />
+                                        <InputError
+                                            message={errors.security_reference}
+                                        />
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <label
+                                            htmlFor={`event-circumstances-${asset.inventory_asset_id}`}
+                                            className="mb-1.5 block text-sm font-medium"
+                                        >
+                                            Circumstances
+                                        </label>
+                                        <textarea
+                                            id={`event-circumstances-${asset.inventory_asset_id}`}
+                                            name="circumstances"
+                                            className={`${selectClass} min-h-24 py-2`}
+                                            maxLength={3000}
+                                            required
+                                        />
+                                        <InputError
+                                            message={errors.circumstances}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Recovery status
+                                        </label>
+                                        <Input
+                                            name="recovery_status"
+                                            maxLength={255}
+                                        />
+                                        <InputError
+                                            message={errors.recovery_status}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Relief status
+                                        </label>
+                                        <Input
+                                            name="relief_status"
+                                            maxLength={255}
+                                        />
+                                        <InputError
+                                            message={errors.relief_status}
+                                        />
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Liability status
+                                        </label>
+                                        <Input
+                                            name="liability_status"
+                                            maxLength={255}
+                                        />
+                                        <InputError
+                                            message={errors.liability_status}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            {eventType === 'disposal' && (
+                                <>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Disposal method
+                                        </label>
+                                        <Input
+                                            name="disposal_method"
+                                            maxLength={255}
+                                            required
+                                        />
+                                        <InputError
+                                            message={errors.disposal_method}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Approval number
+                                        </label>
+                                        <Input
+                                            name="approval_no"
+                                            maxLength={120}
+                                            required
+                                        />
+                                        <InputError
+                                            message={errors.approval_no}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Approval date
+                                        </label>
+                                        <DatePicker
+                                            id={`disposal-approval-date-${asset.inventory_asset_id}`}
+                                            name="approval_date"
+                                            required
+                                        />
+                                        <InputError
+                                            message={errors.approval_date}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Proceeds
+                                        </label>
+                                        <Input
+                                            name="proceeds"
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            required
+                                        />
+                                        <InputError message={errors.proceeds} />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Appraised value
+                                        </label>
+                                        <Input
+                                            name="appraised_value"
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                        />
+                                        <InputError
+                                            message={errors.appraised_value}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Recipient / buyer
+                                        </label>
+                                        <Input
+                                            name="recipient"
+                                            maxLength={255}
+                                        />
+                                        <InputError
+                                            message={errors.recipient}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            {['relief_approved', 'relief_denied'].includes(
+                                eventType,
+                            ) && (
+                                <>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Decision / approval number
+                                        </label>
+                                        <Input
+                                            name="approval_no"
+                                            maxLength={120}
+                                            required
+                                        />
+                                        <InputError
+                                            message={errors.approval_no}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium">
+                                            Decision date
+                                        </label>
+                                        <DatePicker
+                                            id={`relief-decision-date-${asset.inventory_asset_id}`}
+                                            name="approval_date"
+                                            required
+                                        />
+                                        <InputError
+                                            message={errors.approval_date}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            <div className="sm:col-span-2">
+                                <label
+                                    htmlFor={`event-notes-${asset.inventory_asset_id}`}
+                                    className="mb-1.5 block text-sm font-medium"
+                                >
+                                    {eventType === 'maintenance'
+                                        ? 'Work performed'
+                                        : 'Remarks'}
+                                </label>
+                                <textarea
+                                    id={`event-notes-${asset.inventory_asset_id}`}
+                                    name="notes"
+                                    className={`${selectClass} min-h-20 py-2`}
+                                    maxLength={3000}
+                                    required={eventType === 'maintenance'}
+                                />
+                                <InputError message={errors.notes} />
+                            </div>
+                            <Button
+                                type="submit"
+                                disabled={processing}
+                                className="sm:col-span-2"
+                            >
+                                {processing
+                                    ? 'Recording…'
+                                    : 'Record immutable transaction'}
+                            </Button>
+                        </>
+                    )}
+                </Form>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 type AssetActionDialog =
-    'accounting' | 'archive' | 'assign' | 'borrow' | 'state' | null;
+    'accounting' | 'archive' | 'assign' | 'event' | 'state' | null;
 
 function AssetActions({
     asset,
     employees,
     options,
+    eventOptions,
     showingArchived,
 }: {
     asset: InventoryAsset;
     employees: HrisReference[];
     options: AssetStateOptions;
+    eventOptions: AssetStateOption[];
     showingArchived: boolean;
 }) {
     const [activeDialog, setActiveDialog] = useState<AssetActionDialog>(null);
@@ -562,20 +1277,23 @@ function AssetActions({
                                     >
                                         <RotateCcw /> Return
                                     </DropdownMenuItem>
-                                ) : asset.is_borrowable ? (
-                                    <DropdownMenuItem
-                                        onClick={() =>
-                                            setActiveDialog('borrow')
-                                        }
-                                    >
-                                        <Handshake /> Borrow
-                                    </DropdownMenuItem>
                                 ) : null}
                                 <DropdownMenuItem
                                     onClick={() => setActiveDialog('state')}
                                 >
                                     <SlidersHorizontal /> State
                                 </DropdownMenuItem>
+                                {asset.accounting_status !== 'disposed' &&
+                                    asset.accounting_status !==
+                                        'derecognized' && (
+                                        <DropdownMenuItem
+                                            onClick={() =>
+                                                setActiveDialog('event')
+                                            }
+                                        >
+                                            <History /> Record transaction
+                                        </DropdownMenuItem>
+                                    )}
                                 {asset.is_depreciable && (
                                     <DropdownMenuItem
                                         onClick={() =>
@@ -603,7 +1321,11 @@ function AssetActions({
                                             setActiveDialog('assign')
                                         }
                                     >
-                                        <UserCheck /> Assign custodian
+                                        <UserCheck />{' '}
+                                        {asset.current_custodian_reference_id !==
+                                        null
+                                            ? 'Transfer accountability'
+                                            : 'Assign custodian'}
                                     </DropdownMenuItem>
                                 )}
                                 {asset.current_custodian && (
@@ -632,21 +1354,22 @@ function AssetActions({
 
             {!showingArchived && (
                 <>
-                    {asset.custody_status !== 'borrowed' &&
-                        asset.is_borrowable && (
-                            <BorrowDialog
-                                asset={asset}
-                                employees={employees}
-                                open={activeDialog === 'borrow'}
-                                onOpenChange={handleDialogOpenChange('borrow')}
-                            />
-                        )}
                     <AssetStateDialog
                         asset={asset}
                         options={options}
                         open={activeDialog === 'state'}
                         onOpenChange={handleDialogOpenChange('state')}
                     />
+                    {asset.accounting_status !== 'disposed' &&
+                        asset.accounting_status !== 'derecognized' && (
+                            <AssetEventDialog
+                                asset={asset}
+                                eventOptions={eventOptions}
+                                conditionOptions={options.conditions}
+                                open={activeDialog === 'event'}
+                                onOpenChange={handleDialogOpenChange('event')}
+                            />
+                        )}
                     {asset.is_depreciable && (
                         <AssetAccountingDialog
                             asset={asset}
@@ -683,7 +1406,10 @@ export default function AssetsIndex({
     employees,
     filters,
     assetStateOptions,
+    assetEventOptions,
     capitalizationThreshold,
+    registryType,
+    registrySummary,
 }: {
     assets: Paginated<InventoryAsset>;
     categories: AssetCategory[];
@@ -694,10 +1420,18 @@ export default function AssetsIndex({
         lifecycle_status?: string;
         condition_status?: string;
         custody_status?: string;
-        accounting_classification?: string;
+        value_class?: string;
+        accountability_status?: string;
+        physical_status?: string;
+        ics_renewal?: string;
+        sort?: string;
+        direction?: string;
     };
     assetStateOptions: AssetStateOptions;
+    assetEventOptions: AssetStateOption[];
     capitalizationThreshold: number;
+    registryType: 'ppe' | 'semi_expendable';
+    registrySummary: Record<string, number> | null;
 }) {
     const { submitAfterDelay, submitImmediately } = useFilterSubmit();
     const { auth } = useAppPage().props;
@@ -707,42 +1441,16 @@ export default function AssetsIndex({
         null,
     );
     const [selectedCategoryId, setSelectedCategoryId] = useState('');
+    const [registrationQuantity, setRegistrationQuantity] = useState(1);
     const selectedCategory = categories.find(
         (category) => String(category.inv_asset_cat_id) === selectedCategoryId,
     );
-    const registryTitle =
-        filters.accounting_classification === 'ppe'
-            ? 'PPE Registry'
-            : filters.accounting_classification === 'semi_expendable'
-              ? 'Semi-Expendable Property Registry'
-              : filters.accounting_classification === 'needs_review'
-                ? 'Assets Needing Accounting Review'
-                : 'Durable Property Registry';
-    const activeRegistryTab: RegistryTab = isRegistryTab(
-        filters.accounting_classification,
-    )
-        ? filters.accounting_classification
-        : 'all';
-
-    const changeRegistryTab = (value: unknown): void => {
-        if (!isRegistryTab(value) || value === activeRegistryTab) {
-            return;
-        }
-
-        router.visit(
-            index({
-                query: {
-                    ...filters,
-                    accounting_classification:
-                        value === 'all' ? undefined : value,
-                },
-            }),
-            {
-                preserveScroll: true,
-                preserveState: true,
-            },
-        );
-    };
+    const isPpeRegistry = registryType === 'ppe';
+    const registryTitle = isPpeRegistry
+        ? 'Property, Plant and Equipment'
+        : 'Semi-Expendable Property';
+    const registryIndex = isPpeRegistry ? index : semiExpendableIndex;
+    const registryStore = isPpeRegistry ? store : storeSemiExpendable;
 
     return (
         <>
@@ -754,8 +1462,9 @@ export default function AssetsIndex({
                             {registryTitle}
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Separate PPE and semi-expendable accountability,
-                            custody, valuation, and property tags.
+                            {isPpeRegistry
+                                ? `Capitalized property costing PHP ${capitalizationThreshold.toLocaleString()} and above, with PAR accountability and depreciation.`
+                                : `Durable property below PHP ${capitalizationThreshold.toLocaleString()}, with ICS accountability and no depreciation.`}
                         </p>
                     </div>
                     {canManageInventory && (
@@ -767,20 +1476,28 @@ export default function AssetsIndex({
                             }}
                         >
                             <DialogTrigger render={<Button />}>
-                                <Plus /> New asset
+                                <Plus />{' '}
+                                {isPpeRegistry
+                                    ? 'New PPE item'
+                                    : 'New semi-expendable item'}
                             </DialogTrigger>
                             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
                                 <DialogHeader>
-                                    <DialogTitle>Register asset</DialogTitle>
+                                    <DialogTitle>
+                                        Register {registryTitle}
+                                    </DialogTitle>
                                     <DialogDescription>
                                         Add property acquired by the
                                         organization.
                                     </DialogDescription>
                                 </DialogHeader>
                                 <Form
-                                    action={store()}
+                                    action={registryStore()}
                                     resetOnSuccess
-                                    onSuccess={() => setSelectedCategoryId('')}
+                                    onSuccess={() => {
+                                        setSelectedCategoryId('');
+                                        setRegistrationQuantity(1);
+                                    }}
                                     className="grid gap-4 md:grid-cols-2"
                                 >
                                     {({ errors, processing }) => (
@@ -810,7 +1527,7 @@ export default function AssetsIndex({
                                                 >
                                                     Asset category
                                                 </label>
-                                                <select
+                                                <FormSelect
                                                     id="asset-category"
                                                     name="category_id"
                                                     className={selectClass}
@@ -839,11 +1556,79 @@ export default function AssetsIndex({
                                                             </option>
                                                         ),
                                                     )}
-                                                </select>
+                                                </FormSelect>
                                                 <InputError
                                                     message={errors.category_id}
                                                 />
                                             </div>
+                                            {!isPpeRegistry && (
+                                                <>
+                                                    <div>
+                                                        <label
+                                                            htmlFor="registration-quantity"
+                                                            className="mb-1.5 block text-sm font-medium"
+                                                        >
+                                                            Number of identical
+                                                            items
+                                                        </label>
+                                                        <Input
+                                                            id="registration-quantity"
+                                                            name="registration_quantity"
+                                                            type="number"
+                                                            min="1"
+                                                            max="500"
+                                                            value={
+                                                                registrationQuantity
+                                                            }
+                                                            onChange={(event) =>
+                                                                setRegistrationQuantity(
+                                                                    Number(
+                                                                        event
+                                                                            .target
+                                                                            .value,
+                                                                    ) || 1,
+                                                                )
+                                                            }
+                                                            required
+                                                        />
+                                                        <InputError
+                                                            message={
+                                                                errors.registration_quantity
+                                                            }
+                                                        />
+                                                    </div>
+                                                    {registrationQuantity >
+                                                        1 && (
+                                                        <div>
+                                                            <label
+                                                                htmlFor="property-number-prefix"
+                                                                className="mb-1.5 block text-sm font-medium"
+                                                            >
+                                                                Property number
+                                                                prefix
+                                                            </label>
+                                                            <Input
+                                                                id="property-number-prefix"
+                                                                name="property_number_prefix"
+                                                                placeholder="e.g. SEP-ICT-2026"
+                                                                maxLength={90}
+                                                                required
+                                                            />
+                                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                                Generates one
+                                                                record per item,
+                                                                ending in 0001,
+                                                                0002, and so on.
+                                                            </p>
+                                                            <InputError
+                                                                message={
+                                                                    errors.property_number_prefix
+                                                                }
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
                                             <div>
                                                 <label
                                                     htmlFor="serial-number"
@@ -856,11 +1641,35 @@ export default function AssetsIndex({
                                                     name="serial_number"
                                                     placeholder="e.g. SN-9F3A21B7"
                                                     maxLength={100}
-                                                    required
+                                                    disabled={
+                                                        registrationQuantity > 1
+                                                    }
                                                 />
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    A serial or property number
+                                                    is required.
+                                                </p>
                                                 <InputError
                                                     message={
                                                         errors.serial_number
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    htmlFor="old-property-number"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Old property number
+                                                </label>
+                                                <Input
+                                                    id="old-property-number"
+                                                    name="old_property_number"
+                                                    maxLength={100}
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.old_property_number
                                                     }
                                                 />
                                             </div>
@@ -876,10 +1685,37 @@ export default function AssetsIndex({
                                                     name="property_number"
                                                     placeholder="e.g. PPE-2026-001"
                                                     maxLength={100}
+                                                    disabled={
+                                                        registrationQuantity > 1
+                                                    }
                                                 />
                                                 <InputError
                                                     message={
                                                         errors.property_number
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    htmlFor="account-code"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Account code
+                                                </label>
+                                                <Input
+                                                    key={`account-${selectedCategoryId}`}
+                                                    id="account-code"
+                                                    name="account_code"
+                                                    placeholder="e.g. 10605020"
+                                                    maxLength={50}
+                                                    defaultValue={
+                                                        selectedCategory?.account_code ??
+                                                        ''
+                                                    }
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.account_code
                                                     }
                                                 />
                                             </div>
@@ -890,7 +1726,7 @@ export default function AssetsIndex({
                                                 >
                                                     Asset subcategory
                                                 </label>
-                                                <select
+                                                <FormSelect
                                                     id="asset-subcategory"
                                                     name="subcategory_id"
                                                     className={selectClass}
@@ -919,7 +1755,7 @@ export default function AssetsIndex({
                                                             </option>
                                                         ),
                                                     )}
-                                                </select>
+                                                </FormSelect>
                                                 <InputError
                                                     message={
                                                         errors.subcategory_id
@@ -941,6 +1777,24 @@ export default function AssetsIndex({
                                                 />
                                                 <InputError
                                                     message={errors.brand}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    htmlFor="asset-manufacturer"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Manufacturer
+                                                </label>
+                                                <Input
+                                                    id="asset-manufacturer"
+                                                    name="manufacturer"
+                                                    maxLength={255}
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.manufacturer
+                                                    }
                                                 />
                                             </div>
                                             <div>
@@ -1003,15 +1857,50 @@ export default function AssetsIndex({
                                                 >
                                                     Acquisition date
                                                 </label>
-                                                <Input
+                                                <DatePicker
                                                     id="acquisition-date"
                                                     name="acquisition_date"
-                                                    type="date"
                                                     required
                                                 />
                                                 <InputError
                                                     message={
                                                         errors.acquisition_date
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    htmlFor="acquisition-method"
+                                                    className="mb-1.5 block text-sm font-medium"
+                                                >
+                                                    Acquisition method
+                                                </label>
+                                                <FormSelect
+                                                    id="acquisition-method"
+                                                    name="acquisition_method"
+                                                    className={selectClass}
+                                                    defaultValue="purchase"
+                                                    required
+                                                >
+                                                    <option value="purchase">
+                                                        Purchase
+                                                    </option>
+                                                    <option value="donation">
+                                                        Donation
+                                                    </option>
+                                                    <option value="transfer">
+                                                        Transfer
+                                                    </option>
+                                                    <option value="construction">
+                                                        Construction
+                                                    </option>
+                                                    <option value="other">
+                                                        Other
+                                                    </option>
+                                                </FormSelect>
+                                                <InputError
+                                                    message={
+                                                        errors.acquisition_method
                                                     }
                                                 />
                                             </div>
@@ -1026,9 +1915,23 @@ export default function AssetsIndex({
                                                     id="acquisition-cost"
                                                     name="acquisition_cost"
                                                     type="number"
-                                                    min="0.01"
                                                     step="0.01"
-                                                    placeholder="e.g. 54999.00"
+                                                    placeholder={
+                                                        isPpeRegistry
+                                                            ? 'e.g. 75000.00'
+                                                            : 'e.g. 25000.00'
+                                                    }
+                                                    min={
+                                                        isPpeRegistry
+                                                            ? 0.01
+                                                            : 0.01
+                                                    }
+                                                    max={
+                                                        isPpeRegistry
+                                                            ? undefined
+                                                            : capitalizationThreshold -
+                                                              0.01
+                                                    }
                                                     required
                                                 />
                                                 <InputError
@@ -1039,106 +1942,347 @@ export default function AssetsIndex({
                                             </div>
                                             <div>
                                                 <label
-                                                    htmlFor="available-for-use-date"
+                                                    htmlFor="direct-costs"
                                                     className="mb-1.5 block text-sm font-medium"
                                                 >
-                                                    Available-for-use date
+                                                    Directly attributable costs
                                                 </label>
                                                 <Input
-                                                    id="available-for-use-date"
-                                                    name="available_for_use_date"
-                                                    type="date"
+                                                    id="direct-costs"
+                                                    name="directly_attributable_costs"
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    defaultValue="0"
                                                 />
-                                                <p className="mt-1 text-xs text-muted-foreground">
-                                                    Required for PPE. This is
-                                                    the basis for starting
-                                                    depreciation.
-                                                </p>
                                                 <InputError
                                                     message={
-                                                        errors.available_for_use_date
+                                                        errors.directly_attributable_costs
                                                     }
                                                 />
                                             </div>
                                             <div>
-                                                <label
-                                                    htmlFor="residual-value-percentage"
-                                                    className="mb-1.5 block text-sm font-medium"
-                                                >
-                                                    Residual value percentage
+                                                <label className="mb-1.5 block text-sm font-medium">
+                                                    Supplier / source
                                                 </label>
                                                 <Input
-                                                    id="residual-value-percentage"
-                                                    name="residual_value_percentage"
-                                                    type="number"
-                                                    min="5"
-                                                    max="99.99"
-                                                    step="0.01"
-                                                    defaultValue="5"
+                                                    name="supplier_name"
+                                                    maxLength={255}
                                                 />
-                                                <p className="mt-1 text-xs text-muted-foreground">
-                                                    Applied only to PPE; COA's
-                                                    standard starting value is
-                                                    5%.
-                                                </p>
                                                 <InputError
                                                     message={
-                                                        errors.residual_value_percentage
+                                                        errors.supplier_name
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-1.5 block text-sm font-medium">
+                                                    Purchase order number
+                                                </label>
+                                                <Input
+                                                    name="purchase_order_no"
+                                                    maxLength={120}
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.purchase_order_no
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-1.5 block text-sm font-medium">
+                                                    IAR number
+                                                </label>
+                                                <Input
+                                                    name="inspection_acceptance_report_no"
+                                                    maxLength={120}
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.inspection_acceptance_report_no
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-1.5 block text-sm font-medium">
+                                                    Invoice number
+                                                </label>
+                                                <Input
+                                                    name="invoice_no"
+                                                    maxLength={120}
+                                                />
+                                                <InputError
+                                                    message={errors.invoice_no}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-1.5 block text-sm font-medium">
+                                                    Disbursement voucher number
+                                                </label>
+                                                <Input
+                                                    name="disbursement_voucher_no"
+                                                    maxLength={120}
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.disbursement_voucher_no
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-1.5 block text-sm font-medium">
+                                                    Delivery date
+                                                </label>
+                                                <DatePicker
+                                                    id="delivery-date"
+                                                    name="delivery_date"
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.delivery_date
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-1.5 block text-sm font-medium">
+                                                    Inspection date
+                                                </label>
+                                                <DatePicker
+                                                    id="inspection-date"
+                                                    name="inspection_date"
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.inspection_date
+                                                    }
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-1.5 block text-sm font-medium">
+                                                    Acceptance date
+                                                </label>
+                                                <DatePicker
+                                                    id="acceptance-date"
+                                                    name="acceptance_date"
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.acceptance_date
                                                     }
                                                 />
                                             </div>
                                             <div className="md:col-span-2">
-                                                <label
-                                                    htmlFor="residual-value-basis"
-                                                    className="mb-1.5 block text-sm font-medium"
-                                                >
-                                                    Residual value basis
+                                                <label className="mb-1.5 block text-sm font-medium">
+                                                    Description
                                                 </label>
                                                 <textarea
-                                                    id="residual-value-basis"
-                                                    name="residual_value_basis"
+                                                    name="description"
                                                     className={`${selectClass} min-h-20 py-2`}
-                                                    defaultValue="COA default residual value of 5%."
-                                                    maxLength={1000}
+                                                    maxLength={2000}
                                                 />
                                                 <InputError
-                                                    message={
-                                                        errors.residual_value_basis
-                                                    }
+                                                    message={errors.description}
                                                 />
                                             </div>
-                                            <div>
-                                                <label
-                                                    htmlFor="useful-life"
-                                                    className="mb-1.5 block text-sm font-medium"
-                                                >
-                                                    Useful life in months
+                                            <div className="md:col-span-2">
+                                                <label className="mb-1.5 block text-sm font-medium">
+                                                    Technical specifications
                                                 </label>
-                                                <Input
-                                                    id="useful-life"
-                                                    name="depreciation_useful_life_months"
-                                                    type="number"
-                                                    min="1"
-                                                    max="1200"
-                                                    defaultValue="60"
-                                                    placeholder="e.g. 60"
-                                                    required
+                                                <textarea
+                                                    name="specifications"
+                                                    className={`${selectClass} min-h-20 py-2`}
+                                                    maxLength={5000}
                                                 />
                                                 <InputError
                                                     message={
-                                                        errors.depreciation_useful_life_months
+                                                        errors.specifications
                                                     }
                                                 />
                                             </div>
+                                            {isPpeRegistry && (
+                                                <>
+                                                    {selectedCategory?.is_depreciable !==
+                                                        false && (
+                                                        <>
+                                                            <div>
+                                                                <label
+                                                                    htmlFor="available-for-use-date"
+                                                                    className="mb-1.5 block text-sm font-medium"
+                                                                >
+                                                                    Available-for-use
+                                                                    date
+                                                                </label>
+                                                                <DatePicker
+                                                                    id="available-for-use-date"
+                                                                    name="available_for_use_date"
+                                                                />
+                                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                                    Required for
+                                                                    PPE. This is
+                                                                    the basis
+                                                                    for starting
+                                                                    depreciation.
+                                                                </p>
+                                                                <InputError
+                                                                    message={
+                                                                        errors.available_for_use_date
+                                                                    }
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label
+                                                                    htmlFor="residual-value-percentage"
+                                                                    className="mb-1.5 block text-sm font-medium"
+                                                                >
+                                                                    Residual
+                                                                    value
+                                                                    percentage
+                                                                </label>
+                                                                <Input
+                                                                    key={`residual-${selectedCategoryId}`}
+                                                                    id="residual-value-percentage"
+                                                                    name="residual_value_percentage"
+                                                                    type="number"
+                                                                    min="0"
+                                                                    max="99.99"
+                                                                    step="0.01"
+                                                                    defaultValue={
+                                                                        selectedCategory?.default_residual_value_percentage ??
+                                                                        '5'
+                                                                    }
+                                                                />
+                                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                                    Applied only
+                                                                    to PPE;
+                                                                    COA's
+                                                                    standard
+                                                                    starting
+                                                                    value is 5%.
+                                                                </p>
+                                                                <InputError
+                                                                    message={
+                                                                        errors.residual_value_percentage
+                                                                    }
+                                                                />
+                                                            </div>
+                                                            <div className="md:col-span-2">
+                                                                <label
+                                                                    htmlFor="residual-value-basis"
+                                                                    className="mb-1.5 block text-sm font-medium"
+                                                                >
+                                                                    Residual
+                                                                    value basis
+                                                                </label>
+                                                                <textarea
+                                                                    id="residual-value-basis"
+                                                                    name="residual_value_basis"
+                                                                    className={`${selectClass} min-h-20 py-2`}
+                                                                    defaultValue="COA default residual value of 5%."
+                                                                    maxLength={
+                                                                        1000
+                                                                    }
+                                                                />
+                                                                <InputError
+                                                                    message={
+                                                                        errors.residual_value_basis
+                                                                    }
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label
+                                                                    htmlFor="useful-life"
+                                                                    className="mb-1.5 block text-sm font-medium"
+                                                                >
+                                                                    Useful life
+                                                                    in months
+                                                                </label>
+                                                                <Input
+                                                                    key={`life-${selectedCategoryId}`}
+                                                                    id="useful-life"
+                                                                    name="depreciation_useful_life_months"
+                                                                    type="number"
+                                                                    min="1"
+                                                                    max="1200"
+                                                                    defaultValue={
+                                                                        selectedCategory?.default_useful_life_months ??
+                                                                        60
+                                                                    }
+                                                                    placeholder="e.g. 60"
+                                                                    required
+                                                                />
+                                                                <InputError
+                                                                    message={
+                                                                        errors.depreciation_useful_life_months
+                                                                    }
+                                                                />
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </>
+                                            )}
+                                            {!isPpeRegistry && (
+                                                <>
+                                                    <div>
+                                                        <label
+                                                            htmlFor="semi-useful-life"
+                                                            className="mb-1.5 block text-sm font-medium"
+                                                        >
+                                                            Estimated useful
+                                                            life in months
+                                                        </label>
+                                                        <Input
+                                                            key={`semi-life-${selectedCategoryId}`}
+                                                            id="semi-useful-life"
+                                                            name="depreciation_useful_life_months"
+                                                            type="number"
+                                                            min="1"
+                                                            max="1200"
+                                                            defaultValue={
+                                                                selectedCategory?.default_useful_life_months ??
+                                                                60
+                                                            }
+                                                            required
+                                                        />
+                                                        <p className="mt-1 text-xs text-muted-foreground">
+                                                            Used for property
+                                                            control and
+                                                            low-value
+                                                            accountability,
+                                                            never PPE
+                                                            depreciation.
+                                                        </p>
+                                                        <InputError
+                                                            message={
+                                                                errors.depreciation_useful_life_months
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label
+                                                            htmlFor="semi-life-reason"
+                                                            className="mb-1.5 block text-sm font-medium"
+                                                        >
+                                                            Useful-life override
+                                                            reason
+                                                        </label>
+                                                        <Input
+                                                            id="semi-life-reason"
+                                                            name="useful_life_override_reason"
+                                                            placeholder="Required only when changing the category default"
+                                                            maxLength={1000}
+                                                        />
+                                                        <InputError
+                                                            message={
+                                                                errors.useful_life_override_reason
+                                                            }
+                                                        />
+                                                    </div>
+                                                </>
+                                            )}
                                             <div className="rounded-lg border bg-muted/40 p-3 text-sm md:col-span-2">
-                                                The system classifies an item
-                                                automatically: PHP{' '}
-                                                {capitalizationThreshold.toLocaleString()}{' '}
-                                                and above becomes PPE with PAR
-                                                and depreciation; lower-cost
-                                                durable property becomes
-                                                semi-expendable with ICS and no
-                                                depreciation.
+                                                {isPpeRegistry
+                                                    ? `This module accepts PPE costing PHP ${capitalizationThreshold.toLocaleString()} or more.`
+                                                    : `This module accepts semi-expendable property below PHP ${capitalizationThreshold.toLocaleString()}.`}
                                             </div>
                                             <div>
                                                 <label
@@ -1168,15 +2312,24 @@ export default function AssetsIndex({
                                                 >
                                                     Lifecycle
                                                 </label>
-                                                <select
+                                                <FormSelect
                                                     id="asset-lifecycle"
                                                     name="lifecycle_status"
                                                     className={selectClass}
                                                     defaultValue="active"
                                                     required
                                                 >
-                                                    {assetStateOptions.lifecycles.map(
-                                                        (option) => (
+                                                    {assetStateOptions.lifecycles
+                                                        .filter(
+                                                            (option) =>
+                                                                ![
+                                                                    'disposed',
+                                                                    'lost',
+                                                                ].includes(
+                                                                    option.value,
+                                                                ),
+                                                        )
+                                                        .map((option) => (
                                                             <option
                                                                 key={
                                                                     option.value
@@ -1187,9 +2340,8 @@ export default function AssetsIndex({
                                                             >
                                                                 {option.label}
                                                             </option>
-                                                        ),
-                                                    )}
-                                                </select>
+                                                        ))}
+                                                </FormSelect>
                                                 <InputError
                                                     message={
                                                         errors.lifecycle_status
@@ -1203,7 +2355,7 @@ export default function AssetsIndex({
                                                 >
                                                     Physical condition
                                                 </label>
-                                                <select
+                                                <FormSelect
                                                     id="asset-condition"
                                                     name="condition_status"
                                                     className={selectClass}
@@ -1224,7 +2376,7 @@ export default function AssetsIndex({
                                                             </option>
                                                         ),
                                                     )}
-                                                </select>
+                                                </FormSelect>
                                                 <InputError
                                                     message={
                                                         errors.condition_status
@@ -1239,7 +2391,7 @@ export default function AssetsIndex({
                                             >
                                                 {processing
                                                     ? 'Registering…'
-                                                    : 'Register asset'}
+                                                    : `Register ${isPpeRegistry ? 'PPE' : 'semi-expendable property'}`}
                                             </Button>
                                         </>
                                     )}
@@ -1248,29 +2400,88 @@ export default function AssetsIndex({
                         </Dialog>
                     )}
                 </div>
-                <Tabs
-                    value={activeRegistryTab}
-                    onValueChange={changeRegistryTab}
-                >
-                    <TabsList aria-label="Asset accounting registries">
-                        {registryTabs.map((tab) => (
-                            <TabsTrigger key={tab.value} value={tab.value}>
-                                {tab.value === 'ppe'
-                                    ? `${tab.label} - PHP ${capitalizationThreshold.toLocaleString()}+`
-                                    : tab.value === 'semi_expendable'
-                                      ? `${tab.label} - below PHP ${capitalizationThreshold.toLocaleString()}`
-                                      : tab.label}
-                            </TabsTrigger>
+                {isPpeRegistry && registrySummary && (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                        {[
+                            ['Total PPE items', registrySummary.total],
+                            [
+                                'Total acquisition cost',
+                                formatPhilippinePeso(
+                                    registrySummary.acquisition_cost,
+                                ),
+                            ],
+                            [
+                                'Total net book value',
+                                formatPhilippinePeso(
+                                    registrySummary.net_book_value,
+                                ),
+                            ],
+                            [
+                                'Available for assignment',
+                                registrySummary.available_for_assignment,
+                            ],
+                            [
+                                'Items requiring action',
+                                registrySummary.requiring_action,
+                            ],
+                        ].map(([label, value]) => (
+                            <Card key={String(label)}>
+                                <CardContent className="p-4">
+                                    <p className="text-xs text-muted-foreground">
+                                        {label}
+                                    </p>
+                                    <p className="mt-1 text-2xl font-semibold">
+                                        {typeof value === 'number'
+                                            ? value.toLocaleString()
+                                            : value}
+                                    </p>
+                                </CardContent>
+                            </Card>
                         ))}
-                    </TabsList>
-                </Tabs>
-
+                    </div>
+                )}
+                {!isPpeRegistry && registrySummary && (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                        {[
+                            ['Total items', registrySummary.total],
+                            [
+                                'Total acquisition cost',
+                                formatPhilippinePeso(
+                                    registrySummary.acquisition_cost,
+                                ),
+                            ],
+                            [
+                                'Issued / accountable',
+                                registrySummary.issued_or_accountable,
+                            ],
+                            ['On hand', registrySummary.on_hand],
+                            [
+                                'Available for reissue',
+                                registrySummary.available_for_reissue,
+                            ],
+                            ['Exceptions', registrySummary.exceptions],
+                        ].map(([label, value]) => (
+                            <Card key={String(label)}>
+                                <CardContent className="p-4">
+                                    <p className="text-xs text-muted-foreground">
+                                        {label}
+                                    </p>
+                                    <p className="mt-1 text-2xl font-semibold">
+                                        {typeof value === 'number'
+                                            ? value.toLocaleString()
+                                            : value}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                )}
                 <Card>
                     <CardHeader>
                         <CardTitle>
                             {showingArchived
                                 ? 'Archived assets'
-                                : 'Asset registry'}
+                                : registryTitle}
                         </CardTitle>
                         <CardDescription>
                             {assets.total}{' '}
@@ -1281,7 +2492,7 @@ export default function AssetsIndex({
                     </CardHeader>
                     <CardContent className="grid gap-4">
                         <Form
-                            action={index()}
+                            action={registryIndex()}
                             options={{ preserveState: true }}
                             className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
                         >
@@ -1304,15 +2515,6 @@ export default function AssetsIndex({
                                         />
                                         <InputError message={errors.search} />
                                     </div>
-                                    {filters.accounting_classification && (
-                                        <input
-                                            type="hidden"
-                                            name="accounting_classification"
-                                            value={
-                                                filters.accounting_classification
-                                            }
-                                        />
-                                    )}
                                     <div className="grid w-full gap-1.5 sm:w-44">
                                         <label
                                             htmlFor="asset-lifecycle-filter"
@@ -1320,7 +2522,7 @@ export default function AssetsIndex({
                                         >
                                             Lifecycle
                                         </label>
-                                        <select
+                                        <FormSelect
                                             id="asset-lifecycle-filter"
                                             name="lifecycle_status"
                                             defaultValue={
@@ -1342,7 +2544,7 @@ export default function AssetsIndex({
                                                     </option>
                                                 ),
                                             )}
-                                        </select>
+                                        </FormSelect>
                                         <InputError
                                             message={errors.lifecycle_status}
                                         />
@@ -1354,7 +2556,7 @@ export default function AssetsIndex({
                                         >
                                             Condition
                                         </label>
-                                        <select
+                                        <FormSelect
                                             id="asset-condition-filter"
                                             name="condition_status"
                                             defaultValue={
@@ -1376,7 +2578,7 @@ export default function AssetsIndex({
                                                     </option>
                                                 ),
                                             )}
-                                        </select>
+                                        </FormSelect>
                                         <InputError
                                             message={errors.condition_status}
                                         />
@@ -1388,7 +2590,7 @@ export default function AssetsIndex({
                                         >
                                             Custody
                                         </label>
-                                        <select
+                                        <FormSelect
                                             id="asset-custody-filter"
                                             name="custody_status"
                                             defaultValue={
@@ -1409,11 +2611,141 @@ export default function AssetsIndex({
                                             <option value="borrowed">
                                                 Borrowed
                                             </option>
-                                        </select>
+                                        </FormSelect>
                                         <InputError
                                             message={errors.custody_status}
                                         />
                                     </div>
+                                    {!isPpeRegistry && (
+                                        <>
+                                            <div className="grid w-full gap-1.5 sm:w-44">
+                                                <label className="text-sm font-medium">
+                                                    Value class
+                                                </label>
+                                                <FormSelect
+                                                    name="value_class"
+                                                    defaultValue={
+                                                        filters.value_class ??
+                                                        ''
+                                                    }
+                                                    className={selectClass}
+                                                    onChange={submitImmediately}
+                                                >
+                                                    <option value="">
+                                                        All values
+                                                    </option>
+                                                    <option value="low">
+                                                        Low-valued
+                                                    </option>
+                                                    <option value="high">
+                                                        High-valued
+                                                    </option>
+                                                </FormSelect>
+                                            </div>
+                                            <div className="grid w-full gap-1.5 sm:w-52">
+                                                <label className="text-sm font-medium">
+                                                    Accountability
+                                                </label>
+                                                <FormSelect
+                                                    name="accountability_status"
+                                                    defaultValue={
+                                                        filters.accountability_status ??
+                                                        ''
+                                                    }
+                                                    className={selectClass}
+                                                    onChange={submitImmediately}
+                                                >
+                                                    <option value="">
+                                                        All accountability
+                                                    </option>
+                                                    <option value="unassigned">
+                                                        Unassigned
+                                                    </option>
+                                                    <option value="pending_recipient">
+                                                        Pending recipient
+                                                    </option>
+                                                    <option value="accountable">
+                                                        Accountable
+                                                    </option>
+                                                    <option value="returned">
+                                                        Returned
+                                                    </option>
+                                                    <option value="accountability_extinguished">
+                                                        Extinguished
+                                                    </option>
+                                                    <option value="pending_relief">
+                                                        Pending relief
+                                                    </option>
+                                                    <option value="relieved">
+                                                        Relieved
+                                                    </option>
+                                                </FormSelect>
+                                            </div>
+                                            <div className="grid w-full gap-1.5 sm:w-48">
+                                                <label className="text-sm font-medium">
+                                                    Physical state
+                                                </label>
+                                                <FormSelect
+                                                    name="physical_status"
+                                                    defaultValue={
+                                                        filters.physical_status ??
+                                                        ''
+                                                    }
+                                                    className={selectClass}
+                                                    onChange={submitImmediately}
+                                                >
+                                                    <option value="">
+                                                        All physical states
+                                                    </option>
+                                                    <option value="in_property_custody">
+                                                        Property custody
+                                                    </option>
+                                                    <option value="issued">
+                                                        Issued
+                                                    </option>
+                                                    <option value="returned">
+                                                        Returned
+                                                    </option>
+                                                    <option value="transferred">
+                                                        Transferred
+                                                    </option>
+                                                    <option value="for_disposal">
+                                                        For disposal
+                                                    </option>
+                                                    <option value="disposed">
+                                                        Disposed
+                                                    </option>
+                                                    <option value="missing">
+                                                        Missing
+                                                    </option>
+                                                </FormSelect>
+                                            </div>
+                                            <div className="grid w-full gap-1.5 sm:w-44">
+                                                <label className="text-sm font-medium">
+                                                    ICS renewal
+                                                </label>
+                                                <FormSelect
+                                                    name="ics_renewal"
+                                                    defaultValue={
+                                                        filters.ics_renewal ??
+                                                        ''
+                                                    }
+                                                    className={selectClass}
+                                                    onChange={submitImmediately}
+                                                >
+                                                    <option value="">
+                                                        All renewal states
+                                                    </option>
+                                                    <option value="due_soon">
+                                                        Due soon
+                                                    </option>
+                                                    <option value="overdue">
+                                                        Overdue
+                                                    </option>
+                                                </FormSelect>
+                                            </div>
+                                        </>
+                                    )}
                                     <div className="grid w-full gap-1.5 sm:w-44">
                                         <label
                                             htmlFor="asset-records-filter"
@@ -1421,7 +2753,7 @@ export default function AssetsIndex({
                                         >
                                             Records
                                         </label>
-                                        <select
+                                        <FormSelect
                                             id="asset-records-filter"
                                             name="records"
                                             defaultValue={
@@ -1436,8 +2768,71 @@ export default function AssetsIndex({
                                             <option value="archived">
                                                 Archived records
                                             </option>
-                                        </select>
+                                        </FormSelect>
                                         <InputError message={errors.records} />
+                                    </div>
+                                    <div className="grid w-full gap-1.5 sm:w-48">
+                                        <label
+                                            htmlFor="asset-sort"
+                                            className="text-sm font-medium"
+                                        >
+                                            Sort by
+                                        </label>
+                                        <FormSelect
+                                            id="asset-sort"
+                                            name="sort"
+                                            value={
+                                                filters.sort ||
+                                                'inventory_asset_id'
+                                            }
+                                            className={selectClass}
+                                            onChange={submitImmediately}
+                                        >
+                                            <option value="inventory_asset_id">
+                                                Newest record
+                                            </option>
+                                            <option value="property_number">
+                                                Property number
+                                            </option>
+                                            <option value="name">Name</option>
+                                            <option value="acquisition_date">
+                                                Acquisition date
+                                            </option>
+                                            <option value="acquisition_cost">
+                                                Acquisition cost
+                                            </option>
+                                            <option value="updated_at">
+                                                Last updated
+                                            </option>
+                                        </FormSelect>
+                                        <InputError message={errors.sort} />
+                                    </div>
+                                    <div className="grid w-full gap-1.5 sm:w-40">
+                                        <label
+                                            htmlFor="asset-direction"
+                                            className="text-sm font-medium"
+                                        >
+                                            Direction
+                                        </label>
+                                        <FormSelect
+                                            id="asset-direction"
+                                            name="direction"
+                                            defaultValue={
+                                                filters.direction ?? 'desc'
+                                            }
+                                            className={selectClass}
+                                            onChange={submitImmediately}
+                                        >
+                                            <option value="asc">
+                                                Ascending
+                                            </option>
+                                            <option value="desc">
+                                                Descending
+                                            </option>
+                                        </FormSelect>
+                                        <InputError
+                                            message={errors.direction}
+                                        />
                                     </div>
                                 </>
                             )}
@@ -1459,7 +2854,9 @@ export default function AssetsIndex({
                                             Location
                                         </TableHead>
                                         <TableHead className="pb-3">
-                                            Book value
+                                            {isPpeRegistry
+                                                ? 'Book value'
+                                                : 'Accounting'}
                                         </TableHead>
                                         <TableHead className="pb-3">
                                             State
@@ -1556,17 +2953,36 @@ export default function AssetsIndex({
                                                     {asset.location ?? '—'}
                                                 </TableCell>
                                                 <TableCell className="py-3 text-right">
-                                                    <div>
-                                                        PHP{' '}
-                                                        {Number(
-                                                            asset.book_value,
-                                                        ).toLocaleString()}
-                                                    </div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {asset.is_depreciable
-                                                            ? `Residual ${asset.residual_value_percentage}%`
-                                                            : 'No depreciation'}
-                                                    </div>
+                                                    {isPpeRegistry ? (
+                                                        <>
+                                                            <div>
+                                                                PHP{' '}
+                                                                {Number(
+                                                                    asset.book_value,
+                                                                ).toLocaleString()}
+                                                            </div>
+                                                            <div className="text-xs text-muted-foreground">
+                                                                Residual{' '}
+                                                                {
+                                                                    asset.residual_value_percentage
+                                                                }
+                                                                %
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div>
+                                                                {formatStateLabel(
+                                                                    asset.accounting_status,
+                                                                )}
+                                                            </div>
+                                                            <div className="text-xs text-muted-foreground">
+                                                                {asset.semi_expendable_value_class
+                                                                    ? `${formatStateLabel(asset.semi_expendable_value_class)}-valued`
+                                                                    : 'Needs review'}
+                                                            </div>
+                                                        </>
+                                                    )}
                                                 </TableCell>
                                                 <TableCell className="py-3">
                                                     <div className="flex max-w-48 flex-wrap gap-1.5">
@@ -1599,6 +3015,22 @@ export default function AssetsIndex({
                                                                 asset.custody_status,
                                                             )}
                                                         </Badge>
+                                                        {!isPpeRegistry &&
+                                                            asset.physical_status && (
+                                                                <Badge variant="outline">
+                                                                    {formatStateLabel(
+                                                                        asset.physical_status,
+                                                                    )}
+                                                                </Badge>
+                                                            )}
+                                                        {!isPpeRegistry &&
+                                                            asset.accountability_status && (
+                                                                <Badge variant="secondary">
+                                                                    {formatStateLabel(
+                                                                        asset.accountability_status,
+                                                                    )}
+                                                                </Badge>
+                                                            )}
                                                     </div>
                                                 </TableCell>
                                                 {canManageInventory && (
@@ -1611,6 +3043,9 @@ export default function AssetsIndex({
                                                                 }
                                                                 options={
                                                                     assetStateOptions
+                                                                }
+                                                                eventOptions={
+                                                                    assetEventOptions
                                                                 }
                                                                 showingArchived={
                                                                     showingArchived
@@ -1661,5 +3096,5 @@ export default function AssetsIndex({
 }
 
 AssetsIndex.layout = {
-    breadcrumbs: [{ title: 'Property and equipment', href: index() }],
+    breadcrumbs: [{ title: 'Property registry', href: index() }],
 };

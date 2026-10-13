@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Inventory;
 
 use App\InventoryCategoryType;
+use App\Models\InventoryAssetCategory;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
@@ -42,6 +43,10 @@ class UpdateInventoryCategoryRequest extends FormRequest
             'name' => ['required', 'string', 'max:255', $nameRule],
             'description' => ['nullable', 'string', 'max:2000'],
             'is_vehicle' => [Rule::requiredIf($type === InventoryCategoryType::Asset), 'boolean'],
+            'account_code' => ['nullable', 'string', 'max:50'],
+            'default_useful_life_months' => [Rule::requiredIf($type === InventoryCategoryType::Asset), 'nullable', 'integer', 'min:1', 'max:1200'],
+            'default_residual_value_percentage' => [Rule::requiredIf($type === InventoryCategoryType::Asset), 'nullable', 'numeric', 'min:0', 'max:99.99'],
+            'is_depreciable' => [Rule::requiredIf($type === InventoryCategoryType::Asset), 'boolean'],
         ];
     }
 
@@ -56,7 +61,21 @@ class UpdateInventoryCategoryRequest extends FormRequest
         ];
 
         if ((string) $this->route('type') === InventoryCategoryType::Asset->value) {
+            $category = InventoryAssetCategory::query()->find((int) $this->route('category'));
             $data['is_vehicle'] = $this->boolean('is_vehicle');
+            $data['account_code'] = $this->exists('account_code')
+                ? (filled($this->input('account_code')) ? Str::upper(trim((string) $this->input('account_code'))) : null)
+                : $category?->account_code;
+            $data['default_useful_life_months'] = $this->exists('default_useful_life_months')
+                ? $this->integer('default_useful_life_months')
+                : $category?->default_useful_life_months;
+            $data['default_residual_value_percentage'] = $this->input(
+                'default_residual_value_percentage',
+                $category?->default_residual_value_percentage,
+            );
+            $data['is_depreciable'] = $this->exists('is_depreciable')
+                ? $this->boolean('is_depreciable')
+                : ($category?->is_depreciable ?? true);
         }
 
         $this->merge($data);

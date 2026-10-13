@@ -2,16 +2,23 @@
 
 namespace App\Services;
 
+use App\AssetAccountingStatus;
+use App\InventoryAssetEventType;
 use App\Models\InventoryAsset;
 use App\Models\InventoryAssetCustodian;
 use App\Models\PropertyAccountabilityDocument;
+use App\Models\PropertyDocumentSequence;
 use App\Models\User;
+use App\SemiExpendableAccountabilityStatus;
+use App\SemiExpendablePhysicalStatus;
+use App\SemiExpendableValueClass;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class PropertyAccountabilityService
 {
+    public function __construct(private InventoryAssetLifecycleService $lifecycle) {}
+
     public function issue(
         InventoryAsset $asset,
         InventoryAssetCustodian $assignment,
@@ -52,10 +59,17 @@ class PropertyAccountabilityService
             }
             $issuedAt = now();
             $issuerAttestation = 'I certify that the property was issued as described and custody was assigned to the named recipient.';
+            $valueClass = $documentType === 'ICS' ? $lockedAsset->semi_expendable_value_class : null;
+            $sequence = $this->nextSequence($documentType, $valueClass?->value ?? 'all', $issuedAt->year);
+            $accountabilityExpiresAt = $valueClass === SemiExpendableValueClass::Low
+                ? $issuedAt->copy()->addMonths($lockedAsset->depreciation_useful_life_months)->toDateString()
+                : null;
 
             $document = PropertyAccountabilityDocument::query()->create([
-                'document_no' => 'TMP-'.Str::uuid(),
+                'document_no' => $this->formatDocumentNo($documentType, $valueClass, $issuedAt->year, $sequence),
                 'document_type' => $documentType,
+                'value_class' => $valueClass?->value,
+                'sequence_no' => $sequence,
                 'inventory_asset_id' => $lockedAsset->getKey(),
                 'inventory_asset_custodian_id' => $assignment->getKey(),
                 'recipient_reference_id' => $lockedAsset->currentCustodian->id,
@@ -75,19 +89,20 @@ class PropertyAccountabilityService
                 'estimated_useful_life_months' => $lockedAsset->depreciation_useful_life_months,
                 'recipient_name' => $lockedAsset->currentCustodian->name,
                 'recipient_code' => $lockedAsset->currentCustodian->code,
+                'recipient_position' => data_get($lockedAsset->currentCustodian->metadata, 'position.name'),
+                'recipient_office' => data_get($lockedAsset->currentCustodian->metadata, 'position.section.name')
+                    ?? data_get($lockedAsset->currentCustodian->metadata, 'position.division.name')
+                    ?? data_get($lockedAsset->currentCustodian->metadata, 'position.department.name'),
+                'supplier_name' => $lockedAsset->supplier_name,
+                'invoice_reference' => $lockedAsset->invoice_no
+                    ?? $lockedAsset->inspection_acceptance_report_no
+                    ?? $lockedAsset->purchase_order_no,
+                'fund_code' => $lockedAsset->fund_cluster,
                 'issued_by_name' => $issuer->name,
                 'issuer_attestation' => $issuerAttestation,
                 'issued_at' => $issuedAt,
-                'renewal_due_at' => $issuedAt->copy()->addYears(3),
-            ]);
-
-            $document->update([
-                'document_no' => sprintf(
-                    '%s-%s-%06d',
-                    $documentType,
-                    $issuedAt->format('Y'),
-                    $document->getKey(),
-                ),
+                'renewal_due_at' => $issuedAt->copy()->addYears((int) config('inventory.semi_expendable.ics_renewal_years', 3)),
+                'accountability_expires_at' => $accountabilityExpiresAt,
             ]);
 
             $this->recordAction(
@@ -99,8 +114,41 @@ class PropertyAccountabilityService
                 $issuerAttestation,
             );
 
+            if ($documentType === 'ICS') {
+                $lockedAsset->update([
+                    'accounting_status' => AssetAccountingStatus::IssuedAndExpensed,
+                    'physical_status' => SemiExpendablePhysicalStatus::Issued,
+                    'accountability_status' => SemiExpendableAccountabilityStatus::PendingRecipient,
+                    'accountability_expires_at' => $accountabilityExpiresAt,
+                    'available_for_reissue' => false,
+                ]);
+                $isRenewal = $supersedes !== null
+                    && $supersedes->inventory_asset_custodian_id === $assignment->getKey();
+                $isReissue = ! $isRenewal && $lockedAsset->events()->whereIn('event_type', [
+                    InventoryAssetEventType::Issuance->value,
+                    InventoryAssetEventType::Reissue->value,
+                ])->exists();
+
+                if (! $isRenewal) {
+                    $this->lifecycle->recordSystemEvent($lockedAsset, $isReissue ? InventoryAssetEventType::Reissue : InventoryAssetEventType::Issuance, [
+                        'event_date' => $issuedAt->toDateString(),
+                        'reference_no' => $document->document_no,
+                        'amount' => $lockedAsset->acquisition_cost,
+                        'quantity' => 1,
+                        'notes' => $isReissue ? 'Returned serviceable property reissued under a new ICS.' : 'Property issued; accounting inventory expensed while physical accountability continues.',
+                        'details' => ['document_id' => $document->getKey(), 'recipient_reference_id' => $document->recipient_reference_id],
+                    ], $issuer);
+                }
+                $this->lifecycle->recordSystemEvent($lockedAsset, $supersedes ? InventoryAssetEventType::IcsRenewed : InventoryAssetEventType::IcsCreated, [
+                    'event_date' => $issuedAt->toDateString(),
+                    'reference_no' => $document->document_no,
+                    'notes' => $supersedes ? 'ICS renewed or replaced; prior ICS history retained.' : 'ICS accountability document created.',
+                    'details' => ['document_id' => $document->getKey(), 'supersedes_document_id' => $supersedes?->getKey()],
+                ], $issuer);
+            }
+
             return $document->load(['asset', 'actions.actor']);
-        });
+        }, attempts: 3);
     }
 
     public function issueForCurrentAssignment(
@@ -169,6 +217,12 @@ class PropertyAccountabilityService
                 'recipient_attestation' => $attestation,
                 'acknowledged_at' => now(),
             ]);
+
+            if ($lockedDocument->document_type === 'ICS') {
+                $lockedDocument->asset()->update([
+                    'accountability_status' => SemiExpendableAccountabilityStatus::Accountable,
+                ]);
+            }
 
             $this->recordAction(
                 $lockedDocument,
@@ -302,6 +356,19 @@ class PropertyAccountabilityService
             $lockedDocument->asset()->update([
                 'current_custodian_reference_id' => null,
             ]);
+            if ($lockedDocument->document_type === 'ICS') {
+                $accountingStatus = $lockedDocument->asset->accountabilityDocuments()
+                    ->where('document_type', 'ICS')
+                    ->count() === 1
+                    ? AssetAccountingStatus::OnHand
+                    : AssetAccountingStatus::IssuedAndExpensed;
+                $lockedDocument->asset()->update([
+                    'accounting_status' => $accountingStatus,
+                    'physical_status' => SemiExpendablePhysicalStatus::InPropertyCustody,
+                    'accountability_status' => SemiExpendableAccountabilityStatus::Unassigned,
+                    'accountability_expires_at' => null,
+                ]);
+            }
         });
     }
 
@@ -324,5 +391,36 @@ class PropertyAccountabilityService
             'ip_address' => request()->ip(),
             'user_agent' => request()->userAgent(),
         ]);
+    }
+
+    private function nextSequence(string $documentType, string $valueClass, int $year): int
+    {
+        PropertyDocumentSequence::query()->firstOrCreate([
+            'document_type' => $documentType,
+            'value_class' => $valueClass,
+            'year' => $year,
+        ]);
+        $sequence = PropertyDocumentSequence::query()
+            ->where('document_type', $documentType)
+            ->where('value_class', $valueClass)
+            ->where('year', $year)
+            ->lockForUpdate()
+            ->firstOrFail();
+        $sequence->increment('last_number');
+
+        return $sequence->last_number;
+    }
+
+    private function formatDocumentNo(
+        string $documentType,
+        ?SemiExpendableValueClass $valueClass,
+        int $year,
+        int $sequence,
+    ): string {
+        $prefix = $documentType === 'ICS'
+            ? sprintf('ICS-%s', $valueClass === SemiExpendableValueClass::Low ? 'LV' : 'HV')
+            : $documentType;
+
+        return sprintf('%s-%d-%06d', $prefix, $year, $sequence);
     }
 }

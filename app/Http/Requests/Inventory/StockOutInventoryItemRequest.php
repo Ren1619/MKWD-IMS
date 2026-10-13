@@ -28,7 +28,7 @@ class StockOutInventoryItemRequest extends FormRequest
             'recipient_name' => ['nullable', 'string', 'max:255', 'required_without:recipient_reference_id'],
             'ris_no' => ['nullable', 'string', 'max:100'],
             'responsibility_center_code' => ['nullable', 'string', 'max:100'],
-            'stocked_out_at' => ['nullable', 'date'],
+            'stocked_out_at' => ['nullable', 'date', 'before_or_equal:'.now('Asia/Manila')->toDateString()],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }

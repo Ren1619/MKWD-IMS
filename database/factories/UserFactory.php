@@ -36,7 +36,11 @@ class UserFactory extends Factory
             'two_factor_confirmed_at' => null,
             'role' => UserRole::Employee,
             'is_active' => true,
+            'local_fallback_enabled' => true,
             'last_login_at' => null,
+            'last_hris_authenticated_at' => null,
+            'fallback_valid_until' => null,
+            'last_fallback_authenticated_at' => null,
         ];
     }
 

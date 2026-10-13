@@ -16,3 +16,6 @@ Place Add item after the existing catalog checklist. New catalog-item editors op
 
 ## Place collapsible new-item editors after catalog selection
 Render the Add item action below the existing catalog checklist. Each newly added catalog item opens by default, may be independently collapsed, and uses its entered name in the collapsed summary.
+
+## Derive procurement item sections from request type
+The Prepare purchase request dialog must not use a separate Add new catalog items checkbox. Replenishment shows and submits only existing procurement-item lines; New item shows and submits only new catalog-item editors; Mixed shows and requires both sections. Changing request type must remove incompatible submitted lines so the selected type remains authoritative.

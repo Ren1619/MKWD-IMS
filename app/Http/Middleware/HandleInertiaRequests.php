@@ -45,6 +45,7 @@ class HandleInertiaRequests extends Middleware
                     'manage_users' => $request->user()?->can('manage-users') ?? false,
                     'manage_integrations' => $request->user()?->can('manage-integrations') ?? false,
                     'view_audit_logs' => $request->user()?->can('view-audit-logs') ?? false,
+                    'view_property_governance' => $request->user()?->can('view-property-governance') ?? false,
                 ],
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',

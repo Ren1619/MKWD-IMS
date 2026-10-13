@@ -24,8 +24,8 @@ export function WorkflowStatus({
         <div aria-label="Workflow progress" className="overflow-x-auto pb-1">
             <ol className="flex min-w-max items-start gap-1">
                 {steps.map((step, index) => {
-                    const isComplete = !isTerminal && index < currentIndex;
                     const isCurrent = step === current;
+                    const isComplete = !isTerminal && index <= currentIndex;
 
                     return (
                         <li
@@ -36,13 +36,9 @@ export function WorkflowStatus({
                             <div
                                 className={cn(
                                     'flex min-h-11 items-center gap-2 rounded-lg border px-3 py-2 text-xs capitalize',
-                                    isCurrent &&
-                                        'border-primary bg-primary/10 font-medium text-primary',
                                     isComplete &&
                                         'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-                                    !isCurrent &&
-                                        !isComplete &&
-                                        'text-muted-foreground',
+                                    !isComplete && 'text-muted-foreground',
                                 )}
                             >
                                 {isComplete ? (

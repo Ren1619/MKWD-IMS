@@ -1,14 +1,19 @@
 import { Form, Head } from '@inertiajs/react';
 import {
+    Archive,
     ArrowDownToLine,
     ArrowUpFromLine,
+    EllipsisVertical,
     Plus,
     RotateCcw,
     SlidersHorizontal,
 } from 'lucide-react';
 import { useState } from 'react';
+import type { ChangeEvent } from 'react';
 import { ArchiveRecordDialog } from '@/components/archive-record-dialog';
 import { DataPagination } from '@/components/data-pagination';
+import { FormErrorSummary } from '@/components/form-error-summary';
+import { HrisReferenceCombobox } from '@/components/hris-reference-combobox';
 import InputError from '@/components/input-error';
 import { InventoryItemDetailsDialog } from '@/components/inventory-item-details-dialog';
 import {
@@ -28,6 +33,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
     Dialog,
     DialogContent,
@@ -36,6 +42,16 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuGroup,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { FormSelect } from '@/components/ui/form-select';
 import { Input } from '@/components/ui/input';
 import {
     Tooltip,
@@ -57,6 +73,7 @@ import type {
     ClassCategory,
     HrisReference,
     InventoryItem,
+    MajorCategory,
     Paginated,
     SeriesCategory,
 } from '@/types/inventory';
@@ -77,27 +94,174 @@ function isInteractiveRowTarget(target: EventTarget | null): boolean {
     );
 }
 
-function StockInDialog({ item }: { item: InventoryItem }) {
+function CreateItemCategoryFields({
+    seriesCategories,
+    error,
+}: {
+    seriesCategories: SeriesCategory[];
+    error?: string;
+}) {
+    const [majorCategoryId, setMajorCategoryId] = useState('');
+    const [classCategoryId, setClassCategoryId] = useState('');
+    const [seriesCategoryId, setSeriesCategoryId] = useState('');
+    const majorCategories = Array.from(
+        new Map(
+            seriesCategories
+                .map((series) => series.class_category?.major_category)
+                .filter((major): major is MajorCategory => major !== undefined)
+                .map((major) => [major.inv_mjr_cat_id, major]),
+        ).values(),
+    );
+    const classCategories = Array.from(
+        new Map(
+            seriesCategories
+                .map((series) => series.class_category)
+                .filter(
+                    (category): category is ClassCategory =>
+                        category !== undefined &&
+                        String(category.inv_mjr_cat_id) === majorCategoryId,
+                )
+                .map((category) => [category.inv_class_cat_id, category]),
+        ).values(),
+    );
+    const availableSeriesCategories = seriesCategories.filter(
+        (series) => String(series.inv_class_cat_id) === classCategoryId,
+    );
+
     return (
-        <Dialog>
-            <Tooltip>
-                <DialogTrigger
-                    render={
-                        <TooltipTrigger
-                            render={
-                                <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    aria-label={`Receive stock for ${item.name}`}
-                                />
-                            }
-                        />
-                    }
+        <>
+            <div>
+                <label
+                    htmlFor="item-major-category"
+                    className="mb-1.5 block text-sm font-medium"
                 >
-                    <ArrowDownToLine />
-                </DialogTrigger>
-                <TooltipContent>Receive stock</TooltipContent>
-            </Tooltip>
+                    Major category
+                </label>
+                <FormSelect
+                    id="item-major-category"
+                    className={selectClass}
+                    value={majorCategoryId}
+                    onChange={(event) => {
+                        setMajorCategoryId(event.target.value);
+                        setClassCategoryId('');
+                        setSeriesCategoryId('');
+                    }}
+                >
+                    <option value="" disabled>
+                        Select major category
+                    </option>
+                    {majorCategories.map((category) => (
+                        <option
+                            key={category.inv_mjr_cat_id}
+                            value={category.inv_mjr_cat_id}
+                        >
+                            {category.name}
+                        </option>
+                    ))}
+                </FormSelect>
+            </div>
+            <div>
+                <label
+                    htmlFor="item-class-category"
+                    className="mb-1.5 block text-sm font-medium"
+                >
+                    Class category
+                </label>
+                <FormSelect
+                    id="item-class-category"
+                    className={selectClass}
+                    value={classCategoryId}
+                    onChange={(event) => {
+                        setClassCategoryId(event.target.value);
+                        setSeriesCategoryId('');
+                    }}
+                    disabled={!majorCategoryId}
+                >
+                    <option value="" disabled>
+                        {majorCategoryId
+                            ? 'Select class category'
+                            : 'Select a major category first'}
+                    </option>
+                    {classCategories.map((category) => (
+                        <option
+                            key={category.inv_class_cat_id}
+                            value={category.inv_class_cat_id}
+                        >
+                            {category.name}
+                        </option>
+                    ))}
+                </FormSelect>
+            </div>
+            <div>
+                <label
+                    htmlFor="series-category"
+                    className="mb-1.5 block text-sm font-medium"
+                >
+                    Series category
+                </label>
+                <FormSelect
+                    id="series-category"
+                    name="series_category_id"
+                    className={selectClass}
+                    value={seriesCategoryId}
+                    onChange={(event) =>
+                        setSeriesCategoryId(event.target.value)
+                    }
+                    disabled={!classCategoryId}
+                >
+                    <option value="" disabled>
+                        {classCategoryId
+                            ? 'Select series category'
+                            : 'Select a class category first'}
+                    </option>
+                    {availableSeriesCategories.map((category) => (
+                        <option
+                            key={category.inv_series_cat_id}
+                            value={category.inv_series_cat_id}
+                        >
+                            {category.name}
+                        </option>
+                    ))}
+                </FormSelect>
+                <InputError message={error} />
+            </div>
+        </>
+    );
+}
+
+function StockInDialog({
+    item,
+    open,
+    onOpenChange,
+    showTrigger = true,
+}: {
+    item: InventoryItem;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    showTrigger?: boolean;
+}) {
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            {showTrigger && (
+                <Tooltip>
+                    <DialogTrigger
+                        render={
+                            <TooltipTrigger
+                                render={
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        aria-label={`Receive stock for ${item.name}`}
+                                    />
+                                }
+                            />
+                        }
+                    >
+                        <ArrowDownToLine />
+                    </DialogTrigger>
+                    <TooltipContent>Receive stock</TooltipContent>
+                </Tooltip>
+            )}
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
                 <DialogHeader>
                     <DialogTitle>Receive {item.name}</DialogTitle>
@@ -155,10 +319,9 @@ function StockInDialog({ item }: { item: InventoryItem }) {
                                 >
                                     Date received
                                 </label>
-                                <Input
+                                <DatePicker
                                     id={`received-at-${item.inventory_item_id}`}
                                     name="received_at"
-                                    type="date"
                                     defaultValue={new Date()
                                         .toISOString()
                                         .slice(0, 10)}
@@ -172,10 +335,9 @@ function StockInDialog({ item }: { item: InventoryItem }) {
                                 >
                                     Expiration date
                                 </label>
-                                <Input
+                                <DatePicker
                                     id={`stock-in-expiration-${item.inventory_item_id}`}
                                     name="expiration_date"
-                                    type="date"
                                 />
                                 <InputError message={errors.expiration_date} />
                             </div>
@@ -243,36 +405,46 @@ function StockInDialog({ item }: { item: InventoryItem }) {
 function StockOutDialog({
     item,
     references,
+    open,
+    onOpenChange,
+    showTrigger = true,
 }: {
     item: InventoryItem;
     references: HrisReference[];
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    showTrigger?: boolean;
 }) {
     return (
-        <Dialog>
-            <Tooltip>
-                <DialogTrigger
-                    render={
-                        <TooltipTrigger
-                            render={
-                                <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    aria-label={`Release stock for ${item.name}`}
-                                />
-                            }
-                        />
-                    }
-                >
-                    <ArrowUpFromLine />
-                </DialogTrigger>
-                <TooltipContent>Release stock</TooltipContent>
-            </Tooltip>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            {showTrigger && (
+                <Tooltip>
+                    <DialogTrigger
+                        render={
+                            <TooltipTrigger
+                                render={
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        aria-label={`Release stock for ${item.name}`}
+                                    />
+                                }
+                            />
+                        }
+                    >
+                        <ArrowUpFromLine />
+                    </DialogTrigger>
+                    <TooltipContent>Release stock</TooltipContent>
+                </Tooltip>
+            )}
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Release {item.name}</DialogTitle>
                     <DialogDescription>
-                        {item.quantity} {item.unit_of_measure} currently
-                        available.
+                        {item.issuable_quantity} {item.unit_of_measure} issuable
+                        from {item.quantity} on hand. Dated batches use FEFO;
+                        undated batches use FIFO. Expired and future receipts
+                        are excluded.
                     </DialogDescription>
                 </DialogHeader>
                 <Form action={stock_out(item)} className="grid gap-4">
@@ -290,7 +462,7 @@ function StockOutDialog({
                                     name="quantity"
                                     type="number"
                                     min="1"
-                                    max={item.quantity}
+                                    max={item.issuable_quantity}
                                     placeholder="e.g. 5"
                                     required
                                 />
@@ -303,24 +475,16 @@ function StockOutDialog({
                                 >
                                     Recipient
                                 </label>
-                                <select
+                                <HrisReferenceCombobox
                                     id={`recipient-${item.inventory_item_id}`}
                                     name="recipient_reference_id"
-                                    className={selectClass}
-                                    defaultValue=""
-                                >
-                                    <option value="">
-                                        External/manual recipient
-                                    </option>
-                                    {references.map((reference) => (
-                                        <option
-                                            key={reference.id}
-                                            value={reference.id}
-                                        >
-                                            {reference.name} ({reference.type})
-                                        </option>
-                                    ))}
-                                </select>
+                                    references={references}
+                                    placeholder="External/manual recipient"
+                                    emptyMessage="No matching recipients found."
+                                    aria-invalid={Boolean(
+                                        errors.recipient_reference_id,
+                                    )}
+                                />
                                 <InputError
                                     message={errors.recipient_reference_id}
                                 />
@@ -383,10 +547,9 @@ function StockOutDialog({
                                 >
                                     Release date
                                 </label>
-                                <Input
+                                <DatePicker
                                     id={`stocked-out-at-${item.inventory_item_id}`}
                                     name="stocked_out_at"
-                                    type="date"
                                     defaultValue={new Date()
                                         .toISOString()
                                         .slice(0, 10)}
@@ -404,27 +567,39 @@ function StockOutDialog({
     );
 }
 
-function ReplenishmentDialog({ item }: { item: InventoryItem }) {
+function ReplenishmentDialog({
+    item,
+    open,
+    onOpenChange,
+    showTrigger = true,
+}: {
+    item: InventoryItem;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    showTrigger?: boolean;
+}) {
     return (
-        <Dialog>
-            <Tooltip>
-                <DialogTrigger
-                    render={
-                        <TooltipTrigger
-                            render={
-                                <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    aria-label={`Configure replenishment for ${item.name}`}
-                                />
-                            }
-                        />
-                    }
-                >
-                    <SlidersHorizontal />
-                </DialogTrigger>
-                <TooltipContent>Replenishment settings</TooltipContent>
-            </Tooltip>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            {showTrigger && (
+                <Tooltip>
+                    <DialogTrigger
+                        render={
+                            <TooltipTrigger
+                                render={
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        aria-label={`Configure replenishment for ${item.name}`}
+                                    />
+                                }
+                            />
+                        }
+                    >
+                        <SlidersHorizontal />
+                    </DialogTrigger>
+                    <TooltipContent>Replenishment settings</TooltipContent>
+                </Tooltip>
+            )}
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Replenishment settings</DialogTitle>
@@ -492,23 +667,162 @@ function ReplenishmentDialog({ item }: { item: InventoryItem }) {
     );
 }
 
+type InventoryItemActionDialog =
+    'archive' | 'receive' | 'release' | 'replenishment' | null;
+
+function InventoryItemActions({
+    item,
+    references,
+    showingArchived,
+}: {
+    item: InventoryItem;
+    references: HrisReference[];
+    showingArchived: boolean;
+}) {
+    const [activeDialog, setActiveDialog] =
+        useState<InventoryItemActionDialog>(null);
+
+    const handleDialogOpenChange = (
+        dialog: Exclude<InventoryItemActionDialog, null>,
+    ) => {
+        return (open: boolean) => {
+            setActiveDialog(open ? dialog : null);
+        };
+    };
+
+    return (
+        <>
+            <DropdownMenu>
+                <DropdownMenuTrigger
+                    render={
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            aria-label={`Open actions for ${item.name}`}
+                        />
+                    }
+                >
+                    <EllipsisVertical />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                    align="end"
+                    className="w-52"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <DropdownMenuGroup>
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {showingArchived ? (
+                            <Form
+                                action={restore(item)}
+                                options={{ preserveScroll: true }}
+                            >
+                                {({ processing }) => (
+                                    <DropdownMenuItem
+                                        disabled={processing}
+                                        render={
+                                            <button
+                                                type="submit"
+                                                className="w-full"
+                                            />
+                                        }
+                                    >
+                                        <RotateCcw />
+                                        {processing ? 'Restoring…' : 'Restore'}
+                                    </DropdownMenuItem>
+                                )}
+                            </Form>
+                        ) : (
+                            <>
+                                <DropdownMenuItem
+                                    onClick={() => setActiveDialog('receive')}
+                                >
+                                    <ArrowDownToLine /> Receive stock
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onClick={() => setActiveDialog('release')}
+                                >
+                                    <ArrowUpFromLine /> Release stock
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onClick={() =>
+                                        setActiveDialog('replenishment')
+                                    }
+                                >
+                                    <SlidersHorizontal /> Replenishment
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() => setActiveDialog('archive')}
+                                >
+                                    <Archive /> Archive
+                                </DropdownMenuItem>
+                            </>
+                        )}
+                    </DropdownMenuGroup>
+                </DropdownMenuContent>
+            </DropdownMenu>
+
+            {!showingArchived && (
+                <>
+                    <StockInDialog
+                        item={item}
+                        open={activeDialog === 'receive'}
+                        onOpenChange={handleDialogOpenChange('receive')}
+                        showTrigger={false}
+                    />
+                    <StockOutDialog
+                        item={item}
+                        references={references}
+                        open={activeDialog === 'release'}
+                        onOpenChange={handleDialogOpenChange('release')}
+                        showTrigger={false}
+                    />
+                    <ReplenishmentDialog
+                        item={item}
+                        open={activeDialog === 'replenishment'}
+                        onOpenChange={handleDialogOpenChange('replenishment')}
+                        showTrigger={false}
+                    />
+                    <ArchiveRecordDialog
+                        action={destroy(item)}
+                        recordName={item.name}
+                        recordType="inventory item"
+                        prerequisite="An item must have zero stock before it can be archived."
+                        open={activeDialog === 'archive'}
+                        onOpenChange={handleDialogOpenChange('archive')}
+                        showTrigger={false}
+                    />
+                </>
+            )}
+        </>
+    );
+}
+
 export default function ItemsIndex({
     items,
     seriesCategories,
+    majorCategories,
     classCategories,
+    filterSeriesCategories,
     references,
     filters,
 }: {
     items: Paginated<InventoryItem>;
     seriesCategories: SeriesCategory[];
+    majorCategories: MajorCategory[];
     classCategories: ClassCategory[];
+    filterSeriesCategories: SeriesCategory[];
     references: HrisReference[];
     filters: {
         search?: string;
         status?: string;
         records?: string;
         alert?: string;
+        major_category_id?: string;
         class_category_id?: string;
+        series_category_id?: string;
     };
 }) {
     const { submitAfterDelay, submitImmediately } = useFilterSubmit();
@@ -518,6 +832,38 @@ export default function ItemsIndex({
     const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(
         null,
     );
+    const [createCategoryFieldsKey, setCreateCategoryFieldsKey] = useState(0);
+    const [createDialogOpen, setCreateDialogOpen] = useState(false);
+    const selectedMajorCategoryId = filters.major_category_id ?? '';
+    const selectedClassCategoryId = filters.class_category_id ?? '';
+    const selectedSeriesCategoryId = filters.series_category_id ?? '';
+    const availableFilterClassCategories = classCategories.filter(
+        (category) =>
+            selectedMajorCategoryId !== '' &&
+            String(category.inv_mjr_cat_id) === selectedMajorCategoryId,
+    );
+    const availableFilterSeriesCategories = filterSeriesCategories.filter(
+        (category) =>
+            selectedClassCategoryId !== '' &&
+            String(category.inv_class_cat_id) === selectedClassCategoryId,
+    );
+
+    const submitCategoryFilter = (
+        event: ChangeEvent<HTMLInputElement>,
+        clearedFields: string[],
+    ): void => {
+        const form = event.currentTarget.form;
+
+        clearedFields.forEach((field) => {
+            const input = form?.elements.namedItem(field);
+
+            if (input instanceof HTMLInputElement) {
+                input.value = '';
+            }
+        });
+
+        submitImmediately(event);
+    };
 
     return (
         <>
@@ -533,7 +879,10 @@ export default function ItemsIndex({
                         </p>
                     </div>
                     {canManageInventory && (
-                        <Dialog>
+                        <Dialog
+                            open={createDialogOpen}
+                            onOpenChange={setCreateDialogOpen}
+                        >
                             <DialogTrigger render={<Button />}>
                                 <Plus /> New item
                             </DialogTrigger>
@@ -549,7 +898,27 @@ export default function ItemsIndex({
                                 </DialogHeader>
                                 <Form
                                     action={store()}
+                                    noValidate
                                     resetOnSuccess
+                                    onSuccess={() => {
+                                        setCreateCategoryFieldsKey(
+                                            (current) => current + 1,
+                                        );
+                                        setCreateDialogOpen(false);
+                                    }}
+                                    onError={() => {
+                                        setCreateDialogOpen(true);
+                                        requestAnimationFrame(() => {
+                                            document
+                                                .getElementById(
+                                                    'create-item-errors',
+                                                )
+                                                ?.scrollIntoView({
+                                                    behavior: 'smooth',
+                                                    block: 'nearest',
+                                                });
+                                        });
+                                    }}
                                     className="grid gap-4 md:grid-cols-2"
                                 >
                                     {({ errors, processing }) => (
@@ -584,6 +953,8 @@ export default function ItemsIndex({
                                                     name="stock_number"
                                                     placeholder="e.g. PAPER-001"
                                                     maxLength={100}
+                                                    pattern="[A-Za-z0-9]+([._/-][A-Za-z0-9]+)*"
+                                                    title="Use letters, numbers, periods, underscores, slashes, or hyphens without spaces."
                                                 />
                                                 <InputError
                                                     message={
@@ -591,57 +962,15 @@ export default function ItemsIndex({
                                                     }
                                                 />
                                             </div>
-                                            <div>
-                                                <label
-                                                    htmlFor="series-category"
-                                                    className="mb-1.5 block text-sm font-medium"
-                                                >
-                                                    Series category
-                                                </label>
-                                                <select
-                                                    id="series-category"
-                                                    name="series_category_id"
-                                                    className={selectClass}
-                                                    defaultValue=""
-                                                    required
-                                                >
-                                                    <option value="" disabled>
-                                                        Series category
-                                                    </option>
-                                                    {seriesCategories.map(
-                                                        (category) => (
-                                                            <option
-                                                                key={
-                                                                    category.inv_series_cat_id
-                                                                }
-                                                                value={
-                                                                    category.inv_series_cat_id
-                                                                }
-                                                            >
-                                                                {
-                                                                    category
-                                                                        .class_category
-                                                                        ?.major_category
-                                                                        ?.name
-                                                                }{' '}
-                                                                /{' '}
-                                                                {
-                                                                    category
-                                                                        .class_category
-                                                                        ?.name
-                                                                }{' '}
-                                                                /{' '}
-                                                                {category.name}
-                                                            </option>
-                                                        ),
-                                                    )}
-                                                </select>
-                                                <InputError
-                                                    message={
-                                                        errors.series_category_id
-                                                    }
-                                                />
-                                            </div>
+                                            <CreateItemCategoryFields
+                                                key={createCategoryFieldsKey}
+                                                seriesCategories={
+                                                    seriesCategories
+                                                }
+                                                error={
+                                                    errors.series_category_id
+                                                }
+                                            />
                                             <div>
                                                 <label
                                                     htmlFor="opening-quantity"
@@ -759,6 +1088,9 @@ export default function ItemsIndex({
                                                     name="uacs_object_code"
                                                     placeholder="e.g. 50203010-02"
                                                     maxLength={50}
+                                                    inputMode="numeric"
+                                                    pattern="[0-9]{8}-[0-9]{2}"
+                                                    title="Use eight digits, a hyphen, and two digits (for example, 50203010-02)."
                                                 />
                                                 <InputError
                                                     message={
@@ -773,10 +1105,9 @@ export default function ItemsIndex({
                                                 >
                                                     Expiration date
                                                 </label>
-                                                <Input
+                                                <DatePicker
                                                     id="expiration-date"
                                                     name="expiration_date"
-                                                    type="date"
                                                 />
                                                 <InputError
                                                     message={
@@ -791,10 +1122,9 @@ export default function ItemsIndex({
                                                 >
                                                     Date received
                                                 </label>
-                                                <Input
+                                                <DatePicker
                                                     id="opening-received-at"
                                                     name="received_at"
-                                                    type="date"
                                                     defaultValue={new Date()
                                                         .toISOString()
                                                         .slice(0, 10)}
@@ -810,7 +1140,7 @@ export default function ItemsIndex({
                                                 >
                                                     Status
                                                 </label>
-                                                <select
+                                                <FormSelect
                                                     id="item-status"
                                                     name="status"
                                                     className={selectClass}
@@ -826,7 +1156,7 @@ export default function ItemsIndex({
                                                     <option value="disposed">
                                                         Disposed
                                                     </option>
-                                                </select>
+                                                </FormSelect>
                                                 <InputError
                                                     message={errors.status}
                                                 />
@@ -893,34 +1223,19 @@ export default function ItemsIndex({
                                                 >
                                                     Accountable person
                                                 </label>
-                                                <select
+                                                <HrisReferenceCombobox
                                                     id="accountable-person"
                                                     name="accountable_reference_id"
-                                                    className={selectClass}
-                                                    defaultValue=""
-                                                >
-                                                    <option value="">
-                                                        No accountable person
-                                                    </option>
-                                                    {references
-                                                        .filter(
-                                                            (reference) =>
-                                                                reference.type ===
-                                                                'employee',
-                                                        )
-                                                        .map((reference) => (
-                                                            <option
-                                                                key={
-                                                                    reference.id
-                                                                }
-                                                                value={
-                                                                    reference.id
-                                                                }
-                                                            >
-                                                                {reference.name}
-                                                            </option>
-                                                        ))}
-                                                </select>
+                                                    references={references.filter(
+                                                        (reference) =>
+                                                            reference.type ===
+                                                            'employee',
+                                                    )}
+                                                    placeholder="No accountable person"
+                                                    aria-invalid={Boolean(
+                                                        errors.accountable_reference_id,
+                                                    )}
+                                                />
                                                 <InputError
                                                     message={
                                                         errors.accountable_reference_id
@@ -928,6 +1243,8 @@ export default function ItemsIndex({
                                                 />
                                             </div>
                                             <Button
+                                                data-test="create-item-submit"
+                                                type="submit"
                                                 disabled={processing}
                                                 className="md:col-span-2"
                                             >
@@ -935,6 +1252,15 @@ export default function ItemsIndex({
                                                     ? 'Creating…'
                                                     : 'Create item'}
                                             </Button>
+                                            <div
+                                                id="create-item-errors"
+                                                className="md:col-span-2"
+                                            >
+                                                <FormErrorSummary
+                                                    errors={errors}
+                                                    title="The item could not be created. Complete the required fields below."
+                                                />
+                                            </div>
                                         </>
                                     )}
                                 </Form>
@@ -984,41 +1310,127 @@ export default function ItemsIndex({
                                     </div>
                                     <div className="grid w-full gap-1.5 sm:w-44">
                                         <label
+                                            htmlFor="item-major-category-filter"
+                                            className="text-sm font-medium"
+                                        >
+                                            Major category
+                                        </label>
+                                        <FormSelect
+                                            id="item-major-category-filter"
+                                            name="major_category_id"
+                                            value={selectedMajorCategoryId}
+                                            className={selectClass}
+                                            onChange={(event) =>
+                                                submitCategoryFilter(event, [
+                                                    'class_category_id',
+                                                    'series_category_id',
+                                                ])
+                                            }
+                                        >
+                                            <option value="">
+                                                All major categories
+                                            </option>
+                                            {majorCategories.map((category) => (
+                                                <option
+                                                    key={
+                                                        category.inv_mjr_cat_id
+                                                    }
+                                                    value={
+                                                        category.inv_mjr_cat_id
+                                                    }
+                                                >
+                                                    {category.name}
+                                                </option>
+                                            ))}
+                                        </FormSelect>
+                                        <InputError
+                                            message={errors.major_category_id}
+                                        />
+                                    </div>
+                                    <div className="grid w-full gap-1.5 sm:w-44">
+                                        <label
                                             htmlFor="item-class-category-filter"
                                             className="text-sm font-medium"
                                         >
                                             Class category
                                         </label>
-                                        <select
+                                        <FormSelect
                                             id="item-class-category-filter"
                                             name="class_category_id"
-                                            defaultValue={
-                                                filters.class_category_id ?? ''
-                                            }
+                                            value={selectedClassCategoryId}
                                             className={selectClass}
+                                            disabled={
+                                                selectedMajorCategoryId === ''
+                                            }
+                                            onChange={(event) =>
+                                                submitCategoryFilter(event, [
+                                                    'series_category_id',
+                                                ])
+                                            }
+                                        >
+                                            <option value="">
+                                                {selectedMajorCategoryId === ''
+                                                    ? 'Select a major category first'
+                                                    : 'All class categories'}
+                                            </option>
+                                            {availableFilterClassCategories.map(
+                                                (category) => (
+                                                    <option
+                                                        key={
+                                                            category.inv_class_cat_id
+                                                        }
+                                                        value={
+                                                            category.inv_class_cat_id
+                                                        }
+                                                    >
+                                                        {category.name}
+                                                    </option>
+                                                ),
+                                            )}
+                                        </FormSelect>
+                                        <InputError
+                                            message={errors.class_category_id}
+                                        />
+                                    </div>
+                                    <div className="grid w-full gap-1.5 sm:w-44">
+                                        <label
+                                            htmlFor="item-series-category-filter"
+                                            className="text-sm font-medium"
+                                        >
+                                            Series category
+                                        </label>
+                                        <FormSelect
+                                            id="item-series-category-filter"
+                                            name="series_category_id"
+                                            value={selectedSeriesCategoryId}
+                                            className={selectClass}
+                                            disabled={
+                                                selectedClassCategoryId === ''
+                                            }
                                             onChange={submitImmediately}
                                         >
                                             <option value="">
-                                                All classes
+                                                {selectedClassCategoryId === ''
+                                                    ? 'Select a class category first'
+                                                    : 'All series categories'}
                                             </option>
-                                            {classCategories.map((category) => (
-                                                <option
-                                                    key={
-                                                        category.inv_class_cat_id
-                                                    }
-                                                    value={
-                                                        category.inv_class_cat_id
-                                                    }
-                                                >
-                                                    {category.name}
-                                                    {category.major_category
-                                                        ? ` — ${category.major_category.name}`
-                                                        : ''}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            {availableFilterSeriesCategories.map(
+                                                (category) => (
+                                                    <option
+                                                        key={
+                                                            category.inv_series_cat_id
+                                                        }
+                                                        value={
+                                                            category.inv_series_cat_id
+                                                        }
+                                                    >
+                                                        {category.name}
+                                                    </option>
+                                                ),
+                                            )}
+                                        </FormSelect>
                                         <InputError
-                                            message={errors.class_category_id}
+                                            message={errors.series_category_id}
                                         />
                                     </div>
                                     <div className="grid w-full gap-1.5 sm:w-44">
@@ -1028,7 +1440,7 @@ export default function ItemsIndex({
                                         >
                                             Status
                                         </label>
-                                        <select
+                                        <FormSelect
                                             id="item-status-filter"
                                             name="status"
                                             defaultValue={filters.status ?? ''}
@@ -1047,7 +1459,7 @@ export default function ItemsIndex({
                                             <option value="disposed">
                                                 Disposed
                                             </option>
-                                        </select>
+                                        </FormSelect>
                                         <InputError message={errors.status} />
                                     </div>
                                     <div className="grid w-full gap-1.5 sm:w-44">
@@ -1057,7 +1469,7 @@ export default function ItemsIndex({
                                         >
                                             Attention
                                         </label>
-                                        <select
+                                        <FormSelect
                                             id="item-alert-filter"
                                             name="alert"
                                             defaultValue={filters.alert ?? ''}
@@ -1074,7 +1486,7 @@ export default function ItemsIndex({
                                             <option value="expired">
                                                 Expired stock
                                             </option>
-                                        </select>
+                                        </FormSelect>
                                         <InputError message={errors.alert} />
                                     </div>
                                     <div className="grid w-full gap-1.5 sm:w-44">
@@ -1084,7 +1496,7 @@ export default function ItemsIndex({
                                         >
                                             Records
                                         </label>
-                                        <select
+                                        <FormSelect
                                             id="item-records-filter"
                                             name="records"
                                             defaultValue={
@@ -1099,7 +1511,7 @@ export default function ItemsIndex({
                                             <option value="archived">
                                                 Archived records
                                             </option>
-                                        </select>
+                                        </FormSelect>
                                         <InputError message={errors.records} />
                                     </div>
                                 </>
@@ -1139,208 +1551,136 @@ export default function ItemsIndex({
                                 </TableHeader>
                                 <TableBody className="divide-y">
                                     {items.data.map((item) => (
-                                        <Tooltip key={item.inventory_item_id}>
-                                            <TooltipTrigger
-                                                render={
-                                                    <TableRow
-                                                        role="button"
-                                                        tabIndex={0}
-                                                        aria-haspopup="dialog"
-                                                        aria-label={`View receipt and release history for ${item.name}`}
-                                                        className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-                                                        onClick={(event) => {
-                                                            if (
-                                                                !isInteractiveRowTarget(
-                                                                    event.target,
-                                                                )
-                                                            ) {
-                                                                setSelectedItem(
-                                                                    item,
-                                                                );
-                                                            }
-                                                        }}
-                                                        onKeyDown={(event) => {
-                                                            if (
-                                                                event.target ===
-                                                                    event.currentTarget &&
-                                                                (event.key ===
-                                                                    'Enter' ||
-                                                                    event.key ===
-                                                                        ' ')
-                                                            ) {
-                                                                event.preventDefault();
-                                                                setSelectedItem(
-                                                                    item,
-                                                                );
-                                                            }
-                                                        }}
-                                                    />
+                                        <TableRow
+                                            key={item.inventory_item_id}
+                                            role="button"
+                                            tabIndex={0}
+                                            aria-haspopup="dialog"
+                                            aria-label={`View receipt and release history for ${item.name}`}
+                                            title="Click for receipt and release history"
+                                            className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                                            onClick={(event) => {
+                                                if (
+                                                    !isInteractiveRowTarget(
+                                                        event.target,
+                                                    )
+                                                ) {
+                                                    setSelectedItem(item);
                                                 }
-                                            >
-                                                <TableCell className="py-3 font-mono text-xs">
-                                                    {item.stock_number ?? '—'}
-                                                </TableCell>
-                                                <TableCell className="py-3">
-                                                    <div className="font-medium">
-                                                        {item.name}
-                                                    </div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {item
-                                                            .accountable_reference
-                                                            ?.name ??
-                                                            'No accountable person'}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="py-3 text-muted-foreground">
-                                                    {
-                                                        item.series_category
-                                                            ?.class_category
-                                                            ?.major_category
-                                                            ?.name
-                                                    }{' '}
-                                                    /{' '}
-                                                    {item.series_category?.name}
-                                                </TableCell>
-                                                <TableCell className="py-3 text-right">
-                                                    <div className="font-semibold">
-                                                        {item.quantity}{' '}
-                                                        {item.unit_of_measure}
-                                                    </div>
-                                                    {item.is_low_stock && (
-                                                        <Badge
-                                                            variant="destructive"
-                                                            className="mt-1"
-                                                        >
-                                                            Reorder at{' '}
-                                                            {item.reorder_point}
-                                                        </Badge>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="py-3 text-right">
-                                                    {currency.format(
-                                                        Number(
-                                                            item.inventory_value,
-                                                        ),
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="py-3 text-muted-foreground">
-                                                    <div>
-                                                        {item.next_expiration_date
-                                                            ? new Date(
-                                                                  `${item.next_expiration_date}T00:00:00`,
-                                                              ).toLocaleDateString()
-                                                            : 'No expiry'}
-                                                    </div>
-                                                    {item.expiration_status ===
-                                                        'expired' && (
-                                                        <Badge
-                                                            variant="destructive"
-                                                            className="mt-1"
-                                                        >
-                                                            Expired
-                                                        </Badge>
-                                                    )}
-                                                    {item.expiration_status ===
-                                                        'expiring' && (
-                                                        <Badge
-                                                            variant="outline"
-                                                            className="mt-1 border-amber-500/50 text-amber-700 dark:text-amber-400"
-                                                        >
-                                                            Expiring soon
-                                                        </Badge>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="py-3">
+                                            }}
+                                            onKeyDown={(event) => {
+                                                if (
+                                                    event.target ===
+                                                        event.currentTarget &&
+                                                    (event.key === 'Enter' ||
+                                                        event.key === ' ')
+                                                ) {
+                                                    event.preventDefault();
+                                                    setSelectedItem(item);
+                                                }
+                                            }}
+                                        >
+                                            <TableCell className="py-3 font-mono text-xs">
+                                                {item.stock_number ?? '—'}
+                                            </TableCell>
+                                            <TableCell className="py-3">
+                                                <div className="font-medium">
+                                                    {item.name}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {item.accountable_reference
+                                                        ?.name ??
+                                                        'No accountable person'}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="py-3 text-muted-foreground">
+                                                {
+                                                    item.series_category
+                                                        ?.class_category
+                                                        ?.major_category?.name
+                                                }{' '}
+                                                / {item.series_category?.name}
+                                            </TableCell>
+                                            <TableCell className="py-3 text-right">
+                                                <div className="font-semibold">
+                                                    {item.quantity}{' '}
+                                                    {item.unit_of_measure}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {item.issuable_quantity}{' '}
+                                                    issuable
+                                                </div>
+                                                {item.is_low_stock && (
                                                     <Badge
-                                                        variant={
-                                                            item.status ===
-                                                            'active'
-                                                                ? 'default'
-                                                                : 'secondary'
-                                                        }
+                                                        variant="destructive"
+                                                        className="mt-1"
                                                     >
-                                                        {item.status}
+                                                        Reorder at{' '}
+                                                        {item.reorder_point}
                                                     </Badge>
-                                                </TableCell>
-                                                {canManageInventory && (
-                                                    <TableCell className="py-3">
-                                                        <div className="flex justify-end gap-2">
-                                                            {showingArchived ? (
-                                                                <Form
-                                                                    action={restore(
-                                                                        item,
-                                                                    )}
-                                                                    options={{
-                                                                        preserveScroll: true,
-                                                                    }}
-                                                                >
-                                                                    {({
-                                                                        processing,
-                                                                    }) => (
-                                                                        <Tooltip>
-                                                                            <TooltipTrigger
-                                                                                render={
-                                                                                    <Button
-                                                                                        size="icon"
-                                                                                        variant="ghost"
-                                                                                        aria-label={`Restore ${item.name}`}
-                                                                                        disabled={
-                                                                                            processing
-                                                                                        }
-                                                                                    />
-                                                                                }
-                                                                            >
-                                                                                <RotateCcw />
-                                                                            </TooltipTrigger>
-                                                                            <TooltipContent>
-                                                                                {processing
-                                                                                    ? 'Restoring…'
-                                                                                    : 'Restore item'}
-                                                                            </TooltipContent>
-                                                                        </Tooltip>
-                                                                    )}
-                                                                </Form>
-                                                            ) : (
-                                                                <>
-                                                                    <StockInDialog
-                                                                        item={
-                                                                            item
-                                                                        }
-                                                                    />
-                                                                    <StockOutDialog
-                                                                        item={
-                                                                            item
-                                                                        }
-                                                                        references={
-                                                                            references
-                                                                        }
-                                                                    />
-                                                                    <ReplenishmentDialog
-                                                                        item={
-                                                                            item
-                                                                        }
-                                                                    />
-                                                                    <ArchiveRecordDialog
-                                                                        action={destroy(
-                                                                            item,
-                                                                        )}
-                                                                        recordName={
-                                                                            item.name
-                                                                        }
-                                                                        recordType="inventory item"
-                                                                        prerequisite="An item must have zero stock before it can be archived."
-                                                                    />
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
                                                 )}
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                Click for receipt and release
-                                                history
-                                            </TooltipContent>
-                                        </Tooltip>
+                                            </TableCell>
+                                            <TableCell className="py-3 text-right">
+                                                {currency.format(
+                                                    Number(
+                                                        item.inventory_value,
+                                                    ),
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="py-3 text-muted-foreground">
+                                                <div>
+                                                    {item.next_expiration_date
+                                                        ? new Date(
+                                                              `${item.next_expiration_date}T00:00:00`,
+                                                          ).toLocaleDateString()
+                                                        : 'No expiry'}
+                                                </div>
+                                                {item.expiration_status ===
+                                                    'expired' && (
+                                                    <Badge
+                                                        variant="destructive"
+                                                        className="mt-1"
+                                                    >
+                                                        Expired
+                                                    </Badge>
+                                                )}
+                                                {item.expiration_status ===
+                                                    'expiring' && (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="mt-1 border-amber-500/50 text-amber-700 dark:text-amber-400"
+                                                    >
+                                                        Expiring soon
+                                                    </Badge>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="py-3">
+                                                <Badge
+                                                    variant={
+                                                        item.status === 'active'
+                                                            ? 'default'
+                                                            : 'secondary'
+                                                    }
+                                                >
+                                                    {item.status}
+                                                </Badge>
+                                            </TableCell>
+                                            {canManageInventory && (
+                                                <TableCell className="py-3">
+                                                    <div className="flex justify-end">
+                                                        <InventoryItemActions
+                                                            item={item}
+                                                            references={
+                                                                references
+                                                            }
+                                                            showingArchived={
+                                                                showingArchived
+                                                            }
+                                                        />
+                                                    </div>
+                                                </TableCell>
+                                            )}
+                                        </TableRow>
                                     ))}
                                     {items.data.length === 0 && (
                                         <TableRow>

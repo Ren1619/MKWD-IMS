@@ -42,10 +42,6 @@ class AuditLogController extends Controller
             'description' => $auditLog->description,
             'subject_type' => $auditLog->auditable_type ? class_basename($auditLog->auditable_type) : null,
             'subject_id' => $auditLog->auditable_id,
-            'changed_attributes' => array_values(array_unique([
-                ...array_keys($auditLog->old_values ?? []),
-                ...array_keys($auditLog->new_values ?? []),
-            ])),
             'ip_address' => $auditLog->ip_address,
             'created_at' => $auditLog->created_at,
             'user' => $auditLog->user,

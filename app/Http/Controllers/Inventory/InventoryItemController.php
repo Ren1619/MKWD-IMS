@@ -13,7 +13,9 @@ use App\Http\Requests\Inventory\UpdateInventoryItemRequest;
 use App\Models\HrisReference;
 use App\Models\InventoryClassCategory;
 use App\Models\InventoryItem;
+use App\Models\InventoryMajorCategory;
 use App\Models\InventorySeriesCategory;
+use App\Services\InventoryStockGuard;
 use App\Services\InventoryStockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -26,7 +28,7 @@ use InvalidArgumentException;
 
 class InventoryItemController extends Controller
 {
-    public function __construct(private InventoryStockService $stockService) {}
+    public function __construct(private InventoryStockService $stockService, private InventoryStockGuard $stockGuard) {}
 
     public function index(InventoryItemIndexRequest $request): Response
     {
@@ -38,10 +40,15 @@ class InventoryItemController extends Controller
                 $nested->where('name', 'like', $search)->orWhere('stock_number', 'like', $search);
             }))
             ->when($request->string('status')->isNotEmpty(), fn ($query) => $query->where('status', $request->string('status')->toString()))
+            ->when($request->integer('major_category_id') > 0, fn ($query) => $query->whereHas(
+                'seriesCategory.classCategory',
+                fn ($classQuery) => $classQuery->where('inv_mjr_cat_id', $request->integer('major_category_id')),
+            ))
             ->when($request->integer('class_category_id') > 0, fn ($query) => $query->whereHas(
                 'seriesCategory',
                 fn ($seriesQuery) => $seriesQuery->where('inv_class_cat_id', $request->integer('class_category_id')),
             ))
+            ->when($request->integer('series_category_id') > 0, fn ($query) => $query->where('series_category_id', $request->integer('series_category_id')))
             ->when($request->string('alert')->toString() === 'low_stock', fn ($query) => $query->lowStock())
             ->when($request->string('alert')->toString() === 'expired', fn ($query) => $query->whereHas('batches', fn ($batchQuery) => $batchQuery
                 ->where('quantity_remaining', '>', 0)
@@ -61,12 +68,31 @@ class InventoryItemController extends Controller
                 ->whereHas('classCategory', fn ($query) => $query->where('is_active', true)->whereHas('majorCategory', fn ($majorQuery) => $majorQuery->where('is_active', true)))
                 ->orderBy('name')
                 ->get(),
+            'majorCategories' => InventoryMajorCategory::query()
+                ->orderBy('name')
+                ->get(['inv_mjr_cat_id', 'name']),
             'classCategories' => InventoryClassCategory::query()
                 ->with('majorCategory:inv_mjr_cat_id,name')
                 ->orderBy('name')
                 ->get(['inv_class_cat_id', 'inv_mjr_cat_id', 'name']),
-            'references' => HrisReference::query()->where('is_active', true)->orderBy('name')->get(['id', 'type', 'code', 'name']),
-            'filters' => $request->safe()->only(['search', 'status', 'records', 'alert', 'class_category_id']),
+            'filterSeriesCategories' => InventorySeriesCategory::query()
+                ->with('classCategory:inv_class_cat_id,inv_mjr_cat_id,name')
+                ->orderBy('name')
+                ->get(['inv_series_cat_id', 'inv_class_cat_id', 'name']),
+            'references' => HrisReference::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'type', 'code', 'name', 'email', 'metadata'])
+                ->map(fn (HrisReference $reference): array => $reference->toSelectionOption()),
+            'filters' => $request->safe()->only([
+                'search',
+                'status',
+                'records',
+                'alert',
+                'major_category_id',
+                'class_category_id',
+                'series_category_id',
+            ]),
         ]);
     }
 
@@ -109,7 +135,10 @@ class InventoryItemController extends Controller
 
     public function update(UpdateInventoryItemRequest $request, InventoryItem $item): RedirectResponse
     {
-        $item->update($request->validated());
+        DB::transaction(function () use ($request, $item): void {
+            $this->stockGuard->assertMovementAllowed();
+            $item->update($request->validated());
+        });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Inventory item updated.']);
 
         return to_route('inventory.items.index');
@@ -134,7 +163,10 @@ class InventoryItemController extends Controller
             return to_route('inventory.items.index');
         }
 
-        $item->delete();
+        DB::transaction(function () use ($item): void {
+            $this->stockGuard->assertMovementAllowed();
+            $item->delete();
+        });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Inventory item archived.']);
 
         return to_route('inventory.items.index');
@@ -142,7 +174,10 @@ class InventoryItemController extends Controller
 
     public function restore(InventoryItem $item): RedirectResponse
     {
-        $item->restore();
+        DB::transaction(function () use ($item): void {
+            $this->stockGuard->assertMovementAllowed();
+            $item->restore();
+        });
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Inventory item restored.']);
 
         return to_route('inventory.items.index', ['records' => 'archived']);

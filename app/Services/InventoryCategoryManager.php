@@ -85,6 +85,10 @@ class InventoryCategoryManager
 
         if ($type === InventoryCategoryType::Asset) {
             $attributes['is_vehicle'] = $data['is_vehicle'];
+            $attributes['account_code'] = $data['account_code'];
+            $attributes['default_useful_life_months'] = $data['default_useful_life_months'];
+            $attributes['default_residual_value_percentage'] = $data['default_residual_value_percentage'];
+            $attributes['is_depreciable'] = $data['is_depreciable'];
         }
 
         if ($parentColumn = $type->parentColumn()) {

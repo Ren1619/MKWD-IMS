@@ -43,8 +43,15 @@ return [
         ))),
         'token' => env('HRIS_API_TOKEN'),
         'employees_path' => env('HRIS_API_EMPLOYEES_PATH', '/api/v1/inventory/employees'),
+        'reference_data_path' => env('HRIS_API_REFERENCE_DATA_PATH', '/api/v1/inventory/reference-data'),
         'connect_timeout' => (int) env('HRIS_API_CONNECT_TIMEOUT', 3),
         'timeout' => (int) env('HRIS_API_TIMEOUT', 15),
+        'auth_enabled' => (bool) env('HRIS_AUTH_ENABLED', false),
+        'auth_token' => env('HRIS_AUTH_API_TOKEN') ?: env('HRIS_API_TOKEN'),
+        'auth_path' => env('HRIS_AUTH_API_PATH', '/api/v1/auth/verify'),
+        'auth_connect_timeout' => (int) env('HRIS_AUTH_CONNECT_TIMEOUT', 3),
+        'auth_timeout' => (int) env('HRIS_AUTH_TIMEOUT', 8),
+        'development_fallback_enabled' => (bool) env('HRIS_AUTH_DEVELOPMENT_FALLBACK', false),
     ],
 
 ];

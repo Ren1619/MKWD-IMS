@@ -2,6 +2,7 @@ import { Form, Head, Link } from '@inertiajs/react';
 import { Pencil, Plus, ShieldCheck, UserCheck, UserX } from 'lucide-react';
 import { useState } from 'react';
 import { DataPagination } from '@/components/data-pagination';
+import { HrisReferenceCombobox } from '@/components/hris-reference-combobox';
 import InputError from '@/components/input-error';
 import {
     Table,
@@ -28,18 +29,14 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import { FormSelect } from '@/components/ui/form-select';
 import { Input } from '@/components/ui/input';
 import { useFilterSubmit } from '@/hooks/use-filter-submit';
 import { index, store, update } from '@/routes/admin/users';
 import type { UserRole } from '@/types/auth';
-import type { Paginated } from '@/types/inventory';
+import type { HrisReference, Paginated } from '@/types/inventory';
 
-type Employee = {
-    id: number;
-    code: string | null;
-    name: string;
-    email: string | null;
-};
+type Employee = HrisReference;
 
 type RoleOption = { value: string; label: string };
 
@@ -91,25 +88,17 @@ function CreateUserDialog({
                                 >
                                     Employee link
                                 </label>
-                                <select
+                                <HrisReferenceCombobox
                                     id="create-employee"
                                     name="hris_reference_id"
-                                    className={selectClass}
+                                    references={employees}
                                     value={employeeId}
-                                    onChange={(event) =>
-                                        setEmployeeId(event.target.value)
-                                    }
-                                >
-                                    <option value="">
-                                        No employee link (system account)
-                                    </option>
-                                    {employees.map((item) => (
-                                        <option key={item.id} value={item.id}>
-                                            {item.name}
-                                            {item.code ? ' · ' + item.code : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onValueChange={setEmployeeId}
+                                    placeholder="No employee link (system account)"
+                                    aria-invalid={Boolean(
+                                        errors.hris_reference_id,
+                                    )}
+                                />
                                 <InputError
                                     message={errors.hris_reference_id}
                                 />
@@ -190,7 +179,7 @@ function AccessFields({
                 >
                     Role
                 </label>
-                <select
+                <FormSelect
                     id={`${idPrefix}-role`}
                     name="role"
                     className={selectClass}
@@ -202,7 +191,7 @@ function AccessFields({
                             {role.label}
                         </option>
                     ))}
-                </select>
+                </FormSelect>
                 <InputError message={errors.role} />
             </div>
             <div>
@@ -212,7 +201,7 @@ function AccessFields({
                 >
                     Status
                 </label>
-                <select
+                <FormSelect
                     id={`${idPrefix}-status`}
                     name="is_active"
                     className={selectClass}
@@ -221,7 +210,7 @@ function AccessFields({
                 >
                     <option value="1">Active</option>
                     <option value="0">Inactive</option>
-                </select>
+                </FormSelect>
                 <InputError message={errors.is_active} />
             </div>
         </div>
@@ -316,22 +305,18 @@ function EditUserDialog({
                                 >
                                     Employee link
                                 </label>
-                                <select
+                                <HrisReferenceCombobox
                                     id={`edit-employee-${user.id}`}
                                     name="hris_reference_id"
-                                    className={selectClass}
+                                    references={employees}
                                     defaultValue={
                                         user.hris_reference_id?.toString() ?? ''
                                     }
-                                >
-                                    <option value="">No employee link</option>
-                                    {employees.map((item) => (
-                                        <option key={item.id} value={item.id}>
-                                            {item.name}
-                                            {item.code ? ' · ' + item.code : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                                    placeholder="No employee link"
+                                    aria-invalid={Boolean(
+                                        errors.hris_reference_id,
+                                    )}
+                                />
                                 <InputError
                                     message={errors.hris_reference_id}
                                 />
@@ -466,7 +451,7 @@ export default function UsersIndex({
                                         >
                                             Role
                                         </label>
-                                        <select
+                                        <FormSelect
                                             id="account-role"
                                             name="role"
                                             className={selectClass}
@@ -482,7 +467,7 @@ export default function UsersIndex({
                                                     {role.label}
                                                 </option>
                                             ))}
-                                        </select>
+                                        </FormSelect>
                                         <InputError message={errors.role} />
                                     </div>
                                     <div className="grid w-full gap-1.5 sm:w-40">
@@ -492,7 +477,7 @@ export default function UsersIndex({
                                         >
                                             Status
                                         </label>
-                                        <select
+                                        <FormSelect
                                             id="account-status"
                                             name="status"
                                             className={selectClass}
@@ -508,7 +493,7 @@ export default function UsersIndex({
                                             <option value="inactive">
                                                 Inactive
                                             </option>
-                                        </select>
+                                        </FormSelect>
                                         <InputError message={errors.status} />
                                     </div>
                                     <div className="flex gap-2">

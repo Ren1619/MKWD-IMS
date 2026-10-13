@@ -12,6 +12,7 @@ import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { FormSelect } from '@/components/ui/form-select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { WorkflowActionDialog } from '@/components/workflow-action-dialog';
@@ -70,7 +71,11 @@ type WorkflowAction = {
 };
 
 const workflowSteps = ['pending_recipient', 'active', 'returned'] as const;
-const terminalStatuses = ['superseded', 'cancelled'] as const;
+const terminalStatuses = [
+    'superseded',
+    'cancelled',
+    'transferred_out',
+] as const;
 const fieldClassName =
     'min-h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm';
 
@@ -91,6 +96,8 @@ function nextAction(status: string): string {
                     'Completed. The property was returned and custody was closed.',
                 cancelled:
                     'Cancelled before activation. See the control history for the reason.',
+                transferred_out:
+                    'Closed after permanent transfer to another agency. The PTR and signed agency receipt remain the evidence of handover.',
             } as Record<string, string>
         )[status] ?? 'Review the control history for this document.'
     );
@@ -334,7 +341,7 @@ export default function AccountabilityIndex({
                                 id="accountability-type"
                                 label="Document type"
                             >
-                                <select
+                                <FormSelect
                                     id="accountability-type"
                                     className={fieldClassName}
                                     value={filterValues.document_type}
@@ -348,10 +355,10 @@ export default function AccountabilityIndex({
                                     <option value="">PAR and ICS</option>
                                     <option value="PAR">PAR</option>
                                     <option value="ICS">ICS</option>
-                                </select>
+                                </FormSelect>
                             </Field>
                             <Field id="accountability-status" label="Status">
-                                <select
+                                <FormSelect
                                     id="accountability-status"
                                     className={fieldClassName}
                                     value={filterValues.status}
@@ -371,10 +378,10 @@ export default function AccountabilityIndex({
                                             {statusLabel(status)}
                                         </option>
                                     ))}
-                                </select>
+                                </FormSelect>
                             </Field>
                             <Field id="accountability-queue" label="Queue">
-                                <select
+                                <FormSelect
                                     id="accountability-queue"
                                     className={fieldClassName}
                                     value={filterValues.queue}
@@ -392,7 +399,7 @@ export default function AccountabilityIndex({
                                     <option value="completed">
                                         Closed documents
                                     </option>
-                                </select>
+                                </FormSelect>
                             </Field>
                             <div className="flex gap-2 lg:items-end">
                                 <Button className="min-h-11 flex-1 lg:flex-none">

@@ -5,6 +5,7 @@ import {
     ClipboardSignature,
     LayoutGrid,
     PackageCheck,
+    PackageOpen,
     ScrollText,
     ClipboardList,
     ShoppingCart,
@@ -31,10 +32,18 @@ import { index as usersIndex } from '@/routes/admin/users';
 import { index as accountabilityIndex } from '@/routes/inventory/accountability';
 import { index as assetsIndex } from '@/routes/inventory/assets';
 import { index as categoriesIndex } from '@/routes/inventory/categories';
+import { index as countsIndex } from '@/routes/inventory/counts';
+import { index as deliveriesIndex } from '@/routes/inventory/deliveries';
 import { index as itemsIndex } from '@/routes/inventory/items';
+import { index as monthlyReportsIndex } from '@/routes/inventory/monthly_reports';
 import { index as procurementIndex } from '@/routes/inventory/procurement';
 import { index as reportsIndex } from '@/routes/inventory/reports';
 import { index as requestsIndex } from '@/routes/inventory/requests';
+import { index as returnsIndex } from '@/routes/inventory/returns';
+import { index as semiExpendableIndex } from '@/routes/inventory/semi_expendable';
+import { index as warehouseIndex } from '@/routes/inventory/warehouse';
+import { index as transfersIndex } from '@/routes/inventory/transfers';
+import { index as disposalsIndex } from '@/routes/inventory/disposals';
 import type { NavItem } from '@/types';
 
 const overviewNavItems: NavItem[] = [
@@ -60,14 +69,14 @@ const inventoryOperationsNavItems: NavItem[] = [
 
 const propertyManagementNavItems: NavItem[] = [
     {
-        title: 'Asset Registry',
+        title: 'PPE',
         href: assetsIndex(),
         icon: PackageCheck,
     },
     {
-        title: 'Property Accountability',
-        href: accountabilityIndex(),
-        icon: ClipboardSignature,
+        title: 'Semi-Expendable Property',
+        href: semiExpendableIndex(),
+        icon: PackageOpen,
     },
 ];
 
@@ -80,6 +89,26 @@ const reportingNavItems: NavItem[] = [
 ];
 
 const configurationNavItems: NavItem[] = [
+    {
+        title: 'Disposal / Waste Materials',
+        href: disposalsIndex(),
+        icon: ClipboardSignature,
+    },
+    {
+        title: 'Property Transfers',
+        href: transfersIndex(),
+        icon: ClipboardSignature,
+    },
+    {
+        title: 'Warehouse Storage',
+        href: warehouseIndex(),
+        icon: Boxes,
+    },
+    {
+        title: 'Monthly Report Packages',
+        href: monthlyReportsIndex(),
+        icon: ScrollText,
+    },
     {
         title: 'Categories',
         href: categoriesIndex(),
@@ -101,23 +130,42 @@ const administrationNavItems: NavItem[] = [
 ];
 
 const footerNavItems: NavItem[] = [];
+const procurementNavItems: NavItem[] = [
+    {
+        title: 'Delivery Inspection',
+        href: deliveriesIndex(),
+        icon: PackageCheck,
+    },
+    {
+        title: 'Requests',
+        href: procurementIndex(),
+        icon: ShoppingCart,
+    },
+];
 
 export function AppSidebar() {
     const { auth } = useAppPage().props;
-    const operationsItems: NavItem[] = auth.permissions.manage_inventory
-        ? [
-              ...inventoryOperationsNavItems,
-              {
-                  title: 'Procurement Controls',
-                  href: procurementIndex(),
-                  icon: ShoppingCart,
-              },
-          ]
-        : inventoryOperationsNavItems;
     const reportsAndConfigurationItems: NavItem[] = auth.permissions
         .manage_inventory
-        ? [...reportingNavItems, ...configurationNavItems]
-        : reportingNavItems;
+        ? [
+              ...(auth.permissions.view_property_governance
+                  ? reportingNavItems
+                  : []),
+              ...configurationNavItems,
+          ]
+        : auth.permissions.view_property_governance
+          ? reportingNavItems
+          : [];
+    const propertyManagementItems = auth.permissions.view_property_governance
+        ? [
+              ...propertyManagementNavItems,
+              {
+                  title: 'Property Accountability',
+                  href: accountabilityIndex(),
+                  icon: ClipboardSignature,
+              },
+          ]
+        : propertyManagementNavItems;
     const administrationItems =
         auth.user?.role === 'super_admin' ? administrationNavItems : [];
 
@@ -138,10 +186,37 @@ export function AppSidebar() {
 
             <SidebarContent>
                 <NavMain label="Overview" items={overviewNavItems} />
-                <NavMain label="Inventory Operations" items={operationsItems} />
+                <NavMain
+                    label="Inventory Operations"
+                    items={[
+                        ...inventoryOperationsNavItems,
+                        ...(auth.permissions.manage_inventory
+                            ? [
+                                  {
+                                      title: 'Physical Counts',
+                                      href: countsIndex(),
+                                      icon: ClipboardList,
+                                  },
+                                  {
+                                      title: 'Return to Stock',
+                                      href: returnsIndex(),
+                                      icon: PackageOpen,
+                                  },
+                              ]
+                            : []),
+                    ]}
+                />
+                <NavMain
+                    label="Procurement"
+                    items={
+                        auth.permissions.manage_inventory
+                            ? procurementNavItems
+                            : []
+                    }
+                />
                 <NavMain
                     label="Property Management"
-                    items={propertyManagementNavItems}
+                    items={propertyManagementItems}
                 />
                 <NavMain
                     label="Reports & Configuration"

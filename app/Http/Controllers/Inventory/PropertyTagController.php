@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\AssetAccountingClassification;
 use App\Http\Controllers\Controller;
 use App\Models\InventoryAsset;
 use App\Services\PropertyTagService;
@@ -20,8 +21,14 @@ class PropertyTagController extends Controller
 
     public function print(InventoryAsset $asset): View
     {
+        $isPpe = $asset->accounting_classification === AssetAccountingClassification::Ppe;
+        $asset->loadMissing(['currentCustodian:id,name', $isPpe ? 'latestParDocument' : 'latestIcsDocument']);
+
         return view('inventory.property-tag', [
             'asset' => $asset,
+            'accountabilityType' => $isPpe ? 'PAR' : 'ICS',
+            'accountabilityDocument' => $isPpe ? $asset->latestParDocument : $asset->latestIcsDocument,
+            'tagColor' => $isPpe ? 'Green' : 'Yellow',
             'qrCodeDataUri' => $this->propertyTags->dataUri($asset),
             'scanUrl' => $this->propertyTags->scanUrl($asset),
         ]);

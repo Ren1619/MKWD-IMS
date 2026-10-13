@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\AssetAccountingClassification;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\PropertyAccountabilityIndexRequest;
 use App\Http\Requests\Inventory\TransitionPropertyAccountabilityRequest;
@@ -48,7 +49,7 @@ class PropertyAccountabilityController extends Controller
             ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
             ->when($filters['document_type'] ?? null, fn ($query, string $documentType) => $query->where('document_type', $documentType))
             ->when(($filters['queue'] ?? null) === 'needs_action', fn ($query) => $query->whereIn('status', ['pending_recipient', 'active']))
-            ->when(($filters['queue'] ?? null) === 'completed', fn ($query) => $query->whereIn('status', ['superseded', 'returned', 'cancelled']))
+            ->when(($filters['queue'] ?? null) === 'completed', fn ($query) => $query->whereIn('status', ['superseded', 'returned', 'cancelled', 'expired', 'relieved', 'transferred_out']))
             ->with('actions.actor:id,name')
             ->latest('issued_at')
             ->paginate(15)
@@ -78,7 +79,7 @@ class PropertyAccountabilityController extends Controller
             'undocumentedAssets' => $undocumentedAssets,
             'canManage' => $canManage,
             'currentReferenceId' => $user->hris_reference_id,
-            'capitalizationThreshold' => PropertyAccountabilityDocument::CAPITALIZATION_THRESHOLD,
+            'capitalizationThreshold' => (float) AssetAccountingClassification::capitalizationThreshold(),
             'filters' => $filters,
         ]);
     }

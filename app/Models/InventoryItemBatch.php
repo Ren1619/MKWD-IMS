@@ -5,10 +5,13 @@ namespace App\Models;
 use Carbon\CarbonImmutable;
 use Database\Factories\InventoryItemBatchFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * @property int $quantity_in
@@ -34,6 +37,43 @@ class InventoryItemBatch extends Model
     /** @use HasFactory<InventoryItemBatchFactory> */
     use HasFactory;
 
+    public function canIssueOn(string $date): bool
+    {
+        $today = now('Asia/Manila')->toDateString();
+
+        return $this->quantity_remaining > 0
+            && $this->received_at->toDateString() <= min($date, $today)
+            && ($this->expiration_date === null || $this->expiration_date->toDateString() >= max($date, $today));
+    }
+
+    /** @param Builder<InventoryItemBatch> $query */
+    #[Scope]
+    protected function eligibleForIssue(Builder $query, string $date): void
+    {
+        $today = now('Asia/Manila')->toDateString();
+        $query->where('quantity_remaining', '>', 0)
+            ->whereDate('received_at', '<=', min($date, $today))
+            ->where(fn ($expiry) => $expiry->whereNull('expiration_date')->orWhereDate('expiration_date', '>=', max($date, $today)));
+    }
+
+    /** @return HasMany<InventoryBatchPlacement, $this> */
+    public function placements(): HasMany
+    {
+        return $this->hasMany(InventoryBatchPlacement::class, 'inventory_item_batch_id', 'inventory_item_batch_id');
+    }
+
+    /** @return HasOne<InventoryBatchPlacement, $this> */
+    public function latestPlacement(): HasOne
+    {
+        return $this->hasOne(InventoryBatchPlacement::class, 'inventory_item_batch_id', 'inventory_item_batch_id')->latestOfMany();
+    }
+
+    /** @return HasOne<ProcurementDeliveryLine, $this> */
+    public function deliveryLine(): HasOne
+    {
+        return $this->hasOne(ProcurementDeliveryLine::class, 'inventory_item_batch_id', 'inventory_item_batch_id');
+    }
+
     protected $primaryKey = 'inventory_item_batch_id';
 
     protected function casts(): array
@@ -57,5 +97,17 @@ class InventoryItemBatch extends Model
     public function allocations(): HasMany
     {
         return $this->hasMany(InventoryItemStockOutAllocation::class, 'inventory_item_batch_id', 'inventory_item_batch_id');
+    }
+
+    /** @return HasMany<InventoryCountAdjustment, $this> */
+    public function countAdjustments(): HasMany
+    {
+        return $this->hasMany(InventoryCountAdjustment::class, 'inventory_item_batch_id', 'inventory_item_batch_id');
+    }
+
+    /** @return HasMany<InventoryReturnAllocation, $this> */
+    public function returnPostings(): HasMany
+    {
+        return $this->hasMany(InventoryReturnAllocation::class, 'inventory_item_batch_id', 'inventory_item_batch_id');
     }
 }

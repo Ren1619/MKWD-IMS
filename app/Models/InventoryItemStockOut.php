@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Database\Factories\InventoryItemStockOutFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -9,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/** @property CarbonInterface $stocked_out_at */
 #[Fillable([
     'inventory_item_id',
     'recipient_reference_id',
@@ -19,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'stocked_out_at',
     'notes',
     'supply_request_line_id',
+    'department_name',
 ])]
 class InventoryItemStockOut extends Model
 {
@@ -34,6 +37,7 @@ class InventoryItemStockOut extends Model
         return [
             'quantity' => 'integer',
             'stocked_out_at' => 'date',
+            'issuance_slip_id' => 'integer',
         ];
     }
 
@@ -59,6 +63,12 @@ class InventoryItemStockOut extends Model
     public function supplyRequestLine(): BelongsTo
     {
         return $this->belongsTo(SupplyRequestLine::class);
+    }
+
+    /** @return BelongsTo<IssuanceSlip, $this> */
+    public function issuanceSlip(): BelongsTo
+    {
+        return $this->belongsTo(IssuanceSlip::class);
     }
 
     public function getTotalCostAttribute(): string

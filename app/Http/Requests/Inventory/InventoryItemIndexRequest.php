@@ -28,7 +28,9 @@ class InventoryItemIndexRequest extends FormRequest
             'status' => ['nullable', Rule::in(['active', 'inactive', 'disposed'])],
             'records' => ['nullable', Rule::in(['active', 'archived'])],
             'alert' => ['nullable', Rule::in(['low_stock', 'expiring', 'expired'])],
+            'major_category_id' => ['nullable', 'integer', Rule::exists('inv_mjr_cats', 'inv_mjr_cat_id')],
             'class_category_id' => ['nullable', 'integer', Rule::exists('inv_class_cats', 'inv_class_cat_id')],
+            'series_category_id' => ['nullable', 'integer', Rule::exists('inv_series_cats', 'inv_series_cat_id')],
         ];
     }
 }

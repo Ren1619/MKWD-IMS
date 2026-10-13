@@ -42,6 +42,10 @@ class StoreInventoryCategoryRequest extends FormRequest
             'name' => ['required', 'string', 'max:255', $nameRule],
             'description' => ['nullable', 'string', 'max:2000'],
             'is_vehicle' => [Rule::requiredIf($type === InventoryCategoryType::Asset), 'boolean'],
+            'account_code' => ['nullable', 'string', 'max:50'],
+            'default_useful_life_months' => [Rule::requiredIf($type === InventoryCategoryType::Asset), 'nullable', 'integer', 'min:1', 'max:1200'],
+            'default_residual_value_percentage' => [Rule::requiredIf($type === InventoryCategoryType::Asset), 'nullable', 'numeric', 'min:0', 'max:99.99'],
+            'is_depreciable' => [Rule::requiredIf($type === InventoryCategoryType::Asset), 'boolean'],
         ];
     }
 
@@ -57,6 +61,14 @@ class StoreInventoryCategoryRequest extends FormRequest
 
         if ($this->string('type')->toString() === InventoryCategoryType::Asset->value) {
             $data['is_vehicle'] = $this->boolean('is_vehicle');
+            $data['account_code'] = filled($this->input('account_code'))
+                ? Str::upper(trim((string) $this->input('account_code')))
+                : null;
+            $data['default_useful_life_months'] = $this->integer('default_useful_life_months') ?: 60;
+            $data['default_residual_value_percentage'] = $this->input('default_residual_value_percentage', 5);
+            $data['is_depreciable'] = $this->exists('is_depreciable')
+                ? $this->boolean('is_depreciable')
+                : true;
         }
 
         $this->merge($data);

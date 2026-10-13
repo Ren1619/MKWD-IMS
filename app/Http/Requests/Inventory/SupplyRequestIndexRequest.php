@@ -29,7 +29,7 @@ class SupplyRequestIndexRequest extends FormRequest
                 'submitted', 'approved', 'awaiting_replenishment', 'ready_for_release',
                 'partially_released', 'released', 'rejected', 'cancelled',
             ])],
-            'queue' => ['nullable', Rule::in(['needs_action', 'completed'])],
+            'queue' => ['nullable', Rule::in(['needs_action', 'completed', 'awaiting_liquidation'])],
         ];
     }
 }

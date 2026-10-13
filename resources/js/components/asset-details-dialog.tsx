@@ -3,6 +3,7 @@ import {
     CalendarClock,
     ClipboardList,
     FileWarning,
+    History,
     MapPin,
     PackageSearch,
     UserRound,
@@ -128,6 +129,7 @@ export function AssetDetailsDialog({
         asset.loss_type ||
         asset.loss_circumstances,
     );
+    const isPpe = asset.accounting_classification === 'ppe';
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -148,6 +150,9 @@ export function AssetDetailsDialog({
                         </Badge>
                         <Badge variant="outline">
                             {formatLabel(asset.accounting_classification)}
+                        </Badge>
+                        <Badge variant="outline">
+                            {formatLabel(asset.accounting_status)}
                         </Badge>
                         <Badge
                             variant={
@@ -176,30 +181,48 @@ export function AssetDetailsDialog({
                         <div className="grid gap-3 sm:grid-cols-3">
                             <div className="rounded-xl border bg-muted/20 p-4">
                                 <p className="text-xs text-muted-foreground">
-                                    Acquisition cost
+                                    {isPpe
+                                        ? 'Gross carrying amount'
+                                        : 'Individual unit cost'}
                                 </p>
                                 <p className="mt-1 text-lg font-semibold">
-                                    {formatCurrency(asset.acquisition_cost)}
+                                    {formatCurrency(
+                                        isPpe
+                                            ? asset.gross_carrying_amount
+                                            : asset.acquisition_cost,
+                                    )}
                                 </p>
                             </div>
                             <div className="rounded-xl border bg-muted/20 p-4">
                                 <p className="text-xs text-muted-foreground">
-                                    Depreciation to date
+                                    {isPpe
+                                        ? 'Depreciation to date'
+                                        : 'Value class'}
                                 </p>
                                 <p className="mt-1 text-lg font-semibold">
-                                    {asset.is_depreciable
+                                    {isPpe && asset.is_depreciable
                                         ? formatCurrency(
                                               asset.depreciation_amount,
                                           )
-                                        : 'Not applicable'}
+                                        : asset.semi_expendable_value_class
+                                          ? `${formatLabel(asset.semi_expendable_value_class)}-valued`
+                                          : 'Needs review'}
                                 </p>
                             </div>
                             <div className="rounded-xl border bg-primary/5 p-4 ring-1 ring-primary/15">
                                 <p className="text-xs text-muted-foreground">
-                                    Current book value
+                                    {isPpe
+                                        ? 'Current book value'
+                                        : 'Accountability'}
                                 </p>
                                 <p className="mt-1 text-lg font-semibold text-primary">
-                                    {formatCurrency(asset.book_value)}
+                                    {isPpe
+                                        ? formatCurrency(asset.book_value)
+                                        : asset.accountability_status
+                                          ? formatLabel(
+                                                asset.accountability_status,
+                                            )
+                                          : 'Unassigned'}
                                 </p>
                             </div>
                         </div>
@@ -211,6 +234,10 @@ export function AssetDetailsDialog({
                             <DetailField
                                 label="Property number"
                                 value={asset.property_number}
+                            />
+                            <DetailField
+                                label="Old property number"
+                                value={asset.old_property_number}
                             />
                             <DetailField
                                 label="Serial number"
@@ -225,6 +252,10 @@ export function AssetDetailsDialog({
                                 value={asset.category?.name}
                             />
                             <DetailField label="Brand" value={asset.brand} />
+                            <DetailField
+                                label="Manufacturer"
+                                value={asset.manufacturer}
+                            />
                             <DetailField label="Model" value={asset.model} />
                             <DetailField
                                 label="Unit of measure"
@@ -239,7 +270,85 @@ export function AssetDetailsDialog({
                                 value={asset.description}
                                 fullWidth
                             />
+                            <DetailField
+                                label="Technical specifications"
+                                value={asset.specifications}
+                                fullWidth
+                            />
                         </DetailSection>
+
+                        {!isPpe && (
+                            <DetailSection
+                                icon={UserRound}
+                                title="ICS accountability"
+                            >
+                                <DetailField
+                                    label="Value class"
+                                    value={
+                                        asset.semi_expendable_value_class
+                                            ? `${formatLabel(asset.semi_expendable_value_class)}-valued`
+                                            : null
+                                    }
+                                />
+                                <DetailField
+                                    label="Accounting state"
+                                    value={formatLabel(asset.accounting_status)}
+                                />
+                                <DetailField
+                                    label="Physical state"
+                                    value={
+                                        asset.physical_status
+                                            ? formatLabel(asset.physical_status)
+                                            : null
+                                    }
+                                />
+                                <DetailField
+                                    label="Accountability state"
+                                    value={
+                                        asset.accountability_status
+                                            ? formatLabel(
+                                                  asset.accountability_status,
+                                              )
+                                            : null
+                                    }
+                                />
+                                <DetailField
+                                    label="Current ICS"
+                                    value={
+                                        asset.latest_ics_document?.document_no
+                                    }
+                                />
+                                <DetailField
+                                    label="ICS renewal due"
+                                    value={formatDate(
+                                        asset.latest_ics_document
+                                            ?.renewal_due_at ?? null,
+                                    )}
+                                />
+                                <DetailField
+                                    label="Accountability expiration"
+                                    value={formatDate(
+                                        asset.accountability_expires_at,
+                                    )}
+                                />
+                                <DetailField
+                                    label="Relief state"
+                                    value={
+                                        asset.relief_status
+                                            ? formatLabel(asset.relief_status)
+                                            : null
+                                    }
+                                />
+                                {asset.semi_expendable_value_class ===
+                                    'high' && (
+                                    <DetailField
+                                        label="High-value control"
+                                        value="Accountability does not automatically end when estimated useful life expires. Return or approved relief is required."
+                                        fullWidth
+                                    />
+                                )}
+                            </DetailSection>
+                        )}
 
                         <DetailSection
                             icon={MapPin}
@@ -320,9 +429,27 @@ export function AssetDetailsDialog({
                                 )}
                             />
                             <DetailField
+                                label="Accounting status"
+                                value={formatLabel(asset.accounting_status)}
+                            />
+                            <DetailField
                                 label="Acquisition cost"
                                 value={formatCurrency(asset.acquisition_cost)}
                             />
+                            <DetailField
+                                label="Directly attributable costs"
+                                value={formatCurrency(
+                                    asset.directly_attributable_costs,
+                                )}
+                            />
+                            {isPpe && (
+                                <DetailField
+                                    label="Gross carrying amount"
+                                    value={formatCurrency(
+                                        asset.gross_carrying_amount,
+                                    )}
+                                />
+                            )}
                             <DetailField
                                 label="Available-for-use date"
                                 value={formatDate(asset.available_for_use_date)}
@@ -331,45 +458,63 @@ export function AssetDetailsDialog({
                                 label="Useful life"
                                 value={`${asset.depreciation_useful_life_months} months`}
                             />
-                            <DetailField
-                                label="Residual value percentage"
-                                value={
-                                    asset.is_depreciable
-                                        ? `${asset.residual_value_percentage}%`
-                                        : 'Not applicable'
-                                }
-                            />
-                            <DetailField
-                                label="Residual value"
-                                value={
-                                    asset.is_depreciable
-                                        ? formatCurrency(asset.residual_value)
-                                        : 'Not applicable'
-                                }
-                            />
-                            <DetailField
-                                label="Residual value basis"
-                                value={asset.residual_value_basis}
-                                fullWidth
-                            />
-                            <DetailField
-                                label="Depreciation to date"
-                                value={
-                                    asset.is_depreciable
-                                        ? formatCurrency(
-                                              asset.depreciation_amount,
-                                          )
-                                        : 'Not applicable'
-                                }
-                            />
-                            <DetailField
-                                label="Current book value"
-                                value={formatCurrency(asset.book_value)}
-                            />
-                            <DetailField
-                                label="Impairment losses"
-                                value={formatCurrency(asset.impairment_losses)}
-                            />
+                            {isPpe && (
+                                <DetailField
+                                    label="Residual value percentage"
+                                    value={`${asset.residual_value_percentage}%`}
+                                />
+                            )}
+                            {isPpe && (
+                                <DetailField
+                                    label="Residual value"
+                                    value={formatCurrency(asset.residual_value)}
+                                />
+                            )}
+                            {isPpe && (
+                                <DetailField
+                                    label="Residual value basis"
+                                    value={asset.residual_value_basis}
+                                    fullWidth
+                                />
+                            )}
+                            {isPpe && (
+                                <DetailField
+                                    label="Depreciation to date"
+                                    value={formatCurrency(
+                                        asset.depreciation_amount,
+                                    )}
+                                />
+                            )}
+                            {isPpe && (
+                                <DetailField
+                                    label="Monthly depreciation"
+                                    value={formatCurrency(
+                                        asset.monthly_depreciation,
+                                    )}
+                                />
+                            )}
+                            {isPpe && (
+                                <>
+                                    <DetailField
+                                        label="Fully depreciated"
+                                        value={
+                                            asset.is_fully_depreciated
+                                                ? 'Yes'
+                                                : 'No'
+                                        }
+                                    />
+                                    <DetailField
+                                        label="Current book value"
+                                        value={formatCurrency(asset.book_value)}
+                                    />
+                                    <DetailField
+                                        label="Impairment losses"
+                                        value={formatCurrency(
+                                            asset.impairment_losses,
+                                        )}
+                                    />
+                                </>
+                            )}
                             <DetailField
                                 label="Appraised value"
                                 value={formatCurrency(asset.appraised_value)}
@@ -377,6 +522,78 @@ export function AssetDetailsDialog({
                             <DetailField
                                 label="Appraisal date"
                                 value={formatDate(asset.appraisal_date)}
+                            />
+                            <DetailField
+                                label="Policy version"
+                                value={asset.accounting_policy_version}
+                            />
+                            <DetailField
+                                label="Capitalization threshold applied"
+                                value={formatCurrency(
+                                    asset.capitalization_threshold_applied,
+                                )}
+                            />
+                            {isPpe && (
+                                <DetailField
+                                    label="Depreciation method"
+                                    value={
+                                        asset.depreciation_method
+                                            ? formatLabel(
+                                                  asset.depreciation_method,
+                                              )
+                                            : null
+                                    }
+                                />
+                            )}
+                            <DetailField
+                                label="Derecognized date"
+                                value={formatDate(asset.derecognized_at)}
+                            />
+                        </DetailSection>
+
+                        <DetailSection
+                            icon={ClipboardList}
+                            title="Acquisition source documents"
+                        >
+                            <DetailField
+                                label="Acquisition method"
+                                value={
+                                    asset.acquisition_method
+                                        ? formatLabel(asset.acquisition_method)
+                                        : null
+                                }
+                            />
+                            <DetailField
+                                label="Supplier / source"
+                                value={asset.supplier_name}
+                            />
+                            <DetailField
+                                label="Purchase order"
+                                value={asset.purchase_order_no}
+                            />
+                            <DetailField
+                                label="IAR number"
+                                value={asset.inspection_acceptance_report_no}
+                            />
+                            <DetailField
+                                label="Invoice number"
+                                value={asset.invoice_no}
+                            />
+                            <DetailField
+                                label="Disbursement voucher"
+                                value={asset.disbursement_voucher_no}
+                            />
+                            <DetailField
+                                label="Delivery date"
+                                value={formatDate(asset.delivery_date)}
+                            />
+                            <DetailField
+                                label="Inspection date"
+                                value={formatDate(asset.inspection_date)}
+                            />
+                            <DetailField
+                                label="Acceptance date"
+                                value={formatDate(asset.acceptance_date)}
                             />
                         </DetailSection>
 
@@ -433,6 +650,80 @@ export function AssetDetailsDialog({
                                     value={asset.loss_circumstances}
                                     fullWidth
                                 />
+                            </DetailSection>
+                        )}
+
+                        {asset.events.length > 0 && (
+                            <DetailSection
+                                icon={History}
+                                title="Lifecycle timeline"
+                            >
+                                {asset.events.map((event) => (
+                                    <DetailField
+                                        key={event.id}
+                                        label={`${formatDate(event.event_date)} · ${formatLabel(event.event_type)}`}
+                                        value={
+                                            <div className="space-y-1">
+                                                <p>
+                                                    {[
+                                                        event.reference_no,
+                                                        event.amount
+                                                            ? formatCurrency(
+                                                                  event.amount,
+                                                              )
+                                                            : null,
+                                                        event.from_location &&
+                                                        event.to_location
+                                                            ? `${event.from_location} → ${event.to_location}`
+                                                            : null,
+                                                    ]
+                                                        .filter(Boolean)
+                                                        .join(' · ') ||
+                                                        'Recorded transaction'}
+                                                </p>
+                                                {event.notes && (
+                                                    <p className="text-muted-foreground">
+                                                        {event.notes}
+                                                    </p>
+                                                )}
+                                                {event.details &&
+                                                    Object.keys(event.details)
+                                                        .length > 0 && (
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {Object.entries(
+                                                                event.details,
+                                                            )
+                                                                .filter(
+                                                                    ([
+                                                                        ,
+                                                                        value,
+                                                                    ]) =>
+                                                                        value !==
+                                                                            null &&
+                                                                        value !==
+                                                                            '',
+                                                                )
+                                                                .map(
+                                                                    ([
+                                                                        key,
+                                                                        value,
+                                                                    ]) =>
+                                                                        `${formatLabel(key)}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`,
+                                                                )
+                                                                .join(' · ')}
+                                                        </p>
+                                                    )}
+                                                {event.recorded_by && (
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Recorded by{' '}
+                                                        {event.recorded_by.name}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        }
+                                        fullWidth
+                                    />
+                                ))}
                             </DetailSection>
                         )}
 

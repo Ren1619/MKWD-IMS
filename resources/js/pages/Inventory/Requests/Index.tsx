@@ -1,17 +1,12 @@
-import { Head, Link, router, useForm } from '@inertiajs/react';
-import {
-    ClipboardList,
-    FilterX,
-    Plus,
-    Search,
-    ShoppingCart,
-    Trash2,
-} from 'lucide-react';
-import { useRef, useState } from 'react';
+import { Head, router, useForm } from '@inertiajs/react';
+import { ClipboardList, FilterX, Search } from 'lucide-react';
+import { useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { DataPagination } from '@/components/data-pagination';
-import { FormErrorSummary } from '@/components/form-error-summary';
+
 import InputError from '@/components/input-error';
+
+import type { ResponsibilityCenterOption } from '@/components/responsibility-center-combobox';
 import {
     Table,
     TableBody,
@@ -22,6 +17,7 @@ import {
 } from '@/components/shared/data-table';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 import {
     Dialog,
     DialogContent,
@@ -29,6 +25,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { FormSelect } from '@/components/ui/form-select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -38,9 +35,16 @@ import {
 } from '@/components/ui/tooltip';
 import { WorkflowActionDialog } from '@/components/workflow-action-dialog';
 import { WorkflowStatus } from '@/components/workflow-status';
-import { index as procurementIndex } from '@/routes/inventory/procurement';
-import { index, store, transition } from '@/routes/inventory/requests';
+import { index, transition } from '@/routes/inventory/requests';
 import type { Paginated } from '@/types/inventory';
+import { IssuanceLiquidationDialog } from './IssuanceLiquidation';
+import type {
+    IssuanceAllocation,
+    LiquidationDocument,
+} from './IssuanceLiquidation';
+import { IssuanceRequestForm } from './IssuanceRequestForm';
+import type { IssuanceContext } from './IssuanceRequestForm';
+import { ReturnSlipDialog } from './ReturnSlipDialog';
 
 type Item = {
     inventory_item_id: number;
@@ -72,6 +76,9 @@ type ActionHistory = {
 type RequestRecord = {
     id: number;
     ris_no: string;
+    isf_no: string | null;
+    return_slip_no: string | null;
+    return_slip_date: string | null;
     requester_name: string;
     office_name: string | null;
     purpose: string;
@@ -79,23 +86,6 @@ type RequestRecord = {
     submitted_at: string;
     lines: RequestLine[];
     actions: ActionHistory[];
-};
-type RequestFormLine = {
-    inventory_item_id: string;
-    is_new_item: boolean;
-    item_name: string;
-    specifications: string;
-    unit_of_measure: string;
-    quantity: number;
-    estimated_unit_cost: string;
-    justification: string;
-};
-type RequestForm = {
-    office_name: string;
-    responsibility_center_code: string;
-    purpose: string;
-    date_needed: string;
-    lines: RequestFormLine[];
 };
 type Filters = { search?: string; status?: string; queue?: string };
 type WorkflowAction = {
@@ -115,19 +105,6 @@ const workflowSteps = [
 const terminalStatuses = ['rejected', 'cancelled'] as const;
 const fieldClassName =
     'min-h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm';
-
-function emptyLine(): RequestFormLine {
-    return {
-        inventory_item_id: '',
-        is_new_item: false,
-        item_name: '',
-        specifications: '',
-        unit_of_measure: '',
-        quantity: 1,
-        estimated_unit_cost: '',
-        justification: '',
-    };
-}
 
 function statusLabel(status: string): string {
     return status.replaceAll('_', ' ');
@@ -200,6 +177,12 @@ function actionsFor(status: string): WorkflowAction[] {
         ],
         ready_for_release: [
             {
+                action: 'review',
+                label: 'Review stock availability',
+                description:
+                    'Recheck expiry and recalculate usable stock reservations.',
+            },
+            {
                 action: 'release',
                 label: 'Release supplies',
                 description:
@@ -227,59 +210,43 @@ function actionsFor(status: string): WorkflowAction[] {
 
 export default function RequestsIndex({
     requests,
+    issuanceAllocations,
+    liquidationDocuments,
     items,
     canManage,
+
+    responsibilityCenters,
+    issuanceContext,
     filters,
 }: {
     requests: Paginated<RequestRecord>;
+    issuanceAllocations: IssuanceAllocation[];
+    liquidationDocuments: LiquidationDocument[];
     items: Item[];
     canManage: boolean;
+
+    responsibilityCenters: ResponsibilityCenterOption[];
     filters: Filters;
+    issuanceContext: IssuanceContext;
 }) {
-    const errorSummary = useRef<HTMLDivElement>(null);
     const [filterValues, setFilterValues] = useState({
         search: filters.search ?? '',
         status: filters.status ?? '',
         queue: filters.queue ?? '',
     });
     const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+    const [liquidationRequestId, setLiquidationRequestId] = useState<
+        number | null
+    >(null);
+    const [returnSlipRequest, setReturnSlipRequest] =
+        useState<RequestRecord | null>(null);
     const [selectedRequest, setSelectedRequest] =
         useState<RequestRecord | null>(null);
     const [selectedAction, setSelectedAction] = useState<{
         record: RequestRecord;
         action: WorkflowAction;
     } | null>(null);
-    const form = useForm<RequestForm>({
-        office_name: '',
-        responsibility_center_code: '',
-        purpose: '',
-        date_needed: '',
-        lines: [emptyLine()],
-    });
     const actionForm = useForm({ action: '', attested: true, remarks: '' });
-    const errors = form.errors as Record<string, string>;
-
-    function updateLine(lineIndex: number, changes: Partial<RequestFormLine>) {
-        form.setData(
-            'lines',
-            form.data.lines.map((line, index) =>
-                index === lineIndex ? { ...line, ...changes } : line,
-            ),
-        );
-    }
-
-    function submit(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-        form.post(store.url(), {
-            preserveScroll: true,
-            onSuccess: () => {
-                form.reset();
-                setRequestDialogOpen(false);
-            },
-            onError: () =>
-                requestAnimationFrame(() => errorSummary.current?.focus()),
-        });
-    }
 
     function applyFilters(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -333,552 +300,33 @@ export default function RequestsIndex({
                             with a complete audit history.
                         </p>
                     </div>
-                    {canManage && (
-                        <Button
-                            nativeButton={false}
-                            className="min-h-11 w-full sm:w-auto"
-                            render={<Link href={procurementIndex()} />}
-                        >
-                            <ShoppingCart /> Procurement controls
-                        </Button>
-                    )}
                 </div>
 
-                <Dialog
+                <IssuanceRequestForm
                     open={requestDialogOpen}
                     onOpenChange={setRequestDialogOpen}
-                >
-                    <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-4xl">
-                        <form
-                            onSubmit={submit}
-                            className="grid gap-5"
-                            noValidate
-                        >
-                            <DialogHeader className="pr-8">
-                                <DialogTitle>Submit a request</DialogTitle>
-                                <DialogDescription>
-                                    Provide the request details and add up to 25
-                                    existing or new supply items.
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="grid gap-4 md:grid-cols-3">
-                                <Field
-                                    id="office-name"
-                                    label="Office or division"
-                                    error={errors.office_name}
-                                >
-                                    <Input
-                                        id="office-name"
-                                        className="min-h-11"
-                                        value={form.data.office_name}
-                                        onChange={(event) =>
-                                            form.setData(
-                                                'office_name',
-                                                event.target.value,
-                                            )
-                                        }
-                                        aria-invalid={Boolean(
-                                            errors.office_name,
-                                        )}
-                                    />
-                                </Field>
-                                <Field
-                                    id="responsibility-center"
-                                    label="Responsibility center"
-                                    error={errors.responsibility_center_code}
-                                >
-                                    <Input
-                                        id="responsibility-center"
-                                        className="min-h-11"
-                                        value={
-                                            form.data.responsibility_center_code
-                                        }
-                                        onChange={(event) =>
-                                            form.setData(
-                                                'responsibility_center_code',
-                                                event.target.value,
-                                            )
-                                        }
-                                        aria-invalid={Boolean(
-                                            errors.responsibility_center_code,
-                                        )}
-                                    />
-                                </Field>
-                                <Field
-                                    id="date-needed"
-                                    label="Date needed"
-                                    error={errors.date_needed}
-                                >
-                                    <Input
-                                        id="date-needed"
-                                        type="date"
-                                        className="min-h-11"
-                                        value={form.data.date_needed}
-                                        onChange={(event) =>
-                                            form.setData(
-                                                'date_needed',
-                                                event.target.value,
-                                            )
-                                        }
-                                        aria-invalid={Boolean(
-                                            errors.date_needed,
-                                        )}
-                                    />
-                                </Field>
-                            </div>
-                            <Field
-                                id="request-purpose"
-                                label="Official purpose"
-                                error={errors.purpose}
-                            >
-                                <textarea
-                                    id="request-purpose"
-                                    rows={3}
-                                    required
-                                    className={fieldClassName}
-                                    value={form.data.purpose}
-                                    onChange={(event) =>
-                                        form.setData(
-                                            'purpose',
-                                            event.target.value,
-                                        )
-                                    }
-                                    aria-invalid={Boolean(errors.purpose)}
-                                />
-                            </Field>
-
-                            <div className="grid gap-3">
-                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                    <div>
-                                        <h2 className="font-medium">
-                                            Requested items
-                                        </h2>
-                                        <p className="text-xs text-muted-foreground">
-                                            Add up to 25 existing or entirely
-                                            new supply items.
-                                        </p>
-                                    </div>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        className="min-h-11 w-full sm:w-auto"
-                                        disabled={form.data.lines.length >= 25}
-                                        onClick={() =>
-                                            form.setData('lines', [
-                                                ...form.data.lines,
-                                                emptyLine(),
-                                            ])
-                                        }
-                                    >
-                                        <Plus /> Add item
-                                    </Button>
-                                </div>
-                                {form.data.lines.map((line, lineIndex) => {
-                                    const selectedItem = items.find(
-                                        (item) =>
-                                            String(item.inventory_item_id) ===
-                                            line.inventory_item_id,
-                                    );
-
-                                    return (
-                                        <fieldset
-                                            key={lineIndex}
-                                            className="grid gap-4 rounded-xl border p-4"
-                                        >
-                                            <legend className="px-2 text-sm font-medium">
-                                                Item {lineIndex + 1}
-                                            </legend>
-                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                                <label className="flex min-h-11 items-center gap-3 text-sm">
-                                                    <input
-                                                        type="checkbox"
-                                                        className="size-5"
-                                                        checked={
-                                                            line.is_new_item
-                                                        }
-                                                        onChange={(event) =>
-                                                            updateLine(
-                                                                lineIndex,
-                                                                {
-                                                                    is_new_item:
-                                                                        event
-                                                                            .target
-                                                                            .checked,
-                                                                    inventory_item_id:
-                                                                        '',
-                                                                    item_name:
-                                                                        '',
-                                                                    unit_of_measure:
-                                                                        '',
-                                                                },
-                                                            )
-                                                        }
-                                                    />
-                                                    Entirely new supply item
-                                                </label>
-                                                {form.data.lines.length > 1 && (
-                                                    <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        variant="destructive"
-                                                        className="min-h-11 w-full sm:w-auto"
-                                                        onClick={() =>
-                                                            form.setData(
-                                                                'lines',
-                                                                form.data.lines.filter(
-                                                                    (
-                                                                        _,
-                                                                        index,
-                                                                    ) =>
-                                                                        index !==
-                                                                        lineIndex,
-                                                                ),
-                                                            )
-                                                        }
-                                                    >
-                                                        <Trash2 /> Remove item
-                                                    </Button>
-                                                )}
-                                            </div>
-                                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                                                {line.is_new_item ? (
-                                                    <Field
-                                                        id={`line-${lineIndex}-name`}
-                                                        label="Proposed item name"
-                                                        error={
-                                                            errors[
-                                                                `lines.${lineIndex}.item_name`
-                                                            ]
-                                                        }
-                                                        className="md:col-span-2"
-                                                    >
-                                                        <Input
-                                                            id={`line-${lineIndex}-name`}
-                                                            className="min-h-11"
-                                                            value={
-                                                                line.item_name
-                                                            }
-                                                            onChange={(event) =>
-                                                                updateLine(
-                                                                    lineIndex,
-                                                                    {
-                                                                        item_name:
-                                                                            event
-                                                                                .target
-                                                                                .value,
-                                                                    },
-                                                                )
-                                                            }
-                                                            aria-invalid={Boolean(
-                                                                errors[
-                                                                    `lines.${lineIndex}.item_name`
-                                                                ],
-                                                            )}
-                                                        />
-                                                    </Field>
-                                                ) : (
-                                                    <Field
-                                                        id={`line-${lineIndex}-item`}
-                                                        label="Stocked item"
-                                                        error={
-                                                            errors[
-                                                                `lines.${lineIndex}.inventory_item_id`
-                                                            ]
-                                                        }
-                                                        className="md:col-span-2"
-                                                    >
-                                                        <select
-                                                            id={`line-${lineIndex}-item`}
-                                                            required
-                                                            className={
-                                                                fieldClassName
-                                                            }
-                                                            value={
-                                                                line.inventory_item_id
-                                                            }
-                                                            onChange={(
-                                                                event,
-                                                            ) => {
-                                                                const item =
-                                                                    items.find(
-                                                                        (
-                                                                            candidate,
-                                                                        ) =>
-                                                                            String(
-                                                                                candidate.inventory_item_id,
-                                                                            ) ===
-                                                                            event
-                                                                                .target
-                                                                                .value,
-                                                                    );
-                                                                updateLine(
-                                                                    lineIndex,
-                                                                    {
-                                                                        inventory_item_id:
-                                                                            event
-                                                                                .target
-                                                                                .value,
-                                                                        item_name:
-                                                                            item?.name ??
-                                                                            '',
-                                                                        unit_of_measure:
-                                                                            item?.unit_of_measure ??
-                                                                            '',
-                                                                        estimated_unit_cost:
-                                                                            item?.weighted_average_unit_cost ??
-                                                                            '',
-                                                                    },
-                                                                );
-                                                            }}
-                                                            aria-invalid={Boolean(
-                                                                errors[
-                                                                    `lines.${lineIndex}.inventory_item_id`
-                                                                ],
-                                                            )}
-                                                        >
-                                                            <option value="">
-                                                                Select an item
-                                                            </option>
-                                                            {items.map(
-                                                                (item) => (
-                                                                    <option
-                                                                        key={
-                                                                            item.inventory_item_id
-                                                                        }
-                                                                        value={
-                                                                            item.inventory_item_id
-                                                                        }
-                                                                    >
-                                                                        {
-                                                                            item.name
-                                                                        }{' '}
-                                                                        —{' '}
-                                                                        {
-                                                                            item.quantity
-                                                                        }{' '}
-                                                                        {
-                                                                            item.unit_of_measure
-                                                                        }{' '}
-                                                                        available
-                                                                    </option>
-                                                                ),
-                                                            )}
-                                                        </select>
-                                                    </Field>
-                                                )}
-                                                <Field
-                                                    id={`line-${lineIndex}-quantity`}
-                                                    label="Quantity"
-                                                    error={
-                                                        errors[
-                                                            `lines.${lineIndex}.quantity`
-                                                        ]
-                                                    }
-                                                >
-                                                    <Input
-                                                        id={`line-${lineIndex}-quantity`}
-                                                        type="number"
-                                                        min="1"
-                                                        className="min-h-11"
-                                                        value={line.quantity}
-                                                        onChange={(event) =>
-                                                            updateLine(
-                                                                lineIndex,
-                                                                {
-                                                                    quantity:
-                                                                        Number(
-                                                                            event
-                                                                                .target
-                                                                                .value,
-                                                                        ),
-                                                                },
-                                                            )
-                                                        }
-                                                        aria-invalid={Boolean(
-                                                            errors[
-                                                                `lines.${lineIndex}.quantity`
-                                                            ],
-                                                        )}
-                                                    />
-                                                </Field>
-                                                <Field
-                                                    id={`line-${lineIndex}-cost`}
-                                                    label="Estimated unit cost"
-                                                    error={
-                                                        errors[
-                                                            `lines.${lineIndex}.estimated_unit_cost`
-                                                        ]
-                                                    }
-                                                >
-                                                    <Input
-                                                        id={`line-${lineIndex}-cost`}
-                                                        type="number"
-                                                        min="0"
-                                                        step="0.01"
-                                                        className="min-h-11"
-                                                        value={
-                                                            line.estimated_unit_cost
-                                                        }
-                                                        onChange={(event) =>
-                                                            updateLine(
-                                                                lineIndex,
-                                                                {
-                                                                    estimated_unit_cost:
-                                                                        event
-                                                                            .target
-                                                                            .value,
-                                                                },
-                                                            )
-                                                        }
-                                                        aria-invalid={Boolean(
-                                                            errors[
-                                                                `lines.${lineIndex}.estimated_unit_cost`
-                                                            ],
-                                                        )}
-                                                    />
-                                                </Field>
-                                            </div>
-                                            {line.is_new_item && (
-                                                <div className="grid gap-4 md:grid-cols-2">
-                                                    <Field
-                                                        id={`line-${lineIndex}-unit`}
-                                                        label="Unit of measure"
-                                                        error={
-                                                            errors[
-                                                                `lines.${lineIndex}.unit_of_measure`
-                                                            ]
-                                                        }
-                                                    >
-                                                        <Input
-                                                            id={`line-${lineIndex}-unit`}
-                                                            className="min-h-11"
-                                                            value={
-                                                                line.unit_of_measure
-                                                            }
-                                                            onChange={(event) =>
-                                                                updateLine(
-                                                                    lineIndex,
-                                                                    {
-                                                                        unit_of_measure:
-                                                                            event
-                                                                                .target
-                                                                                .value,
-                                                                    },
-                                                                )
-                                                            }
-                                                            aria-invalid={Boolean(
-                                                                errors[
-                                                                    `lines.${lineIndex}.unit_of_measure`
-                                                                ],
-                                                            )}
-                                                        />
-                                                    </Field>
-                                                    <Field
-                                                        id={`line-${lineIndex}-specifications`}
-                                                        label="Specifications"
-                                                        error={
-                                                            errors[
-                                                                `lines.${lineIndex}.specifications`
-                                                            ]
-                                                        }
-                                                    >
-                                                        <textarea
-                                                            id={`line-${lineIndex}-specifications`}
-                                                            rows={3}
-                                                            className={
-                                                                fieldClassName
-                                                            }
-                                                            value={
-                                                                line.specifications
-                                                            }
-                                                            onChange={(event) =>
-                                                                updateLine(
-                                                                    lineIndex,
-                                                                    {
-                                                                        specifications:
-                                                                            event
-                                                                                .target
-                                                                                .value,
-                                                                    },
-                                                                )
-                                                            }
-                                                            aria-invalid={Boolean(
-                                                                errors[
-                                                                    `lines.${lineIndex}.specifications`
-                                                                ],
-                                                            )}
-                                                        />
-                                                    </Field>
-                                                    <Field
-                                                        id={`line-${lineIndex}-justification`}
-                                                        label="Justification and lack of an existing equivalent"
-                                                        error={
-                                                            errors[
-                                                                `lines.${lineIndex}.justification`
-                                                            ]
-                                                        }
-                                                        className="md:col-span-2"
-                                                    >
-                                                        <textarea
-                                                            id={`line-${lineIndex}-justification`}
-                                                            rows={3}
-                                                            className={
-                                                                fieldClassName
-                                                            }
-                                                            value={
-                                                                line.justification
-                                                            }
-                                                            onChange={(event) =>
-                                                                updateLine(
-                                                                    lineIndex,
-                                                                    {
-                                                                        justification:
-                                                                            event
-                                                                                .target
-                                                                                .value,
-                                                                    },
-                                                                )
-                                                            }
-                                                            aria-invalid={Boolean(
-                                                                errors[
-                                                                    `lines.${lineIndex}.justification`
-                                                                ],
-                                                            )}
-                                                        />
-                                                    </Field>
-                                                </div>
-                                            )}
-                                            {selectedItem && (
-                                                <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">
-                                                    Current stock:{' '}
-                                                    {selectedItem.quantity}{' '}
-                                                    {
-                                                        selectedItem.unit_of_measure
-                                                    }
-                                                    ; reorder point:{' '}
-                                                    {selectedItem.reorder_point}
-                                                    .
-                                                </p>
-                                            )}
-                                        </fieldset>
-                                    );
-                                })}
-                            </div>
-                            <div ref={errorSummary} tabIndex={-1}>
-                                <FormErrorSummary errors={errors} />
-                            </div>
-                            <Button
-                                type="submit"
-                                className="min-h-11 w-full sm:w-fit"
-                                disabled={form.processing}
-                            >
-                                {form.processing
-                                    ? 'Submitting…'
-                                    : 'Submit and attest'}
-                            </Button>
-                        </form>
-                    </DialogContent>
-                </Dialog>
+                    context={issuanceContext}
+                    items={items}
+                    chargeCodes={responsibilityCenters}
+                />
+                <IssuanceLiquidationDialog
+                    key={liquidationRequestId ?? 'closed'}
+                    open={liquidationRequestId !== null}
+                    onOpenChange={(open) =>
+                        !open && setLiquidationRequestId(null)
+                    }
+                    supplyRequestId={liquidationRequestId ?? undefined}
+                    allocations={issuanceAllocations}
+                    documents={liquidationDocuments}
+                    canManage={canManage}
+                />
+                {returnSlipRequest && (
+                    <ReturnSlipDialog
+                        key={returnSlipRequest.id}
+                        request={returnSlipRequest}
+                        onClose={() => setReturnSlipRequest(null)}
+                    />
+                )}
 
                 <Card>
                     <CardHeader>
@@ -897,7 +345,7 @@ export default function RequestsIndex({
                                             id="request-search"
                                             className="min-h-11 pl-9"
                                             maxLength={100}
-                                            placeholder="RIS no., requester, office, item…"
+                                            placeholder="ISF no., requester, department, item…"
                                             value={filterValues.search}
                                             onChange={(event) =>
                                                 setFilterValues({
@@ -909,7 +357,7 @@ export default function RequestsIndex({
                                     </div>
                                 </Field>
                                 <Field id="request-status" label="Status">
-                                    <select
+                                    <FormSelect
                                         id="request-status"
                                         className={fieldClassName}
                                         value={filterValues.status}
@@ -935,10 +383,10 @@ export default function RequestsIndex({
                                                 {statusLabel(status)}
                                             </option>
                                         ))}
-                                    </select>
+                                    </FormSelect>
                                 </Field>
                                 <Field id="request-queue" label="Queue">
-                                    <select
+                                    <FormSelect
                                         id="request-queue"
                                         className={fieldClassName}
                                         value={filterValues.queue}
@@ -956,7 +404,7 @@ export default function RequestsIndex({
                                         <option value="completed">
                                             Completed
                                         </option>
-                                    </select>
+                                    </FormSelect>
                                 </Field>
                                 <div className="flex gap-2 md:items-end">
                                     <Button className="min-h-11 flex-1 md:flex-none">
@@ -974,13 +422,15 @@ export default function RequestsIndex({
                                     </Button>
                                 </div>
                             </form>
-                            <Button
-                                type="button"
-                                className="min-h-11 w-full shrink-0 lg:w-auto"
-                                onClick={() => setRequestDialogOpen(true)}
-                            >
-                                <Plus /> Submit a request
-                            </Button>
+                            <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                                <Button
+                                    type="button"
+                                    className="min-h-11 w-full shrink-0 lg:w-auto"
+                                    onClick={() => setRequestDialogOpen(true)}
+                                >
+                                    Issuance Request Form
+                                </Button>
+                            </div>
                         </div>
                         <p
                             role="status"
@@ -1000,9 +450,7 @@ export default function RequestsIndex({
                             </caption>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead scope="col">
-                                        RIS number
-                                    </TableHead>
+                                    <TableHead scope="col">ISF No.</TableHead>
                                     <TableHead scope="col">Requester</TableHead>
                                     <TableHead scope="col">Office</TableHead>
                                     <TableHead scope="col">Submitted</TableHead>
@@ -1024,7 +472,7 @@ export default function RequestsIndex({
                                                     role="button"
                                                     tabIndex={0}
                                                     aria-haspopup="dialog"
-                                                    aria-label={`View details for ${record.ris_no}`}
+                                                    aria-label={`View details for ${record.isf_no ?? record.ris_no}`}
                                                     className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                                                     onClick={() =>
                                                         setSelectedRequest(
@@ -1047,7 +495,7 @@ export default function RequestsIndex({
                                             }
                                         >
                                             <TableCell className="font-medium">
-                                                {record.ris_no}
+                                                {record.isf_no ?? record.ris_no}
                                             </TableCell>
                                             <TableCell>
                                                 {record.requester_name}
@@ -1097,7 +545,7 @@ export default function RequestsIndex({
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <CardTitle className="flex items-center gap-2">
                                         <ClipboardList className="size-5" />{' '}
-                                        {record.ris_no}
+                                        {record.isf_no ?? record.ris_no}
                                     </CardTitle>
                                     <span className="w-fit rounded-full border px-3 py-1 text-xs font-medium capitalize">
                                         {statusLabel(record.status)}
@@ -1193,7 +641,7 @@ export default function RequestsIndex({
                                     <Table className="w-full text-sm">
                                         <caption className="sr-only">
                                             Items requested under{' '}
-                                            {record.ris_no}
+                                            {record.isf_no ?? record.ris_no}
                                         </caption>
                                         <TableHeader>
                                             <TableRow className="border-b text-left">
@@ -1345,7 +793,8 @@ export default function RequestsIndex({
                             <DialogHeader className="pr-8">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <DialogTitle>
-                                        {selectedRequest.ris_no}
+                                        {selectedRequest.isf_no ??
+                                            selectedRequest.ris_no}
                                     </DialogTitle>
                                     <span className="rounded-full border px-3 py-1 text-xs font-medium capitalize">
                                         {statusLabel(selectedRequest.status)}
@@ -1395,7 +844,8 @@ export default function RequestsIndex({
                                 <Table>
                                     <caption className="sr-only">
                                         Items requested under{' '}
-                                        {selectedRequest.ris_no}
+                                        {selectedRequest.isf_no ??
+                                            selectedRequest.ris_no}
                                     </caption>
                                     <TableHeader>
                                         <TableRow>
@@ -1444,6 +894,38 @@ export default function RequestsIndex({
                                 </Table>
                             </div>
 
+                            {canManage && (
+                                <div className="flex flex-wrap gap-2">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => {
+                                            setLiquidationRequestId(
+                                                selectedRequest.id,
+                                            );
+                                            setSelectedRequest(null);
+                                        }}
+                                    >
+                                        RIS liquidation
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        disabled={
+                                            !selectedRequest.lines.some(
+                                                (line) =>
+                                                    line.quantity_released > 0,
+                                            )
+                                        }
+                                        onClick={() => {
+                                            setReturnSlipRequest(
+                                                selectedRequest,
+                                            );
+                                            setSelectedRequest(null);
+                                        }}
+                                    >
+                                        Return slip
+                                    </Button>
+                                </div>
+                            )}
                             {canManage &&
                                 actionsFor(selectedRequest.status).length >
                                     0 && (
@@ -1522,7 +1004,7 @@ export default function RequestsIndex({
                 onOpenChange={(open) => !open && setSelectedAction(null)}
                 title={
                     selectedAction
-                        ? `${selectedAction.action.label}: ${selectedAction.record.ris_no}`
+                        ? `${selectedAction.action.label}: ${selectedAction.record.isf_no ?? selectedAction.record.ris_no}`
                         : 'Request action'
                 }
                 description={selectedAction?.action.description ?? ''}

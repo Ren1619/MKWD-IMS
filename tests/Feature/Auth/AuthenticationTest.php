@@ -6,6 +6,11 @@ use Illuminate\Support\Facades\RateLimiter;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
 
+beforeEach(function () {
+    config()->set('services.hris.auth_enabled', false);
+    config()->set('services.hris.development_fallback_enabled', true);
+});
+
 test('login screen can be rendered', function () {
     $this->get(route('login'))
         ->assertSuccessful()

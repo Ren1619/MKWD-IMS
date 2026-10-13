@@ -42,6 +42,12 @@
         <div><strong>{{ $document->document_type }} No.:</strong> {{ $document->document_no }}</div>
         <div><strong>Fund Cluster:</strong> {{ $document->fund_cluster ?: 'Not specified' }}</div>
         <div><strong>Status:</strong> {{ ucfirst(str_replace('_', ' ', $document->status)) }}</div>
+        @if($document->document_type === 'ICS')
+            <div><strong>Value Class:</strong> {{ ucfirst($document->value_class ?: 'Not specified') }}</div>
+            <div><strong>Renewal Due:</strong> {{ $document->renewal_due_at?->format('Y-m-d') ?: 'Not specified' }}</div>
+            <div><strong>Accountability Expiration:</strong> {{ $document->accountability_expires_at?->format('Y-m-d') ?: 'Does not auto-expire' }}</div>
+            <div><strong>Office:</strong> {{ $document->recipient_office ?: 'Not specified' }}</div>
+        @endif
     </section>
     <table>
         <thead>
@@ -63,6 +69,8 @@
                     <strong>{{ $document->asset_name }}</strong><br>
                     {{ $document->asset_description }}
                     @if($document->serial_number)<br>Serial: {{ $document->serial_number }}@endif
+                    @if($document->document_type === 'ICS' && $document->supplier_name)<br>Supplier: {{ $document->supplier_name }}@endif
+                    @if($document->document_type === 'ICS' && $document->invoice_reference)<br>Invoice / Reference: {{ $document->invoice_reference }}@endif
                 </td>
                 <td>{{ $document->property_number ?: '-' }}</td>
                 <td>{{ $document->acquisition_date?->format('Y-m-d') ?: '-' }}</td>
@@ -88,6 +96,8 @@
             <div class="signature-line">
                 <strong>{{ $document->recipient_name }}</strong><br>
                 {{ $document->recipient_code ?: 'Recipient / End-user' }}<br>
+                @if($document->recipient_position){{ $document->recipient_position }}<br>@endif
+                @if($document->recipient_office){{ $document->recipient_office }}<br>@endif
                 {{ $document->acknowledged_at ? 'Digitally acknowledged '.$document->acknowledged_at->format('Y-m-d H:i') : 'Recipient acknowledgment pending' }}
             </div>
         </div>
@@ -111,7 +121,7 @@
     </section>
     <footer class="footer">
         <span>System-generated accountability document - verify its status before reliance.</span>
-        <span>Capitalization threshold applied: &#8369;50,000</span>
+        <span>Capitalization threshold applied: &#8369;{{ number_format((float) config('inventory.ppe.capitalization_threshold'), 2) }}</span>
     </footer>
 </body>
 </html>

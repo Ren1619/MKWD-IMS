@@ -11,10 +11,11 @@ beforeEach(function () {
     config()->set('services.hris.url', 'https://hris.example.test');
     config()->set('services.hris.token', 'test-token');
     config()->set('services.hris.employees_path', '/api/v1/inventory/employees');
+    config()->set('services.hris.reference_data_path', '/api/v1/inventory/reference-data');
     Http::preventStrayRequests();
 });
 
-test('employee references are received through the configured API', function () {
+test('employees and reference catalogs are received through the configured API', function () {
     config()->set('services.hris.url', 'https://hris.example.test');
     config()->set('services.hris.token', 'test-token');
 
@@ -37,15 +38,24 @@ test('employee references are received through the configured API', function () 
                 'section' => ['id' => 3, 'name' => 'Maintenance'],
             ],
         ]], 'meta' => ['next_cursor' => null]]),
+        'https://hris.example.test/api/v1/inventory/reference-data' => Http::response(hrisReferenceDataPayload([
+            'departments' => [['id' => 1, 'name' => 'Operations', 'acronym' => 'OPS']],
+            'divisions' => [['id' => 2, 'department_id' => 1, 'name' => 'Engineering', 'acronym' => 'ENG']],
+            'units' => [['id' => 3, 'division_id' => 2, 'name' => 'Maintenance', 'acronym' => 'MNT']],
+            'roles' => [['id' => 4, 'name' => 'department_head']],
+        ])),
     ]);
 
     $result = app(SyncHrisReferences::class)->handle();
 
-    expect($result)->toMatchArray(['created' => 1, 'total' => 1])
+    expect($result)->toMatchArray(['created' => 5, 'total' => 5])
         ->and(HrisReference::query()->where('external_id', 'emp-100')->value('name'))->toBe('Ana Cruz Reyes Jr.')
-        ->and(HrisReference::query()->where('type', '!=', HrisReference::TYPE_EMPLOYEE)->exists())->toBeFalse();
+        ->and(HrisReference::query()->where('type', HrisReference::TYPE_DEPARTMENT)->value('code'))->toBe('OPS')
+        ->and(HrisReference::query()->where('type', HrisReference::TYPE_DIVISION)->value('parent_external_id'))->toBe('1')
+        ->and(HrisReference::query()->where('type', HrisReference::TYPE_UNIT)->value('parent_external_id'))->toBe('2')
+        ->and(HrisReference::query()->where('type', HrisReference::TYPE_ROLE)->value('name'))->toBe('department_head');
 
-    $reference = HrisReference::query()->sole();
+    $reference = HrisReference::query()->where('type', HrisReference::TYPE_EMPLOYEE)->sole();
     expect($reference->code)->toBe('emp-100')
         ->and($reference->email)->toBe('ana@example.test')
         ->and($reference->metadata['phone_number'])->toBe('09123456789')
@@ -54,8 +64,11 @@ test('employee references are received through the configured API', function () 
 
     Http::assertSent(fn (Request $request): bool => $request->hasHeader('Authorization', 'Bearer test-token')
         && $request->hasHeader('Accept', 'application/json')
+        && isset($request['per_page'])
         && $request['per_page'] === 250);
-    Http::assertSentCount(1);
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://hris.example.test/api/v1/inventory/reference-data'
+        && $request->hasHeader('Authorization', 'Bearer test-token'));
+    Http::assertSentCount(2);
 });
 
 test('cursor pages are fully synchronized using employee_id even when other ids change', function () {
@@ -65,8 +78,10 @@ test('cursor pages are fully synchronized using employee_id even when other ids 
     Http::fakeSequence()
         ->push(['data' => [hrisEmployeePayload('0001', ['id' => 10])], 'meta' => ['next_cursor' => 'next+/=']])
         ->push(['data' => [hrisEmployeePayload('0002')], 'meta' => ['next_cursor' => null]])
+        ->push(hrisReferenceDataPayload())
         ->push(['data' => [hrisEmployeePayload('0001', ['id' => 99, 'first_name' => 'Updated'])], 'meta' => ['next_cursor' => 'next+/=']])
-        ->push(['data' => [hrisEmployeePayload('0002')], 'meta' => ['next_cursor' => null]]);
+        ->push(['data' => [hrisEmployeePayload('0002')], 'meta' => ['next_cursor' => null]])
+        ->push(hrisReferenceDataPayload());
 
     expect(app(SyncHrisReferences::class)->handle())->toMatchArray([
         'created' => 1, 'updated' => 1, 'deactivated' => 1, 'total' => 2,
@@ -79,9 +94,10 @@ test('cursor pages are fully synchronized using employee_id even when other ids 
         ->and($missing->fresh()->is_active)->toBeFalse()
         ->and(HrisReference::query()->count())->toBe(3);
 
-    Http::assertSent(fn (Request $request): bool => $request['cursor'] === 'next+/='
+    Http::assertSent(fn (Request $request): bool => isset($request['cursor'])
+        && $request['cursor'] === 'next+/='
         && $request['per_page'] === 250);
-    Http::assertSentCount(4);
+    Http::assertSentCount(6);
 });
 
 test('a failure on a later page leaves all cached references unchanged', function () {
@@ -100,10 +116,11 @@ test('a failure on a later page leaves all cached references unchanged', functio
 
 test('transient HRIS failures are retried', function () {
     Http::fakeSequence()->pushStatus(503)
-        ->push(['data' => [hrisEmployeePayload('0001')], 'meta' => ['next_cursor' => null]]);
+        ->push(['data' => [hrisEmployeePayload('0001')], 'meta' => ['next_cursor' => null]])
+        ->push(hrisReferenceDataPayload());
 
     expect(app(SyncHrisReferences::class)->handle()['created'])->toBe(1);
-    Http::assertSentCount(2);
+    Http::assertSentCount(3);
 });
 
 test('malformed responses do not modify cached employees', function (array $payload) {
@@ -133,13 +150,29 @@ test('repeated cursors abort without modifying cached employees', function () {
     Http::assertSentCount(2);
 });
 
-test('a valid empty employee snapshot deactivates employees only', function () {
+test('valid empty snapshots deactivate all supported reference types', function () {
     $employee = HrisReference::factory()->create();
     $department = HrisReference::factory()->create(['type' => HrisReference::TYPE_DEPARTMENT]);
-    Http::fakeSequence()->push(['data' => [], 'meta' => ['next_cursor' => null]]);
+    Http::fakeSequence()
+        ->push(['data' => [], 'meta' => ['next_cursor' => null]])
+        ->push(hrisReferenceDataPayload());
 
-    expect(app(SyncHrisReferences::class)->handle())->toMatchArray(['total' => 0, 'deactivated' => 1]);
+    expect(app(SyncHrisReferences::class)->handle())->toMatchArray(['total' => 0, 'deactivated' => 2]);
     expect($employee->fresh()->is_active)->toBeFalse()
+        ->and($department->fresh()->is_active)->toBeFalse();
+});
+
+test('a malformed reference data response leaves the entire cache unchanged', function () {
+    $employee = HrisReference::factory()->create(['name' => 'Original Employee']);
+    $department = HrisReference::factory()->department()->create(['name' => 'Original Department']);
+
+    Http::fakeSequence()
+        ->push(['data' => [hrisEmployeePayload($employee->external_id, ['first_name' => 'Updated'])], 'meta' => ['next_cursor' => null]])
+        ->push(['data' => ['departments' => []]]);
+
+    expect(fn () => app(SyncHrisReferences::class)->handle())->toThrow(LogicException::class);
+    expect($employee->fresh()->name)->toBe('Original Employee')
+        ->and($department->fresh()->name)->toBe('Original Department')
         ->and($department->fresh()->is_active)->toBeTrue();
 });
 
@@ -159,6 +192,22 @@ function hrisEmployeePayload(string $employeeId, array $overrides = []): array
         'phone_number' => null,
         'position' => null,
     ], $overrides);
+}
+
+/**
+ * @param  array<string, list<array<string, mixed>>>  $overrides
+ * @return array{data: array<string, list<array<string, mixed>>>}
+ */
+function hrisReferenceDataPayload(array $overrides = []): array
+{
+    return [
+        'data' => array_replace([
+            'departments' => [],
+            'divisions' => [],
+            'units' => [],
+            'roles' => [],
+        ], $overrides),
+    ];
 }
 
 test('a complete sync updates present references and deactivates missing ones', function () {

@@ -2,13 +2,18 @@
 
 namespace App;
 
+use Brick\Math\BigDecimal;
+
 enum AssetAccountingClassification: string
 {
     case Ppe = 'ppe';
     case SemiExpendable = 'semi_expendable';
     case NeedsReview = 'needs_review';
 
-    public const CAPITALIZATION_THRESHOLD = 50000;
+    public static function capitalizationThreshold(): string
+    {
+        return (string) config('inventory.ppe.capitalization_threshold', '50000.00');
+    }
 
     public function label(): string
     {
@@ -30,11 +35,11 @@ enum AssetAccountingClassification: string
 
     public static function fromAcquisitionCost(string|float|int|null $cost): self
     {
-        if ($cost === null || (float) $cost <= 0) {
+        if ($cost === null || BigDecimal::of((string) $cost)->isLessThanOrEqualTo(0)) {
             return self::NeedsReview;
         }
 
-        return (float) $cost >= self::CAPITALIZATION_THRESHOLD
+        return BigDecimal::of((string) $cost)->isGreaterThanOrEqualTo(self::capitalizationThreshold())
             ? self::Ppe
             : self::SemiExpendable;
     }

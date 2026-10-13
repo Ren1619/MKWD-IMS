@@ -44,6 +44,33 @@ test('only super admins can view user management', function () {
         ->assertForbidden();
 });
 
+test('employee account selectors receive searchable name metadata', function () {
+    $admin = User::factory()->superAdmin()->create();
+    $employee = HrisReference::factory()->create([
+        'type' => HrisReference::TYPE_EMPLOYEE,
+        'metadata' => [
+            'first_name' => 'Maria',
+            'middle_name' => 'Cruz',
+            'last_name' => 'Santos',
+        ],
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.users.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('employees', 1)
+            ->where('employees.0.id', $employee->id)
+            ->where('employees.0.first_name', 'Maria')
+            ->where('employees.0.middle_name', 'Cruz')
+            ->where('employees.0.last_name', 'Santos')
+            ->missing('employees.0.metadata'));
+
+    $source = file_get_contents(resource_path('js/pages/Admin/Users/Index.tsx'));
+
+    expect(substr_count($source, '<HrisReferenceCombobox'))->toBe(2);
+});
+
 test('a super admin can create an employee-linked account', function () {
     $admin = User::factory()->superAdmin()->create();
     $employee = HrisReference::factory()->create([

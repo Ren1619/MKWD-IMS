@@ -4,6 +4,7 @@ namespace App\Http\Requests\Inventory;
 
 use App\AssetAccountingClassification;
 use App\Models\InventoryAsset;
+use Brick\Math\BigDecimal;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -34,8 +35,9 @@ class UpdateInventoryAssetRequest extends FormRequest
                 Rule::exists('inventory_asset_subcategories', 'inventory_asset_subcategory_id')
                     ->where('inventory_asset_category_id', $this->integer('category_id')),
             ],
-            'serial_number' => ['required', 'string', 'max:100', Rule::unique('inventory_assets', 'serial_number')->ignore($this->route('asset'))],
-            'property_number' => ['nullable', 'string', 'max:100', Rule::unique('inventory_assets', 'property_number')->ignore($this->route('asset'))],
+            'serial_number' => ['nullable', 'required_without:property_number', 'string', 'max:100', Rule::unique('inventory_assets', 'serial_number')->ignore($this->route('asset'))],
+            'property_number' => ['nullable', 'required_without:serial_number', 'string', 'max:100', Rule::unique('inventory_assets', 'property_number')->ignore($this->route('asset'))],
+            'account_code' => ['nullable', 'string', 'max:50'],
             'name' => ['required', 'string', 'max:255'],
             'unit_of_measure' => ['required', 'string', 'max:50'],
             'fund_cluster' => ['nullable', 'string', 'max:100'],
@@ -78,6 +80,29 @@ class UpdateInventoryAssetRequest extends FormRequest
                 return;
             }
 
+            if (! BigDecimal::of((string) $this->input('acquisition_cost'))->isEqualTo($asset->acquisition_cost)) {
+                $validator->errors()->add(
+                    'acquisition_cost',
+                    'Acquisition cost is immutable after registration. Record a capital addition or correcting transaction instead.',
+                );
+
+                return;
+            }
+
+            if ($this->date('acquisition_date')?->toDateString() !== $asset->acquisition_date?->toDateString()) {
+                $validator->errors()->add(
+                    'acquisition_date',
+                    'The acquisition date is immutable after registration.',
+                );
+            }
+
+            if ((string) $this->input('location') !== (string) $asset->location) {
+                $validator->errors()->add(
+                    'location',
+                    'Record a location transfer transaction instead of overwriting location history.',
+                );
+            }
+
             $nextClassification = AssetAccountingClassification::fromAcquisitionCost(
                 $this->input('acquisition_cost'),
             );
@@ -96,6 +121,7 @@ class UpdateInventoryAssetRequest extends FormRequest
 
     private function isPpe(): bool
     {
-        return (float) $this->input('acquisition_cost') >= AssetAccountingClassification::CAPITALIZATION_THRESHOLD;
+        return BigDecimal::of((string) $this->input('acquisition_cost'))
+            ->isGreaterThanOrEqualTo(AssetAccountingClassification::capitalizationThreshold());
     }
 }

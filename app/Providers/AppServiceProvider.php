@@ -2,13 +2,16 @@
 
 namespace App\Providers;
 
+use App\Contracts\HrisAuthenticator;
 use App\Contracts\HrisReferenceSource;
+use App\Integrations\Hris\HrisApiAuthenticator;
 use App\Integrations\Hris\HrisApiClient;
 use App\Models\HrisIntegrationSetting;
 use App\Models\InventoryAsset;
 use App\Models\InventoryAssetBorrowing;
 use App\Models\InventoryAssetCategory;
 use App\Models\InventoryAssetCustodian;
+use App\Models\InventoryAssetEvent;
 use App\Models\InventoryClassCategory;
 use App\Models\InventoryItem;
 use App\Models\InventoryItemBatch;
@@ -41,6 +44,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(HrisReferenceSource::class, HrisApiClient::class);
+        $this->app->bind(HrisAuthenticator::class, HrisApiAuthenticator::class);
     }
 
     /**
@@ -59,6 +63,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-integrations', fn (User $user): bool => $user->isSuperAdmin());
         Gate::define('view-audit-logs', fn (User $user): bool => $user->isSuperAdmin());
         Gate::define('manage-inventory', fn (User $user): bool => $user->canManageInventory());
+        Gate::define('view-property-governance', fn (User $user): bool => $user->canViewPropertyGovernance());
         Gate::define('access-vehicle-api', fn (User $user): bool => $user->is_active);
     }
 
@@ -74,6 +79,7 @@ class AppServiceProvider extends ServiceProvider
             InventoryAsset::class,
             InventoryAssetCustodian::class,
             InventoryAssetBorrowing::class,
+            InventoryAssetEvent::class,
             InventoryMajorCategory::class,
             InventoryClassCategory::class,
             InventorySeriesCategory::class,

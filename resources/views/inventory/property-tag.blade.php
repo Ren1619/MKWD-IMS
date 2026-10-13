@@ -5,13 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Property Tag - {{ $asset->property_number ?: $asset->serial_number }}</title>
     <style>
-        @page { size: 90mm 55mm; margin: 3mm; }
+        @page { size: 100mm 70mm; margin: 3mm; }
         * { box-sizing: border-box; }
         body { margin: 0; padding: 18px; background: #e2e8f0; color: #0f172a; font-family: Arial, sans-serif; }
-        .toolbar { display: flex; justify-content: space-between; align-items: center; max-width: 84mm; margin: 0 auto 16px; font-size: 12px; }
+        .toolbar { display: flex; justify-content: space-between; align-items: center; max-width: 94mm; margin: 0 auto 16px; font-size: 12px; }
         button { padding: 8px 14px; border: 0; border-radius: 5px; color: white; background: #0f172a; cursor: pointer; }
-        .tag { display: grid; grid-template-columns: 31mm 1fr; gap: 3mm; width: 84mm; min-height: 49mm; margin: auto; padding: 3mm; overflow: hidden; border: 1.5px solid #0f172a; border-radius: 2mm; background: white; }
+        .tag { display: grid; grid-template-columns: 31mm 1fr; gap: 3mm; width: 94mm; min-height: 64mm; margin: auto; padding: 3mm; overflow: hidden; border: 1.5px solid #0f172a; border-radius: 2mm; background: white; }
         .qr { display: flex; align-items: center; justify-content: center; }
+        .tag-green { border-color: #15803d; background: #dcfce7; }
+        .tag-yellow { border-color: #a16207; background: #fef9c3; }
+        .tag { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .qr img { background: white; }
         .qr img { display: block; width: 29mm; height: 29mm; }
         .agency { margin: 0 0 1mm; font-size: 8px; font-weight: 700; text-transform: uppercase; }
         .title { margin: 0 0 1.5mm; font-size: 12px; line-height: 1.1; }
@@ -28,16 +32,22 @@
         <span>Permanent QR property tag</span>
         <button type="button" onclick="window.print()">Print tag</button>
     </div>
-    <main class="tag">
+    <main class="tag tag-{{ strtolower($tagColor) }}">
         <div class="qr"><img src="{{ $qrCodeDataUri }}" alt="QR code for {{ $asset->name }}"></div>
         <div>
             <p class="agency">{{ config('app.name') }}</p>
             <h1 class="title">{{ $asset->name }}</h1>
-            <span class="classification">{{ $asset->accounting_classification->label() }}</span>
+            <span class="classification">{{ $asset->accounting_classification->label() }} / {{ $tagColor }} tag</span>
             <dl>
                 <dt>Property no.</dt><dd>{{ $asset->property_number ?: 'Not assigned' }}</dd>
                 <dt>Serial no.</dt><dd>{{ $asset->serial_number }}</dd>
+                <dt>Account code</dt><dd>{{ $asset->account_code ?: 'Not specified' }}</dd>
                 <dt>Fund cluster</dt><dd>{{ $asset->fund_cluster ?: 'Not specified' }}</dd>
+                <dt>Location</dt><dd>{{ $asset->location ?: 'Not specified' }}</dd>
+                <dt>{{ $accountabilityType }} no.</dt><dd>{{ $accountabilityDocument?->document_no ?: 'Not issued' }}@if($accountabilityDocument) ({{ str_replace('_', ' ', $accountabilityDocument->status) }})@endif</dd>
+                <dt>Accountable person</dt><dd>{{ $asset->currentCustodian?->name ?: 'Unassigned' }}</dd>
+                <dt>Acquisition cost</dt><dd>&#8369;{{ number_format((float) $asset->acquisition_cost, 2) }}</dd>
+                <dt>Date acquired</dt><dd>{{ $asset->acquisition_date?->format('Y-m-d') ?: 'Not specified' }}</dd>
             </dl>
         </div>
         <p class="scan">Scan to verify this property record. Tag ID: {{ $asset->property_tag_uuid }}</p>

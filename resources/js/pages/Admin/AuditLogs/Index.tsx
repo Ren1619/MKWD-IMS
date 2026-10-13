@@ -19,6 +19,8 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
+import { FormSelect } from '@/components/ui/form-select';
 import { Input } from '@/components/ui/input';
 import { useFilterSubmit } from '@/hooks/use-filter-submit';
 import { index } from '@/routes/admin/audit-logs';
@@ -30,7 +32,6 @@ type AuditLog = {
     description: string;
     subject_type: string | null;
     subject_id: number | null;
-    changed_attributes: string[];
     ip_address: string | null;
     created_at: string;
     user: { id: number; name: string; email: string } | null;
@@ -116,14 +117,14 @@ export default function AuditLogsIndex({
                                         />
                                         <InputError message={errors.search} />
                                     </div>
-                                    <div className="grid w-full gap-1.5 sm:w-40">
+                                    <div className="grid w-full gap-1.5 sm:w-52">
                                         <label
                                             htmlFor="audit-event"
                                             className="text-sm font-medium"
                                         >
                                             Event
                                         </label>
-                                        <select
+                                        <FormSelect
                                             id="audit-event"
                                             name="event"
                                             className={selectClass}
@@ -141,7 +142,7 @@ export default function AuditLogsIndex({
                                                     {item.label}
                                                 </option>
                                             ))}
-                                        </select>
+                                        </FormSelect>
                                         <InputError message={errors.event} />
                                     </div>
                                     <div className="grid w-full gap-1.5 sm:w-40">
@@ -151,31 +152,29 @@ export default function AuditLogsIndex({
                                         >
                                             From date
                                         </label>
-                                        <Input
+                                        <DatePicker
                                             id="audit-date-from"
                                             name="date_from"
-                                            type="date"
                                             defaultValue={filters.date_from}
-                                            onChange={submitImmediately}
+                                            autoSubmit
                                         />
                                         <InputError
                                             message={errors.date_from}
                                         />
                                     </div>
-                                    <div className="grid w-full gap-1.5 sm:w-40">
+                                    <div className="grid w-full gap-1.5 sm:w-52">
                                         <label
                                             htmlFor="audit-date-to"
                                             className="text-sm font-medium"
                                         >
                                             To date
                                         </label>
-                                        <Input
+                                        <DatePicker
                                             id="audit-date-to"
                                             name="date_to"
-                                            type="date"
                                             defaultValue={filters.date_to}
                                             min={filters.date_from}
-                                            onChange={submitImmediately}
+                                            autoSubmit
                                         />
                                         <InputError message={errors.date_to} />
                                     </div>
@@ -207,9 +206,6 @@ export default function AuditLogsIndex({
                                         </TableHead>
                                         <TableHead className="pb-3">
                                             Activity
-                                        </TableHead>
-                                        <TableHead className="pb-3">
-                                            Changed fields
                                         </TableHead>
                                         <TableHead className="pb-3">
                                             IP address
@@ -252,16 +248,6 @@ export default function AuditLogsIndex({
                                                 <TableCell className="min-w-64 py-3">
                                                     {log.description}
                                                 </TableCell>
-                                                <TableCell className="py-3 text-xs text-muted-foreground">
-                                                    {log.changed_attributes
-                                                        .map((field) =>
-                                                            field.replaceAll(
-                                                                '_',
-                                                                ' ',
-                                                            ),
-                                                        )
-                                                        .join(', ') || '—'}
-                                                </TableCell>
                                                 <TableCell className="py-3 font-mono text-xs whitespace-nowrap text-muted-foreground">
                                                     {log.ip_address ?? '—'}
                                                 </TableCell>
@@ -271,7 +257,7 @@ export default function AuditLogsIndex({
                                     {auditLogs.data.length === 0 && (
                                         <TableRow>
                                             <TableCell
-                                                colSpan={6}
+                                                colSpan={5}
                                                 className="py-10 text-center text-muted-foreground"
                                             >
                                                 No activity matches these

@@ -32,6 +32,7 @@ class AssignInventoryAssetRequest extends FormRequest
                     ->where('type', HrisReference::TYPE_EMPLOYEE)
                     ->where('is_active', true)),
             ],
+            'replacement_justification' => ['nullable', 'string', 'max:2000'],
         ];
     }
 }
