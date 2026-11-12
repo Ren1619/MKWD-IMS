@@ -8,6 +8,7 @@ use App\AssetLifecycleStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\AssignInventoryAssetRequest;
 use App\Http\Requests\Inventory\InventoryAssetIndexRequest;
+use App\Http\Requests\Inventory\PrintInventoryAssetLapsingScheduleRequest;
 use App\Http\Requests\Inventory\ReturnInventoryAssetRequest;
 use App\Http\Requests\Inventory\StoreInventoryAssetRequest;
 use App\Http\Requests\Inventory\UpdateInventoryAssetAccountingRequest;
@@ -20,7 +21,11 @@ use App\Models\InventoryAssetCategory;
 use App\Models\User;
 use App\Services\InventoryAssetLifecycleService;
 use App\Services\InventoryAssetService;
+use App\Services\PpeDepreciationCalculator;
+use Carbon\CarbonImmutable;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -43,10 +48,77 @@ class InventoryAssetController extends Controller
         return $this->registry($request, AssetAccountingClassification::SemiExpendable);
     }
 
+    public function show(Request $request, InventoryAsset $asset): Response
+    {
+        return $this->details($request, $asset, AssetAccountingClassification::Ppe);
+    }
+
+    public function showSemiExpendable(Request $request, InventoryAsset $asset): Response
+    {
+        return $this->details($request, $asset, AssetAccountingClassification::SemiExpendable);
+    }
+
+    private function details(Request $request, InventoryAsset $asset, AssetAccountingClassification $classification): Response
+    {
+        abort_unless($asset->accounting_classification === $classification, 404);
+        $user = $request->user();
+        abort_unless($user->canViewAllPropertyAssets()
+            || ($user->hris_reference_id !== null && $asset->current_custodian_reference_id === $user->hris_reference_id), 403);
+
+        $asset->load([
+            'category', 'subcategory', 'currentCustodian:id,name,code',
+            'activeBorrowing.borrowerReference:id,name,code',
+            'events.recordedBy:id,name', 'latestIcsDocument',
+            'borrowings.borrowerReference:id,name,code',
+            'accountabilityDocuments',
+        ]);
+
+        return Inertia::render('Inventory/Assets/Show', [
+            'asset' => $asset,
+            'employees' => $classification === AssetAccountingClassification::Ppe
+                ? HrisReference::query()->where('type', HrisReference::TYPE_EMPLOYEE)
+                    ->get(['id', 'type', 'code', 'name', 'email', 'metadata'])
+                    ->map(fn (HrisReference $employee): array => $employee->toSelectionOption())
+                : [],
+            'reportYear' => today()->year,
+        ]);
+    }
+
+    public function lapsingSchedule(PrintInventoryAssetLapsingScheduleRequest $request, InventoryAsset $asset, PpeDepreciationCalculator $calculator): View
+    {
+        abort_unless($asset->accounting_classification === AssetAccountingClassification::Ppe, 404);
+        $data = $request->validated();
+        $year = (int) $data['year'];
+        $asset->loadMissing('events');
+        $openingDate = CarbonImmutable::create($year, 1, 1)->subDay();
+        $previous = $openingDate->lt($asset->acquisition_date) ? null : $calculator->calculate($asset, $openingDate);
+        $opening = $previous;
+        $rows = [];
+        for ($month = 1; $month <= 12; $month++) {
+            $date = CarbonImmutable::create($year, $month, 1)->endOfMonth();
+            $valuation = $date->lt($asset->acquisition_date) ? null : $calculator->calculate($asset, $date);
+            $rows[] = [
+                'month' => $date->format('F'),
+                'valuation' => $valuation,
+                'expense' => round((float) ($valuation?->accumulatedDepreciation ?? 0) - (float) ($previous?->accumulatedDepreciation ?? 0), 2),
+            ];
+            $previous = $valuation;
+        }
+
+        return view('inventory.asset-lapsing-schedule', [
+            'asset' => $asset, 'year' => $year, 'opening' => $opening, 'rows' => $rows,
+            'preparedBy' => HrisReference::findOrFail($data['prepared_by']),
+            'certifiedBy' => HrisReference::findOrFail($data['certified_by']),
+        ]);
+    }
+
     private function registry(
         InventoryAssetIndexRequest $request,
         AssetAccountingClassification $classification,
     ): Response {
+        $filters = $request->safe()->only($classification === AssetAccountingClassification::SemiExpendable
+            ? ['search', 'condition_status', 'accountability_status', 'ics_renewal', 'records']
+            : ['search', 'records', 'lifecycle_status', 'condition_status', 'custody_status', 'sort', 'direction', 'value_class', 'accountability_status', 'physical_status', 'ics_renewal']);
         $user = $request->user();
         $assets = InventoryAsset::query()
             ->where('accounting_classification', $classification)
@@ -56,7 +128,7 @@ class InventoryAssetController extends Controller
                     ? $query->whereRaw('1 = 0')
                     : $query->where('current_custodian_reference_id', $user->hris_reference_id),
             )
-            ->when($request->string('records')->toString() === 'archived', fn ($query) => $query->onlyTrashed())
+            ->when(($filters['records'] ?? '') === 'archived', fn ($query) => $query->onlyTrashed())
             ->with([
                 'category',
                 'subcategory',
@@ -65,9 +137,9 @@ class InventoryAssetController extends Controller
                 'events' => fn ($query) => $query->with('recordedBy:id,name')->limit(25),
                 'latestIcsDocument',
             ])
-            ->when($request->string('search')->isNotEmpty(), fn ($query) => $query->where(function ($nested) use ($request) {
-                $search = '%'.$request->string('search')->toString().'%';
-                $nested->where('name', 'like', $search)
+            ->when(filled($filters['search'] ?? null), fn ($query) => $query->where(function ($nested) use ($filters) {
+                $search = '%'.($filters['search'] ?? '').'%';
+                $nested->where('item_description', 'like', $search)
                     ->orWhere('serial_number', 'like', $search)
                     ->orWhere('property_number', 'like', $search)
                     ->orWhere('brand', 'like', $search)
@@ -78,23 +150,23 @@ class InventoryAssetController extends Controller
                     ->orWhereHas('currentCustodian', fn ($employee) => $employee->where('name', 'like', $search))
                     ->orWhereHas('accountabilityDocuments', fn ($document) => $document->where('document_no', 'like', $search));
             }))
-            ->when($request->string('lifecycle_status')->isNotEmpty(), fn ($query) => $query->where('lifecycle_status', $request->string('lifecycle_status')->toString()))
-            ->when($request->string('condition_status')->isNotEmpty(), fn ($query) => $query->where('condition_status', $request->string('condition_status')->toString()))
-            ->when($request->string('custody_status')->toString() === 'borrowed', fn ($query) => $query->whereHas('activeBorrowing'))
-            ->when($request->string('custody_status')->toString() === 'assigned', fn ($query) => $query->whereNotNull('current_custodian_reference_id')->whereDoesntHave('activeBorrowing'))
-            ->when($request->string('custody_status')->toString() === 'available', fn ($query) => $query->whereNull('current_custodian_reference_id')->where('lifecycle_status', '!=', AssetLifecycleStatus::TransferredOut)->whereDoesntHave('activeBorrowing'))
-            ->when($request->string('custody_status')->toString() === 'transferred_out', fn ($query) => $query->where('lifecycle_status', AssetLifecycleStatus::TransferredOut))
-            ->when($request->string('value_class')->isNotEmpty(), fn ($query) => $query->where('semi_expendable_value_class', $request->string('value_class')->toString()))
-            ->when($request->string('accountability_status')->isNotEmpty(), fn ($query) => $query->where('accountability_status', $request->string('accountability_status')->toString()))
-            ->when($request->string('physical_status')->isNotEmpty(), fn ($query) => $query->where('physical_status', $request->string('physical_status')->toString()))
-            ->when($request->string('ics_renewal')->toString() === 'overdue', fn ($query) => $query->whereHas('latestIcsDocument', fn ($document) => $document->whereDate('renewal_due_at', '<', today())->whereIn('status', ['pending_recipient', 'active'])))
-            ->when($request->string('ics_renewal')->toString() === 'due_soon', fn ($query) => $query->whereHas('latestIcsDocument', fn ($document) => $document->whereBetween('renewal_due_at', [today(), today()->addDays((int) config('inventory.semi_expendable.renewal_due_soon_days', 90))])->whereIn('status', ['pending_recipient', 'active'])))
+            ->when(filled($filters['lifecycle_status'] ?? null), fn ($query) => $query->where('lifecycle_status', ($filters['lifecycle_status'] ?? '')))
+            ->when(filled($filters['condition_status'] ?? null), fn ($query) => $query->where('condition_status', ($filters['condition_status'] ?? '')))
+            ->when(($filters['custody_status'] ?? '') === 'borrowed', fn ($query) => $query->whereHas('activeBorrowing'))
+            ->when(($filters['custody_status'] ?? '') === 'assigned', fn ($query) => $query->whereNotNull('current_custodian_reference_id')->whereDoesntHave('activeBorrowing'))
+            ->when(($filters['custody_status'] ?? '') === 'available', fn ($query) => $query->whereNull('current_custodian_reference_id')->where('lifecycle_status', '!=', AssetLifecycleStatus::TransferredOut)->whereDoesntHave('activeBorrowing'))
+            ->when(($filters['custody_status'] ?? '') === 'transferred_out', fn ($query) => $query->where('lifecycle_status', AssetLifecycleStatus::TransferredOut))
+            ->when(filled($filters['value_class'] ?? null), fn ($query) => $query->where('semi_expendable_value_class', ($filters['value_class'] ?? '')))
+            ->when(filled($filters['accountability_status'] ?? null), fn ($query) => $query->where('accountability_status', ($filters['accountability_status'] ?? '')))
+            ->when(filled($filters['physical_status'] ?? null), fn ($query) => $query->where('physical_status', ($filters['physical_status'] ?? '')))
+            ->when(($filters['ics_renewal'] ?? '') === 'overdue', fn ($query) => $query->whereHas('latestIcsDocument', fn ($document) => $document->whereDate('renewal_due_at', '<', today())->whereIn('status', ['pending_recipient', 'pending_note', 'active'])))
+            ->when(($filters['ics_renewal'] ?? '') === 'due_soon', fn ($query) => $query->whereHas('latestIcsDocument', fn ($document) => $document->whereBetween('renewal_due_at', [today(), today()->addDays((int) config('inventory.semi_expendable.renewal_due_soon_days', 90))])->whereIn('status', ['pending_recipient', 'pending_note', 'active'])))
             ->orderBy(
-                $request->string('sort')->toString() ?: 'inventory_asset_id',
-                $request->string('direction')->toString() ?: 'desc',
+                ($filters['sort'] ?? '') ?: 'inventory_asset_id',
+                ($filters['direction'] ?? '') ?: 'desc',
             )
             ->paginate(15)
-            ->withQueryString();
+            ->appends($filters);
 
         return Inertia::render('Inventory/Assets/Index', [
             'assets' => $assets,
@@ -109,19 +181,7 @@ class InventoryAssetController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'type', 'code', 'name', 'email', 'metadata'])
                 ->map(fn (HrisReference $employee): array => $employee->toSelectionOption()),
-            'filters' => $request->safe()->only([
-                'search',
-                'records',
-                'lifecycle_status',
-                'condition_status',
-                'custody_status',
-                'sort',
-                'direction',
-                'value_class',
-                'accountability_status',
-                'physical_status',
-                'ics_renewal',
-            ]),
+            'filters' => $filters,
             'registryType' => $classification->value,
             'registrySummary' => $classification === AssetAccountingClassification::SemiExpendable
                 ? $this->semiExpendableSummary($user)
@@ -370,7 +430,7 @@ class InventoryAssetController extends Controller
                     ->orWhere('relief_status', 'pending')
                     ->orWhereHas('latestIcsDocument', fn ($document) => $document
                         ->whereDate('renewal_due_at', '<', today())
-                        ->whereIn('status', ['pending_recipient', 'active']));
+                        ->whereIn('status', ['pending_recipient', 'pending_note', 'active']));
             })
             ->count();
 

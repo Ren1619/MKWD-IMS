@@ -5,14 +5,14 @@ namespace App\Http\Requests\Inventory;
 use App\AssetAccountingClassification;
 use App\AssetConditionStatus;
 use App\AssetLifecycleStatus;
+use App\Http\Requests\ValidatedFormRequest;
 use App\Models\InventoryAssetCategory;
 use Brick\Math\BigDecimal;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
-class StoreInventoryAssetRequest extends FormRequest
+class StoreInventoryAssetRequest extends ValidatedFormRequest
 {
     protected function prepareForValidation(): void
     {
@@ -51,7 +51,7 @@ class StoreInventoryAssetRequest extends FormRequest
             'property_number_prefix' => [Rule::requiredIf($this->integer('registration_quantity', 1) > 1), 'nullable', 'string', 'max:90', 'regex:/^[A-Za-z0-9._-]+$/'],
             'old_property_number' => ['nullable', 'string', 'max:100'],
             'account_code' => ['nullable', 'string', 'max:50'],
-            'name' => ['required', 'string', 'max:255'],
+            'item_description' => ['required', 'string', 'max:255'],
             'unit_of_measure' => ['required', 'string', 'max:50'],
             'fund_cluster' => ['nullable', 'string', 'max:100'],
             'brand' => ['nullable', 'string', 'max:255'],

@@ -36,7 +36,7 @@ test('the accountability register filters by document type and current custody q
             ->where('filters.document_type', 'PAR'));
 });
 
-test('assigning property issues the correct frozen PAR and requires a governance user to acknowledge it', function () {
+test('assigning PPE issues a frozen ARE that the end user acknowledges personally', function () {
     $manager = User::factory()->inventoryManager()->create();
     $recipientReference = HrisReference::factory()->create([
         'code' => 'EMP-1001',
@@ -52,15 +52,15 @@ test('assigning property issues the correct frozen PAR and requires a governance
     ]);
 
     $this->actingAs($manager)
-        ->post(route('inventory.assets.assign', $asset), [
+        ->post(route('inventory.assets.assign', $asset), ['attested' => true,
             'hris_reference_id' => $recipientReference->id,
         ])
         ->assertRedirect(route('inventory.assets.index'));
 
     $document = PropertyAccountabilityDocument::query()->sole();
 
-    expect($document->document_type)->toBe('PAR')
-        ->and($document->document_no)->toMatch('/^PAR-\d{4}-\d{6}$/')
+    expect($document->document_type)->toBe('ARE')
+        ->and($document->document_no)->toMatch('/^ARE-\d{4}-\d{6}$/')
         ->and($document->status)->toBe('pending_recipient')
         ->and($document->asset_name)->toBe('Engineering Workstation')
         ->and($document->recipient_name)->toBe('Juan Dela Cruz')
@@ -74,7 +74,7 @@ test('assigning property issues the correct frozen PAR and requires a governance
             'action' => 'acknowledge',
             'attested' => true,
         ])
-        ->assertForbidden();
+        ->assertSessionHasNoErrors();
 
     $this->actingAs($manager)
         ->patch(route('inventory.accountability.transition', $document), [
@@ -82,16 +82,16 @@ test('assigning property issues the correct frozen PAR and requires a governance
             'attested' => true,
             'remarks' => 'Recipient signed the printed form in the presence of the property officer.',
         ])
-        ->assertSessionHasNoErrors();
+        ->assertSessionHasErrors('action');
 
     expect($document->fresh()->status)->toBe('active')
         ->and($document->fresh()->asset_name)->toBe('Engineering Workstation')
-        ->and($document->fresh()->acknowledged_by_user_id)->toBe($manager->id)
-        ->and($document->actions()->where('action', 'record_witnessed_acknowledgment')->exists())->toBeTrue();
+        ->and($document->fresh()->acknowledged_by_user_id)->toBe($recipient->id)
+        ->and($document->actions()->where('action', 'acknowledge')->exists())->toBeTrue();
 
     $this->get(route('inventory.accountability.print', $document))
         ->assertOk()
-        ->assertSee('PROPERTY ACKNOWLEDGMENT RECEIPT')
+        ->assertSee('ACKNOWLEDGMENT RECEIPT FOR EQUIPMENT')
         ->assertSee('Engineering Workstation');
 });
 
@@ -111,10 +111,10 @@ test('lower valued durable property uses an ICS and normal employees cannot acce
         'acquisition_cost' => 30000,
     ]);
 
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $firstAsset), [
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $firstAsset), ['attested' => true,
         'hris_reference_id' => $firstReference->id,
     ]);
-    $this->post(route('inventory.assets.assign', $secondAsset), [
+    $this->post(route('inventory.assets.assign', $secondAsset), ['attested' => true,
         'hris_reference_id' => $secondReference->id,
     ]);
 
@@ -135,7 +135,7 @@ test('custody transfer supersedes and links the prior document', function () {
     $secondReference = HrisReference::factory()->create();
     $asset = InventoryAsset::factory()->create(['acquisition_cost' => 80000]);
 
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), [
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['attested' => true,
         'hris_reference_id' => $firstReference->id,
     ]);
     $priorDocument = PropertyAccountabilityDocument::query()->sole();
@@ -170,7 +170,7 @@ test('manual renewal and return controls require remarks and preserve their hist
     $reference = HrisReference::factory()->create();
     $asset = InventoryAsset::factory()->create(['acquisition_cost' => 75000]);
 
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), [
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['attested' => true,
         'hris_reference_id' => $reference->id,
     ]);
     $original = PropertyAccountabilityDocument::query()->sole();
@@ -212,9 +212,9 @@ test('another employee cannot acknowledge and managers must document witnessed a
     $otherEmployee = User::factory()->employee()->create([
         'hris_reference_id' => HrisReference::factory()->create()->id,
     ]);
-    $asset = InventoryAsset::factory()->create();
+    $asset = InventoryAsset::factory()->create(['acquisition_cost' => 49999.99]);
 
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), [
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['attested' => true,
         'hris_reference_id' => $reference->id,
     ]);
     $document = PropertyAccountabilityDocument::query()->sole();
@@ -248,7 +248,7 @@ test('cancelling an unacknowledged document records the reason and reverses the 
     $reference = HrisReference::factory()->create();
     $asset = InventoryAsset::factory()->create(['acquisition_cost' => 20000]);
 
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), [
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['attested' => true,
         'hris_reference_id' => $reference->id,
     ]);
     $document = PropertyAccountabilityDocument::query()->sole();
@@ -278,10 +278,10 @@ test('PAR and ICS register reports apply the capitalization threshold', function
         'acquisition_cost' => 49999,
     ]);
 
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $parAsset), [
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $parAsset), ['attested' => true,
         'hris_reference_id' => $reference->id,
     ]);
-    $this->post(route('inventory.assets.assign', $icsAsset), [
+    $this->post(route('inventory.assets.assign', $icsAsset), ['attested' => true,
         'hris_reference_id' => $reference->id,
     ]);
 

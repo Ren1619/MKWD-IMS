@@ -8,6 +8,7 @@ import {
     BreadcrumbPage,
     BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import { useCurrentUrl } from '@/hooks/use-current-url';
 import type { BreadcrumbItem as BreadcrumbItemType } from '@/types';
 
 export function Breadcrumbs({
@@ -15,6 +16,8 @@ export function Breadcrumbs({
 }: {
     breadcrumbs: BreadcrumbItemType[];
 }) {
+    const { isCurrentUrl } = useCurrentUrl();
+
     return (
         <>
             {breadcrumbs.length > 0 && (
@@ -22,15 +25,18 @@ export function Breadcrumbs({
                     <BreadcrumbList>
                         {breadcrumbs.map((item, index) => {
                             const isLast = index === breadcrumbs.length - 1;
+                            const isCurrentPage = item.href
+                                ? isCurrentUrl(item.href)
+                                : isLast;
 
                             return (
                                 <Fragment key={index}>
                                     <BreadcrumbItem>
-                                        {isLast ? (
+                                        {isCurrentPage ? (
                                             <BreadcrumbPage>
                                                 {item.title}
                                             </BreadcrumbPage>
-                                        ) : (
+                                        ) : item.href ? (
                                             <BreadcrumbLink
                                                 render={
                                                     <Link href={item.href} />
@@ -38,6 +44,8 @@ export function Breadcrumbs({
                                             >
                                                 {item.title}
                                             </BreadcrumbLink>
+                                        ) : (
+                                            <span>{item.title}</span>
                                         )}
                                     </BreadcrumbItem>
                                     {!isLast && <BreadcrumbSeparator />}

@@ -30,15 +30,15 @@
     </style>
 </head>
 <body>
+<x-print-layout>
     <div class="toolbar">
         <span>Print preview · {{ $document['code'] }}</span>
         <button type="button" onclick="window.print()">Print / Save as PDF</button>
     </div>
 
     <header class="heading">
-        <p>Republic of the Philippines</p>
-        <h2>{{ $entity }}</h2>
         <h1>{{ $document['title'] }}</h1>
+        <p>Republic of the Philippines</p>
         <p>{{ $document['code'] }}</p>
     </header>
 
@@ -94,5 +94,6 @@
         <span>System-generated audit working document · Verify signatures and supporting records before submission.</span>
         <span>Generated {{ $generatedAt->format('Y-m-d H:i:s') }}</span>
     </footer>
+</x-print-layout>
 </body>
 </html>

@@ -16,6 +16,7 @@ use App\Services\AssetClassificationService;
 use App\Services\InventoryPropertyTransferService;
 use App\Services\SemiExpendablePropertyService;
 use Illuminate\Support\Carbon;
+use Inertia\Testing\AssertableInertia;
 
 afterEach(fn () => Carbon::setTestNow());
 
@@ -33,7 +34,7 @@ function validSemiExpendableRegistration(array $overrides = []): array
         'subcategory_id' => $subcategory->getKey(),
         'serial_number' => 'SEP-SERIAL-001',
         'property_number' => 'SEP-2026-001',
-        'name' => 'Semi-Expendable Monitor',
+        'item_description' => 'Semi-Expendable Monitor',
         'unit_of_measure' => 'unit',
         'fund_cluster' => '01',
         'location' => 'Property Unit',
@@ -120,7 +121,7 @@ test('low-valued issuance creates a segregated ICS and separates accounting inve
         'location' => 'Property Unit',
     ]);
 
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), [
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['attested' => true,
         'hris_reference_id' => $recipient->id,
     ])->assertSessionHasNoErrors();
 
@@ -148,7 +149,7 @@ test('low-valued accountability expires without deleting or disposing of the phy
         'depreciation_useful_life_months' => 12,
     ]);
 
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['hris_reference_id' => $recipient->id]);
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['attested' => true, 'hris_reference_id' => $recipient->id]);
     $ics = PropertyAccountabilityDocument::query()->sole();
 
     $expired = app(SemiExpendablePropertyService::class)->expireDueLowValueAccountabilities('2027-01-01');
@@ -171,7 +172,7 @@ test('high-valued accountability never auto expires from useful life alone', fun
         'depreciation_useful_life_months' => 12,
     ]);
 
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['hris_reference_id' => $recipient->id]);
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['attested' => true, 'hris_reference_id' => $recipient->id]);
     $ics = PropertyAccountabilityDocument::query()->sole();
 
     expect(app(SemiExpendablePropertyService::class)->expireDueLowValueAccountabilities('2030-01-01'))->toBe(0)
@@ -188,7 +189,7 @@ test('transfer return and reissue preserve every ICS and custody event', functio
     $employeeC = HrisReference::factory()->create();
     $asset = InventoryAsset::factory()->create(['acquisition_cost' => 30000]);
 
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['hris_reference_id' => $employeeA->id]);
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['attested' => true, 'hris_reference_id' => $employeeA->id]);
     $icsA = PropertyAccountabilityDocument::query()->sole();
     $workflow = app(InventoryPropertyTransferService::class);
     $transfer = $workflow->create([
@@ -215,7 +216,7 @@ test('transfer return and reissue preserve every ICS and custody event', functio
         ->and($asset->fresh()->available_for_reissue)->toBeTrue()
         ->and($asset->fresh()->accounting_status)->toBe(AssetAccountingStatus::IssuedAndExpensed);
 
-    $this->post(route('inventory.assets.assign', $asset), ['hris_reference_id' => $employeeC->id])->assertSessionHasNoErrors();
+    $this->post(route('inventory.assets.assign', $asset), ['attested' => true, 'hris_reference_id' => $employeeC->id])->assertSessionHasNoErrors();
 
     expect(PropertyAccountabilityDocument::query()->count())->toBe(3)
         ->and($asset->events()->where('event_type', 'return')->exists())->toBeTrue()
@@ -226,7 +227,7 @@ test('reported loss and pending relief retain high-valued accountability until a
     $manager = User::factory()->inventoryManager()->create();
     $recipient = HrisReference::factory()->create();
     $asset = InventoryAsset::factory()->create(['acquisition_cost' => 25000]);
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['hris_reference_id' => $recipient->id]);
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['attested' => true, 'hris_reference_id' => $recipient->id]);
 
     $this->post(route('inventory.semi_expendable.events.store', $asset), [
         'event_type' => 'loss', 'event_date' => today()->toDateString(), 'reference_no' => 'RLSDDSP-001',
@@ -261,7 +262,7 @@ test('unserviceable return and disposal remain distinct transactions', function 
     $manager = User::factory()->inventoryManager()->create();
     $recipient = HrisReference::factory()->create();
     $asset = InventoryAsset::factory()->create(['acquisition_cost' => 20000]);
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['hris_reference_id' => $recipient->id]);
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['attested' => true, 'hris_reference_id' => $recipient->id]);
     $this->post(route('inventory.assets.unassign', $asset));
 
     $this->post(route('inventory.semi_expendable.events.store', $asset), [
@@ -296,3 +297,33 @@ test('semi-expendable statutory reports are generated from transaction records',
     'rlsddsp', 'iirusp', 'ics-renewal', 'low-value-expiration', 'high-value-beyond-life',
     'returned-for-reissue', 'semi-reconciliation', 'semi-audit-trail',
 ]);
+
+test('semi-expendable filters ignore removed controls and keep newest-first pagination', function () {
+    $manager = User::factory()->inventoryManager()->create();
+    $assets = InventoryAsset::factory()->count(16)->create(['acquisition_cost' => 3000]);
+    $response = $this->actingAs($manager)->get(route('inventory.semi_expendable.index', ['lifecycle_status' => 'disposed', 'custody_status' => 'assigned', 'value_class' => 'high', 'physical_status' => 'missing', 'sort' => 'name', 'direction' => 'asc']));
+    $response->assertInertia(fn (AssertableInertia $page) => $page->component('Inventory/Assets/Index')->where('assets.total', 16)->where('assets.data.0.inventory_asset_id', $assets->last()->getKey())->missing('filters.lifecycle_status')->missing('filters.custody_status')->missing('filters.value_class')->missing('filters.physical_status')->missing('filters.sort')->missing('filters.direction'));
+    $next = $response->inertiaProps('assets.next_page_url');
+    expect($next)->not->toContain('value_class')->not->toContain('direction');
+    $this->get($next)->assertInertia(fn (AssertableInertia $page) => $page->has('assets.data', 1));
+});
+
+test('semi-expendable retained filters find condition accountability renewal and archived records', function () {
+    $manager = User::factory()->inventoryManager()->create();
+    $matching = InventoryAsset::factory()->create(['acquisition_cost' => 3000, 'name' => 'Filter Target Monitor', 'condition_status' => 'needs_repair', 'accountability_status' => 'accountable']);
+    InventoryAsset::factory()->create(['acquisition_cost' => 3000, 'name' => 'Other Monitor']);
+    PropertyAccountabilityDocument::factory()->create(['inventory_asset_id' => $matching->getKey(), 'document_type' => 'ICS', 'renewal_due_at' => today()->subDay(), 'status' => 'active']);
+    $filters = ['search' => 'Filter Target', 'condition_status' => 'needs_repair', 'accountability_status' => 'accountable', 'ics_renewal' => 'overdue', 'records' => 'active'];
+    $this->actingAs($manager)->get(route('inventory.semi_expendable.index', $filters))->assertInertia(fn (AssertableInertia $page) => $page->has('assets.data', 1)->where('assets.data.0.inventory_asset_id', $matching->getKey())->where('filters', $filters));
+    $matching->delete();
+    $this->get(route('inventory.semi_expendable.index', $filters))->assertInertia(fn (AssertableInertia $page) => $page->has('assets.data', 0));
+    $this->get(route('inventory.semi_expendable.index', [...$filters, 'records' => 'archived']))->assertInertia(fn (AssertableInertia $page) => $page->has('assets.data', 1));
+});
+
+test('PPE retains its lifecycle and sorting filters independently of the semi-expendable simplification', function () {
+    $manager = User::factory()->inventoryManager()->create();
+    InventoryAsset::factory()->create(['acquisition_cost' => 60000, 'name' => 'Zulu PPE', 'lifecycle_status' => 'active']);
+    $first = InventoryAsset::factory()->create(['acquisition_cost' => 60000, 'name' => 'Alpha PPE', 'lifecycle_status' => 'active']);
+    InventoryAsset::factory()->create(['acquisition_cost' => 60000, 'name' => 'Retired PPE', 'lifecycle_status' => 'disposed']);
+    $this->actingAs($manager)->get(route('inventory.assets.index', ['lifecycle_status' => 'active', 'sort' => 'name', 'direction' => 'asc']))->assertInertia(fn (AssertableInertia $page) => $page->has('assets.data', 2)->where('assets.data.0.inventory_asset_id', $first->getKey())->where('filters.sort', 'item_description'));
+});

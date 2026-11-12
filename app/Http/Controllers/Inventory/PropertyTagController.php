@@ -26,7 +26,7 @@ class PropertyTagController extends Controller
 
         return view('inventory.property-tag', [
             'asset' => $asset,
-            'accountabilityType' => $isPpe ? 'PAR' : 'ICS',
+            'accountabilityType' => $isPpe ? ($asset->latestParDocument?->document_type ?? 'ARE') : 'ICS',
             'accountabilityDocument' => $isPpe ? $asset->latestParDocument : $asset->latestIcsDocument,
             'tagColor' => $isPpe ? 'Green' : 'Yellow',
             'qrCodeDataUri' => $this->propertyTags->dataUri($asset),

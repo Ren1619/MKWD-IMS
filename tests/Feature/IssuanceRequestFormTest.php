@@ -32,7 +32,7 @@ test('issuance forms snapshot the requester department and correct managers from
         'requester_reference_id' => $other->id,
         'office_name' => 'Forged department',
         'requested_by' => 'Forged requester',
-        'isf_no' => '01-01-999',
+        'irf_no' => '01-01-999',
         'date' => '2000-01-01',
         'date_needed' => 'invalid',
     ])->assertSessionHasNoErrors();
@@ -44,12 +44,12 @@ test('issuance forms snapshot the requester department and correct managers from
         ->and($record->issuance_details['checked_by'])->toBe('Division Manager Full Name')
         ->and($record->issuance_details['approved_by'])->toBe('Department Manager Full Name')
         ->and($record->issuance_details['date'])->toBe(now('Asia/Manila')->toDateString())
-        ->and($record->isf_no)->toBe(now('Asia/Manila')->format('m-d').'-001')
+        ->and($record->irf_no)->toBe(now('Asia/Manila')->format('m-d').'-001')
         ->and($record->date_needed)->toBeNull()
         ->and($record->lines()->sole()->quantity_requested)->toBe(2);
 });
 
-test('ISF numbers increment across requesters and reset at Manila midnight and across years', function () {
+test('IRF numbers increment across requesters and reset at Manila midnight and across years', function () {
     $user = User::factory()->employee()->create();
     $other = User::factory()->employee()->create();
     $this->travelTo(new DateTimeImmutable('2026-10-06 15:59:59 UTC'));
@@ -60,7 +60,7 @@ test('ISF numbers increment across requesters and reset at Manila midnight and a
     $this->travelTo(new DateTimeImmutable('2027-10-06 10:00:00 UTC'));
     $this->post(route('inventory.requests.store'), issuanceFormPayload())->assertSessionHasNoErrors();
 
-    expect(SupplyRequest::query()->orderBy('id')->pluck('isf_no')->all())
+    expect(SupplyRequest::query()->orderBy('id')->pluck('irf_no')->all())
         ->toBe(['10-06-001', '10-06-002', '10-07-001', '10-06-001']);
 });
 
@@ -80,7 +80,7 @@ test('issuance items link stock and retain catalog descriptions and units', func
         ->and($line->quantity_requested)->toBe(3);
 });
 
-test('invalid forms do not consume ISF numbers', function () {
+test('invalid forms do not consume IRF numbers', function () {
     $user = User::factory()->employee()->create();
     $this->actingAs($user)->post(route('inventory.requests.store'), [
         ...issuanceFormPayload(),
@@ -90,7 +90,7 @@ test('invalid forms do not consume ISF numbers', function () {
     ])->assertSessionHasErrors(['purpose', 'responsibility_center_code', 'lines.0.quantity', 'lines.0.unit_of_measure', 'lines.0.item_name']);
     expect(DB::table('issuance_request_sequences')->count())->toBe(0);
     $this->post(route('inventory.requests.store'), issuanceFormPayload())->assertSessionHasNoErrors();
-    expect(SupplyRequest::query()->sole()->isf_sequence)->toBe(1);
+    expect(SupplyRequest::query()->sole()->irf_sequence)->toBe(1);
 });
 
 test('the daily number limit rolls back creation and preserves the counter', function () {
@@ -111,7 +111,7 @@ test('the issuance form exposes automatic context and pending finance options', 
         ->has('responsibilityCenters', 0));
 });
 
-test('ISF previews show the next daily number without reserving it', function (?int $lastNumber, ?string $expected) {
+test('IRF previews show the next daily number without reserving it', function (?int $lastNumber, ?string $expected) {
     $this->travelTo(new DateTimeImmutable('2026-10-06 10:00:00 UTC'));
     $user = User::factory()->employee()->create();
     DB::table('issuance_request_sequences')->insert(['date' => '2026-10-05', 'last_number' => 42]);
@@ -121,7 +121,7 @@ test('ISF previews show the next daily number without reserving it', function (?
 
     $this->actingAs($user)->get(route('inventory.requests.index'))->assertInertia(fn (Assert $page) => $page
         ->where('issuanceContext.date', '2026-10-06')
-        ->where('issuanceContext.isf_no', $expected));
+        ->where('issuanceContext.irf_no', $expected));
 
     expect(DB::table('issuance_request_sequences')->where('date', '2026-10-06')->value('last_number'))->toBe($lastNumber)
         ->and(SupplyRequest::query()->count())->toBe(0);

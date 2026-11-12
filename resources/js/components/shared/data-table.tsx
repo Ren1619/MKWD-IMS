@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { router } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
 
 function Table({ className, ...props }: React.ComponentProps<'table'>) {
@@ -59,12 +60,59 @@ function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
     );
 }
 
+function TableRowLink({
+    href,
+    className,
+    onClick,
+    onKeyDown,
+    ...props
+}: React.ComponentProps<'tr'> & { href: string }) {
+    return (
+        <TableRow
+            {...props}
+            role="link"
+            tabIndex={0}
+            className={cn(
+                'cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+                className,
+            )}
+            onClick={(event) => {
+                onClick?.(event);
+
+                if (
+                    event.defaultPrevented ||
+                    (event.target instanceof Element &&
+                        event.target.closest(
+                            'a, button, input, select, textarea, [role="button"]',
+                        ))
+                ) {
+                    return;
+                }
+
+                router.visit(href);
+            }}
+            onKeyDown={(event) => {
+                onKeyDown?.(event);
+
+                if (
+                    !event.defaultPrevented &&
+                    event.target === event.currentTarget &&
+                    event.key === 'Enter'
+                ) {
+                    event.preventDefault();
+                    router.visit(href);
+                }
+            }}
+        />
+    );
+}
+
 function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
     return (
         <th
             data-slot="table-head"
             className={cn(
-                'h-10 px-3 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:px-3 [&>[role=checkbox]]:translate-y-[2px]',
+                'h-10 px-4 py-3 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:px-4 [&>[role=checkbox]]:translate-y-[2px]',
                 className,
             )}
             {...props}
@@ -77,7 +125,7 @@ function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
         <td
             data-slot="table-cell"
             className={cn(
-                'px-3 py-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:px-3 [&>[role=checkbox]]:translate-y-[2px]',
+                'px-4 py-3 align-middle whitespace-nowrap [&:has([role=checkbox])]:px-4 [&>[role=checkbox]]:translate-y-[2px]',
                 className,
             )}
             {...props}
@@ -107,4 +155,5 @@ export {
     TableHead,
     TableHeader,
     TableRow,
+    TableRowLink,
 };

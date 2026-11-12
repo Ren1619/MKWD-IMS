@@ -2,10 +2,10 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\Http\Requests\ValidatedFormRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 
-class ShowInventoryItemRequest extends FormRequest
+class ShowInventoryItemRequest extends ValidatedFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.

@@ -558,7 +558,7 @@ test('legacy borrowings can be returned but new borrowing is not exposed', funct
         'acquisition_cost' => 100000,
     ]);
 
-    $this->actingAs($user)->post(route('inventory.assets.assign', $asset), [
+    $this->actingAs($user)->post(route('inventory.assets.assign', $asset), ['attested' => true,
         'hris_reference_id' => $custodian->id,
     ])->assertRedirect(route('inventory.assets.index'));
 

@@ -19,6 +19,7 @@ use Database\Factories\InventoryAssetFactory;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,6 +31,7 @@ use Illuminate\Support\Str;
 
 /**
  * @property int $inventory_asset_id
+ * @property string $item_description
  * @property AssetLifecycleStatus $lifecycle_status
  * @property AssetConditionStatus $condition_status
  * @property int|null $current_custodian_reference_id
@@ -64,6 +66,7 @@ use Illuminate\Support\Str;
     'old_property_number',
     'account_code',
     'property_tag_uuid',
+    'item_description',
     'name',
     'unit_of_measure',
     'fund_cluster',
@@ -129,6 +132,34 @@ class InventoryAsset extends Model
     use HasFactory, SoftDeletes;
 
     private ?PpeValuation $currentValuationCache = null;
+
+    /**
+     * Preserve older internal callers without storing or serializing a second field.
+     *
+     * @return Attribute<string|null, string>
+     */
+    protected function name(): Attribute
+    {
+        return Attribute::make(
+            get: fn (mixed $value, array $attributes): ?string => $attributes['item_description'] ?? null,
+            set: fn (string $value): array => ['item_description' => $value],
+        );
+    }
+
+    /**
+     * Retain the field names and order used by immutable document evidence.
+     *
+     * @return array<string, mixed>
+     */
+    public function historicalSnapshotAttributes(): array
+    {
+        $attributes = [];
+        foreach ($this->getAttributes() as $key => $value) {
+            $attributes[$key === 'item_description' ? 'name' : $key] = $value;
+        }
+
+        return $attributes;
+    }
 
     protected $primaryKey = 'inventory_asset_id';
 
@@ -358,7 +389,7 @@ class InventoryAsset extends Model
     public function latestParDocument(): HasOne
     {
         return $this->hasOne(PropertyAccountabilityDocument::class, 'inventory_asset_id', 'inventory_asset_id')
-            ->ofMany(['issued_at' => 'max', 'id' => 'max'], fn (Builder $query) => $query->where('document_type', 'PAR'));
+            ->ofMany(['issued_at' => 'max', 'id' => 'max'], fn (Builder $query) => $query->whereIn('document_type', ['PAR', 'ARE']));
     }
 
     /** @return HasOne<PropertyAccountabilityDocument, $this> */

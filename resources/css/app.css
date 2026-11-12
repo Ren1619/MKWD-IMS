@@ -125,6 +125,7 @@
 
     html {
         @apply font-sans;
+        scrollbar-gutter: stable;
     }
 
     body {
@@ -134,4 +135,18 @@
     ::selection {
         @apply bg-primary/20 text-foreground;
     }
+}
+
+:root:not(.dark) [data-slot='card'],
+:root:not(.dark) [data-slot='card-footer'] {
+    background-color: var(--card);
+    background-image: none;
+}
+
+:root:not(.dark)
+    main
+    :is(div, section, article, form):is(.rounded-lg, .rounded-xl).border:not(
+        [class*='bg-']
+    ) {
+    background-color: var(--card);
 }

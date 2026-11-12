@@ -1,11 +1,14 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { DataPagination } from '@/components/data-pagination';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableHeader,
     TableHead,
     TableRow,
+    TableRowLink,
     TableBody,
     TableCell,
 } from '@/components/shared/data-table';
@@ -32,13 +35,13 @@ export default function MonthlyIndex({
     return (
         <>
             <Head title="Monthly report packages" />
-            <div className="space-y-6 p-4 sm:p-6">
-                <div className="flex flex-wrap justify-between gap-3">
+            <PageContainer>
+                <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card p-5 shadow-sm sm:p-6">
                     <div>
-                        <h1 className="text-2xl font-semibold">
+                        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
                             Monthly report packages
                         </h1>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
                             Reconciled, signed monthly registers and stock
                             master lists with preserved report snapshots.
                         </p>
@@ -51,7 +54,7 @@ export default function MonthlyIndex({
                     </Button>
                 </div>
                 <form
-                    className="grid gap-3 rounded-lg border p-4 sm:grid-cols-2 lg:grid-cols-[1fr_10rem_12rem_auto]"
+                    className="grid items-end gap-4 rounded-xl border bg-card p-5 shadow-sm sm:grid-cols-2 sm:p-6 lg:grid-cols-[1fr_12rem_14rem_auto]"
                     onSubmit={(e) => {
                         e.preventDefault();
                         router.get(
@@ -67,6 +70,7 @@ export default function MonthlyIndex({
                         </Label>
                         <Input
                             id="monthly-search"
+                            placeholder="Search package number..."
                             value={search}
                             maxLength={150}
                             onChange={(e) => setSearch(e.target.value)}
@@ -86,6 +90,7 @@ export default function MonthlyIndex({
                         <Label htmlFor="monthly-status">Status</Label>
                         <FormSelect
                             id="monthly-status"
+                            className="w-full"
                             value={status}
                             onChange={(e) => setStatus(e.target.value)}
                         >
@@ -104,7 +109,9 @@ export default function MonthlyIndex({
                             ))}
                         </FormSelect>
                     </div>
-                    <Button className="self-end">Apply filters</Button>
+                    <Button type="submit" className="self-end">
+                        Apply filters
+                    </Button>
                 </form>
                 <div className="space-y-3 md:hidden">
                     {documents.data.map((doc) => (
@@ -117,6 +124,10 @@ export default function MonthlyIndex({
                                 className="font-medium underline"
                             >
                                 {doc.document_no}
+                                <RecordChangeBadge
+                                    collection="documents"
+                                    record={doc}
+                                />
                             </Link>
                             <Badge variant="outline">{label(doc.status)}</Badge>
                             <p className="text-sm">
@@ -132,7 +143,7 @@ export default function MonthlyIndex({
                         </article>
                     ))}
                 </div>
-                <div className="hidden md:block">
+                <div className="hidden overflow-hidden rounded-xl border bg-card shadow-sm md:block">
                     <Table>
                         <TableHeader>
                             <TableRow>
@@ -144,14 +155,18 @@ export default function MonthlyIndex({
                         </TableHeader>
                         <TableBody>
                             {documents.data.map((doc) => (
-                                <TableRow key={doc.id}>
+                                <TableRowLink
+                                    key={doc.id}
+                                    href={show.url(doc.id)}
+                                >
                                     <TableCell>
-                                        <Link
-                                            href={show(doc.id)}
-                                            className="font-medium underline"
-                                        >
+                                        <span className="font-medium">
                                             {doc.document_no}
-                                        </Link>
+                                            <RecordChangeBadge
+                                                collection="documents"
+                                                record={doc}
+                                            />
+                                        </span>
                                     </TableCell>
                                     <TableCell>
                                         {doc.period_month.slice(0, 7)} /{' '}
@@ -171,7 +186,7 @@ export default function MonthlyIndex({
                                             {label(doc.status)}
                                         </Badge>
                                     </TableCell>
-                                </TableRow>
+                                </TableRowLink>
                             ))}
                         </TableBody>
                     </Table>
@@ -182,7 +197,7 @@ export default function MonthlyIndex({
                     </p>
                 )}
                 <DataPagination links={documents.links} />
-            </div>
+            </PageContainer>
         </>
     );
 }

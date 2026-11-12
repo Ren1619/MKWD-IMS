@@ -5,15 +5,22 @@ namespace App\Http\Requests\Inventory;
 use App\AssetConditionStatus;
 use App\AssetCustodyStatus;
 use App\AssetLifecycleStatus;
+use App\Http\Requests\ValidatedFormRequest;
 use App\SemiExpendableAccountabilityStatus;
 use App\SemiExpendablePhysicalStatus;
 use App\SemiExpendableValueClass;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class InventoryAssetIndexRequest extends FormRequest
+class InventoryAssetIndexRequest extends ValidatedFormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->input('sort') === 'name') {
+            $this->merge(['sort' => 'item_description']);
+        }
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -39,7 +46,7 @@ class InventoryAssetIndexRequest extends FormRequest
             'accountability_status' => ['nullable', Rule::enum(SemiExpendableAccountabilityStatus::class)],
             'physical_status' => ['nullable', Rule::enum(SemiExpendablePhysicalStatus::class)],
             'ics_renewal' => ['nullable', Rule::in(['due_soon', 'overdue'])],
-            'sort' => ['nullable', Rule::in(['inventory_asset_id', 'property_number', 'name', 'acquisition_date', 'acquisition_cost', 'updated_at'])],
+            'sort' => ['nullable', Rule::in(['inventory_asset_id', 'property_number', 'item_description', 'acquisition_date', 'acquisition_cost', 'updated_at'])],
             'direction' => ['nullable', Rule::in(['asc', 'desc'])],
         ];
     }

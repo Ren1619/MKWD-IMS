@@ -2,13 +2,13 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\Http\Requests\ValidatedFormRequest;
 use App\Models\InventoryAssetSubcategory;
 use App\Services\PreprocurementWorkflow;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
-class StoreProcurementRequestRequest extends FormRequest
+class StoreProcurementRequestRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {

@@ -104,7 +104,7 @@ class SemiExpendablePropertyService
 
                     $lockedAsset->accountabilityDocuments()
                         ->where('document_type', 'ICS')
-                        ->whereIn('status', ['pending_recipient', 'active'])
+                        ->whereIn('status', ['pending_recipient', 'pending_note', 'active'])
                         ->update([
                             'status' => 'expired',
                             'closed_at' => $date,
@@ -240,7 +240,7 @@ class SemiExpendablePropertyService
     private function approveRelief(InventoryAsset $asset, array $data, User $actor): void
     {
         $reason = $data['notes'] ?? 'Approved relief from property accountability.';
-        $asset->accountabilityDocuments()->whereIn('status', ['pending_recipient', 'active'])->get()
+        $asset->accountabilityDocuments()->whereIn('status', ['pending_recipient', 'pending_note', 'active'])->get()
             ->each(function ($document) use ($actor, $reason): void {
                 $previousStatus = $document->status;
                 $document->update([

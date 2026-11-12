@@ -2,10 +2,10 @@
 
 namespace App\Http\Requests\Inventory;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\ValidatedFormRequest;
 use Illuminate\Validation\Rule;
 
-class InventoryDisposalIndexRequest extends FormRequest
+class InventoryDisposalIndexRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {

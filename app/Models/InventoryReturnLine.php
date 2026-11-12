@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
+ * @property int|null $warehouse_id
+ * @property string|null $warehouse_name
  * @property int $id
  * @property int $inventory_return_id
  * @property int $inventory_item_id
@@ -28,12 +30,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property string|null $storage_location
  * @property string|null $inspection_remarks
  */
-#[Fillable(['inventory_return_id', 'inventory_item_id', 'source_allocation_id', 'source_supply_request_id', 'source_issue_reference', 'stock_number', 'item_name', 'unit_of_measure', 'quantity_declared', 'quantity_accepted', 'quantity_committed', 'unit_cost', 'expiration_date', 'valuation_basis', 'condition', 'storage_location', 'inspection_remarks'])]
+#[Fillable(['inventory_return_id', 'inventory_item_id', 'source_allocation_id', 'source_supply_request_id', 'source_issue_reference', 'stock_number', 'item_name', 'unit_of_measure', 'quantity_declared', 'quantity_accepted', 'quantity_committed', 'unit_cost', 'expiration_date', 'valuation_basis', 'condition', 'warehouse_id', 'warehouse_name', 'storage_location', 'inspection_remarks'])]
 class InventoryReturnLine extends Model
 {
     protected function casts(): array
     {
-        return ['quantity_declared' => 'integer', 'quantity_accepted' => 'integer', 'quantity_committed' => 'integer', 'unit_cost' => 'decimal:2', 'expiration_date' => 'date'];
+        return ['warehouse_id' => 'integer', 'quantity_declared' => 'integer', 'quantity_accepted' => 'integer', 'quantity_committed' => 'integer', 'unit_cost' => 'decimal:2', 'expiration_date' => 'date'];
     }
 
     /** @return BelongsTo<InventoryReturn, $this> */

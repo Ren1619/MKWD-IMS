@@ -26,6 +26,7 @@ export type Snapshot = {
     created_at: string;
     readiness: Readiness;
     payload: {
+        selected_report?: string;
         entity_name: string;
         from: string;
         to: string;

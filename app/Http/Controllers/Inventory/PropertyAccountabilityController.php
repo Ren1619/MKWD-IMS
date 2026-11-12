@@ -32,11 +32,7 @@ class PropertyAccountabilityController extends Controller
         $canManage = $user->canManageInventory();
         $filters = $request->validated();
 
-        $documents = PropertyAccountabilityDocument::query()
-            ->when(
-                ! $canManage,
-                fn ($query) => $query->where('recipient_reference_id', $user->hris_reference_id ?? 0),
-            )
+        $documents = $this->accountability->visibleTo($user)
             ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($query) use ($search): void {
                     $query->where('document_no', 'like', "%{$search}%")
@@ -48,12 +44,15 @@ class PropertyAccountabilityController extends Controller
             })
             ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
             ->when($filters['document_type'] ?? null, fn ($query, string $documentType) => $query->where('document_type', $documentType))
-            ->when(($filters['queue'] ?? null) === 'needs_action', fn ($query) => $query->whereIn('status', ['pending_recipient', 'active']))
+            ->when(($filters['queue'] ?? null) === 'needs_action', fn ($query) => $query->whereIn('status', ['pending_recipient', 'pending_note', 'active']))
             ->when(($filters['queue'] ?? null) === 'completed', fn ($query) => $query->whereIn('status', ['superseded', 'returned', 'cancelled', 'expired', 'relieved', 'transferred_out']))
             ->with('actions.actor:id,name')
             ->latest('issued_at')
             ->paginate(15)
             ->withQueryString();
+        foreach ($documents as $document) {
+            $document->setAttribute('can_note', $this->accountability->canNote($document, $user));
+        }
 
         $undocumentedAssets = $canManage
             ? InventoryAsset::query()
@@ -61,12 +60,12 @@ class PropertyAccountabilityController extends Controller
                 ->whereNotNull('current_custodian_reference_id')
                 ->whereDoesntHave(
                     'accountabilityDocuments',
-                    fn ($query) => $query->whereIn('status', ['pending_recipient', 'active']),
+                    fn ($query) => $query->whereIn('status', ['pending_recipient', 'pending_note', 'active']),
                 )
-                ->orderBy('name')
+                ->orderBy('item_description')
                 ->get([
                     'inventory_asset_id',
-                    'name',
+                    'item_description',
                     'property_number',
                     'serial_number',
                     'acquisition_cost',
@@ -80,6 +79,38 @@ class PropertyAccountabilityController extends Controller
             'canManage' => $canManage,
             'currentReferenceId' => $user->hris_reference_id,
             'capitalizationThreshold' => (float) AssetAccountingClassification::capitalizationThreshold(),
+            'filters' => $filters,
+        ]);
+    }
+
+    public function ppeIndex(PropertyAccountabilityIndexRequest $request): Response
+    {
+        $user = $request->user();
+        $filters = $request->validated();
+        $documents = $this->accountability->visibleTo($user)
+            ->where('document_type', 'ARE')
+            ->when(($filters['view'] ?? 'all') === 'noted', fn ($query) => $query->where('noted_by_user_id', $user->id)->whereNotNull('noted_at'))
+            ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
+            ->when($filters['search'] ?? null, function ($query, string $search): void {
+                $query->where(fn ($query) => $query
+                    ->where('document_no', 'like', "%{$search}%")
+                    ->orWhere('asset_name', 'like', "%{$search}%")
+                    ->orWhere('recipient_name', 'like', "%{$search}%")
+                    ->orWhere('property_number', 'like', "%{$search}%"));
+            })
+            ->with('actions.actor:id,name')
+            ->latest('issued_at')
+            ->latest('id')
+            ->paginate(15)
+            ->withQueryString();
+        foreach ($documents as $document) {
+            $document->setAttribute('can_note', $this->accountability->canNote($document, $user));
+            $document->setAttribute('can_acknowledge', $document->status === 'pending_recipient'
+                && $user->hris_reference_id !== null && $document->recipient_reference_id === $user->hris_reference_id);
+        }
+
+        return Inertia::render('Inventory/Assets/Ares', [
+            'documents' => $documents,
             'filters' => $filters,
         ]);
     }
@@ -100,9 +131,19 @@ class PropertyAccountabilityController extends Controller
         TransitionPropertyAccountabilityRequest $request,
         PropertyAccountabilityDocument $document,
     ): RedirectResponse {
+        if ($document->document_type !== 'ARE') {
+            Gate::authorize('view-property-governance');
+        }
         $action = $request->string('action')->toString();
         $remarks = $request->string('remarks')->toString() ?: null;
         $user = $request->user();
+
+        if ($action === 'note') {
+            $this->accountability->note($document, $user, $remarks);
+            Inertia::flash('toast', ['type' => 'success', 'message' => 'ARE noted.']);
+
+            return back();
+        }
 
         if ($action === 'acknowledge') {
             $this->accountability->acknowledge($document, $user, $remarks);
@@ -135,11 +176,11 @@ class PropertyAccountabilityController extends Controller
 
     public function print(Request $request, PropertyAccountabilityDocument $document): View
     {
+        if ($document->document_type !== 'ARE') {
+            Gate::authorize('view-property-governance');
+        }
         $user = $request->user();
-        $isRecipient = $user->hris_reference_id !== null
-            && $user->hris_reference_id === $document->recipient_reference_id;
-
-        abort_unless($user->canManageInventory() || $isRecipient, 403);
+        abort_unless($this->accountability->visibleTo($user)->whereKey($document->getKey())->exists(), 403);
 
         return view('inventory.property-accountability', [
             'document' => $document->load(['actions.actor', 'supersedes']),

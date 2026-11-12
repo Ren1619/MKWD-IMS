@@ -5,11 +5,11 @@ namespace App\Http\Requests\Inventory;
 use App\AssetConditionStatus;
 use App\AssetCustodyStatus;
 use App\AssetLifecycleStatus;
+use App\Http\Requests\ValidatedFormRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class InventoryReportRequest extends FormRequest
+class InventoryReportRequest extends ValidatedFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.

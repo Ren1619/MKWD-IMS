@@ -29,39 +29,41 @@ class InventoryMonthlyReportService
                 return $existing;
             }
             $categoryId = isset($data['series_category_id']) ? (int) $data['series_category_id'] : null;
-            $scope = hash('sha256', json_encode([$data['fund_cluster'], $categoryId, (bool) $data['include_zero']], JSON_THROW_ON_ERROR));
+            $scopeSelection = [$data['fund_cluster'], $categoryId, (bool) $data['include_zero']];
+            if (filled($data['selected_report'] ?? null)) {
+                $scopeSelection[] = $data['selected_report'];
+            }
+            $scope = hash('sha256', json_encode($scopeSelection, JSON_THROW_ON_ERROR));
             $month = Carbon::createFromFormat('!Y-m', $data['period_month'], 'Asia/Manila')->toDateString();
             $sameScope = InventoryMonthlyReport::query()->whereDate('period_month', $month)->where('scope_key', $scope)->orderByDesc('revision')->get();
             if ($sameScope->contains(fn ($record): bool => in_array($record->status, ['prepared', 'checked', 'noted'], true))) {
                 throw ValidationException::withMessages(['period_month' => 'A package for this month and selection already awaits sign-off. Refresh or cancel that package first.']);
             }
             $prior = $sameScope->first(fn ($record): bool => in_array($record->status, ['approved', 'transmitted'], true));
-            if ($prior !== null && blank($data['correction_reason'] ?? null)) {
-                throw ValidationException::withMessages(['correction_reason' => 'Explain why a correction revision is needed; the earlier approved package remains preserved.']);
-            }
             $ids = [$actor->id, (int) $data['checked_by_user_id'], (int) $data['noted_by_user_id'], (int) $data['approved_by_user_id']];
             if (count(array_unique($ids)) !== 4) {
                 throw ValidationException::withMessages(['checked_by_user_id' => 'Assign four distinct officers for preparation, checking, noting, and approval.']);
             }
-            $users = User::query()->whereIn('id', $ids)->where('is_active', true)->whereIn('role', ['inventory_manager', 'super_admin'])->get()->keyBy('id');
+            $users = User::query()->whereIn('id', $ids)->where('is_active', true)->get()->keyBy('id');
             if ($users->count() !== 4) {
-                throw ValidationException::withMessages(['checked_by_user_id' => 'All signatories must have active inventory authorization.']);
+                throw ValidationException::withMessages(['checked_by_user_id' => 'All signatories must have active IMS accounts.']);
             }
             $signatories = [];
             foreach (['prepared' => ['Prepared by / Senior Supply Officer or PPE Custodian', $actor->id], 'checked' => ['Checked by / PMMD Division Manager', (int) $data['checked_by_user_id']], 'noted' => ['Noted by / AHRD Department Manager', (int) $data['noted_by_user_id']], 'approved' => ['Approved by / AGM for Admin and Finance', (int) $data['approved_by_user_id']]] as $key => [$role,$id]) {
                 $signatories[$key] = ['user_id' => $id, 'name' => $users[$id]->name, 'role' => $role];
             }
-            $built = $this->builder->build($data['period_month'], $categoryId, (bool) $data['include_zero'], $data['fund_cluster']);
+            $built = $this->builder->build($data['period_month'], $categoryId, (bool) $data['include_zero'], $data['fund_cluster'], $data['selected_report'] ?? null);
             $this->assertReady($built['readiness']['blockers']);
             $document = InventoryMonthlyReport::query()->create([
                 ...collect($data)->only(['fund_cluster', 'include_zero', 'checked_by_user_id', 'noted_by_user_id', 'approved_by_user_id', 'reconciliation_reference', 'correction_reason', 'idempotency_key'])->all(),
+                'reconciliation_reference' => $data['reconciliation_reference'] ?? '',
                 'document_no' => 'TMP-'.Str::uuid(), 'period_month' => $month, 'scope_key' => $scope, 'revision' => (int) $sameScope->max('revision') + 1,
                 'series_category_id' => $categoryId, 'classification_name' => $categoryId === null ? 'All inventory classifications' : InventorySeriesCategory::query()->findOrFail($categoryId)->name,
                 'prepared_by_user_id' => $actor->id, 'signatories' => $signatories, 'supersedes_id' => $prior?->id, 'request_hash' => $hash]);
             $document->update(['document_no' => sprintf('MR-%s-%06d-R%d', str_replace('-', '', $data['period_month']), $document->id, $document->revision)]);
             $snapshot = $document->snapshots()->create(['version' => 1, 'source_hash' => $built['hash'], 'payload' => $built['payload'], 'readiness' => $built['readiness'], 'generated_by_user_id' => $actor->id, 'generated_by_name' => $actor->name]);
             $document->update(['active_snapshot_id' => $snapshot->id]);
-            $this->record($document, $actor, 'prepare', null, $data['reconciliation_reference'], ['correction_reason' => $data['correction_reason'] ?? null]);
+            $this->record($document, $actor, 'prepare', null, $data['reconciliation_reference'] ?? '', ['correction_reason' => $data['correction_reason'] ?? null]);
 
             return $document;
         }, attempts: 3);
@@ -82,7 +84,7 @@ class InventoryMonthlyReportService
             $from = $document->status;
             $action = $data['action'];
             if (in_array($action, ['check', 'note', 'approve', 'refresh'], true)) {
-                $built = $this->builder->build($document->period_month->format('Y-m'), $document->series_category_id, $document->include_zero, $document->fund_cluster);
+                $built = $this->builder->build($document->period_month->format('Y-m'), $document->series_category_id, $document->include_zero, $document->fund_cluster, $document->snapshot->payload['selected_report'] ?? null);
                 $this->assertReady($built['readiness']['blockers']);
                 if ($action === 'refresh') {
                     $version = (int) $document->snapshots()->max('version') + 1;
@@ -108,7 +110,7 @@ class InventoryMonthlyReportService
     /** @return list<string> */
     public function allowedActions(InventoryMonthlyReport $document, User $actor): array
     {
-        if (! $actor->is_active || ! $actor->can('manage-inventory')) {
+        if (! $actor->is_active) {
             return [];
         }
         $actions = [];
@@ -118,7 +120,7 @@ class InventoryMonthlyReportService
         if ($required !== null && $required[1] === $actor->id) {
             $actions[] = $required[0];
         }
-        if (in_array($document->status, ['prepared', 'checked', 'noted'], true) && $document->prepared_by_user_id === $actor->id) {
+        if (in_array($document->status, ['prepared', 'checked', 'noted'], true) && $document->prepared_by_user_id === $actor->id && $actor->can('manage-inventory')) {
             $actions[] = 'refresh';
             $actions[] = 'cancel';
         }

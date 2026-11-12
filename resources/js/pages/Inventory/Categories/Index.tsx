@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -357,6 +359,16 @@ function CategoryDataTable({
                                                 {row.category.code}
                                             </span>
                                             <span>{row.category.name}</span>
+                                            <RecordChangeBadge
+                                                collection={
+                                                    row.type === 'asset' ||
+                                                    row.type ===
+                                                        'asset_subcategory'
+                                                        ? 'assetCategories'
+                                                        : 'majorCategories'
+                                                }
+                                                record={row.category}
+                                            />
                                             {row.type === 'asset' &&
                                                 row.category.is_vehicle && (
                                                     <Badge variant="outline">
@@ -706,7 +718,7 @@ export default function CategoriesIndex({
     return (
         <>
             <Head title="Inventory Categories" />
-            <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+            <PageContainer>
                 <div>
                     <h1 className="text-2xl font-semibold">
                         Inventory categories
@@ -917,7 +929,7 @@ export default function CategoriesIndex({
                         </CardContent>
                     </Card>
                 )}
-            </div>
+            </PageContainer>
 
             <Dialog
                 open={editor !== null}

@@ -22,7 +22,7 @@ function traceabilityCard(string $document = 'stock-card', ?string $from = null)
 }
 function stockCardRequest(int $reserved = 3): SupplyRequest
 {
-    $request = SupplyRequest::factory()->create(['status' => 'ready_for_release', 'isf_no' => '10-12-007', 'requester_name' => 'Frozen Recipient', 'purpose' => 'Maintain project pumps']);
+    $request = SupplyRequest::factory()->create(['status' => 'ready_for_release', 'irf_no' => '10-12-007', 'requester_name' => 'Frozen Recipient', 'purpose' => 'Maintain project pumps']);
     SupplyRequestLine::factory()->create(['supply_request_id' => $request->id, 'inventory_item_id' => test()->item->getKey(), 'is_new_item' => false, 'item_name' => test()->item->name, 'unit_of_measure' => 'pc', 'quantity_requested' => 10, 'quantity_approved' => 10, 'quantity_reserved' => $reserved]);
 
     return $request;

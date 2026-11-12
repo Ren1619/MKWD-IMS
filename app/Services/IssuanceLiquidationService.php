@@ -43,7 +43,7 @@ class IssuanceLiquidationService
             'slip_no' => sprintf('%s-%03d', substr($date, 5), $number),
             'issued_at' => $date,
             'issued_by_user_id' => $actor->id,
-            'snapshot' => ['department' => $request->office_name, 'charge_code' => $request->responsibility_center_code, 'requested_by' => $request->requester_name, 'isf_no' => $request->isf_no, 'requester_user_id' => $request->requester_user_id, 'requester_reference_id' => $request->requester_reference_id],
+            'snapshot' => ['department' => $request->office_name, 'charge_code' => $request->responsibility_center_code, 'requested_by' => $request->requester_name, 'irf_no' => $request->irf_no, 'requester_user_id' => $request->requester_user_id, 'requester_reference_id' => $request->requester_reference_id],
             'lines' => $lines,
             'history' => [],
         ]);

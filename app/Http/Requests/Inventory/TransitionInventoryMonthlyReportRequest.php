@@ -2,14 +2,19 @@
 
 namespace App\Http\Requests\Inventory;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\ValidatedFormRequest;
+use App\Models\InventoryMonthlyReport;
 use Illuminate\Validation\Rule;
 
-class TransitionInventoryMonthlyReportRequest extends FormRequest
+class TransitionInventoryMonthlyReportRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('manage-inventory') ?? false;
+        $user = $this->user();
+        $report = $this->route('report');
+
+        return $user !== null && $user->is_active && $report instanceof InventoryMonthlyReport
+            && ($user->can('manage-inventory') || in_array($user->id, [$report->checked_by_user_id, $report->noted_by_user_id, $report->approved_by_user_id], true));
     }
 
     /** @return array<string,mixed> */

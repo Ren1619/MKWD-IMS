@@ -19,16 +19,21 @@
     </style>
 </head>
 <body>
+<x-print-layout>
 <button class="print-button" onclick="window.print()">Print</button>
 @foreach (array_chunk($document->lines, 30) as $pageLines)
 <div class="sheet">
-    <h2>METRO KIDAPAWAN WATER DISTRICT</h2>
     <h1>I S LIQUIDATION</h1>
     <div class="fields"><span>DEPARTMENT: {{ $document->department }}</span><span>DATE: {{ $document->liquidation_date->format('m/d/Y') }}</span></div>
     <p>IS LIQUIDATION NO.: <strong>{{ $document->document_no }}</strong></p>
-    @if ($document->supply_request_id)
-        <p>ISSUANCE REQUEST FORM NO.: <strong>{{ $document->isf_no }}</strong></p>
-        <p>Materials released against this ISF as of the reporting date. Balance = issued − utilized.</p>
+    @if ($document->issuance_slip_id)
+        <p>IS NO.: <strong>{{ $document->is_no }}</strong></p>
+        <p>Materials from this issuance slip only. Balance = issued minus utilized.</p>
+        <p>RETURN SLIP NO.: {{ $document->return_slip_no }} &nbsp; DATE: {{ $document->return_slip_date?->format('m/d/Y') }}</p>
+    @elseif ($document->supply_request_id)
+        <p>Historical request-linked liquidation retained with its original references.</p>
+        <p>ISSUANCE REQUEST FORM NO.: <strong>{{ $document->irf_no }}</strong></p>
+        <p>Materials released against this IRF as of the reporting date. Balance = issued − utilized.</p>
         @if ($document->return_slip_no)
             <p>RETURN SLIP NO.: {{ $document->return_slip_no }} &nbsp; DATE: {{ $document->return_slip_date?->format('m/d/Y') }}</p>
         @endif
@@ -52,5 +57,6 @@
     <p>Liquidation status: {{ ucfirst($document->status) }}</p>
 </div>
 @endforeach
+</x-print-layout>
 </body>
 </html>

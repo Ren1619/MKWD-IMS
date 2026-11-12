@@ -2,6 +2,7 @@ import { Link } from '@inertiajs/react';
 import { Cable, Palette, ShieldCheck, UserRound } from 'lucide-react';
 import type { PropsWithChildren } from 'react';
 import Heading from '@/components/heading';
+import { PageContainer } from '@/components/page-container';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useAppPage } from '@/hooks/use-app-page';
@@ -44,7 +45,7 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
     ];
 
     return (
-        <div className="px-4 py-6">
+        <PageContainer className="gap-0">
             <Heading
                 title="Settings"
                 description="Manage your account, security, integrations, and appearance"
@@ -86,6 +87,6 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
                     </section>
                 </div>
             </div>
-        </div>
+        </PageContainer>
     );
 }

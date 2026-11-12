@@ -14,6 +14,7 @@ use App\Models\PropertyAccountabilityDocument;
 use App\Models\User;
 use App\SemiExpendableAccountabilityStatus;
 use App\SemiExpendablePhysicalStatus;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -33,7 +34,10 @@ class InventoryPropertyTransferService
 
         return DB::transaction(function () use ($data, $actor): InventoryPropertyTransfer {
             $asset = InventoryAsset::query()->whereKey($data['inventory_asset_id'])->lockForUpdate()->firstOrFail();
-            $source = $asset->accountabilityDocuments()->whereIn('status', ['active', 'pending_recipient'])->first();
+            $source = $asset->accountabilityDocuments()->whereIn('status', ['active', 'pending_note', 'pending_recipient'])->first();
+            if ($source?->document_type === 'ARE' && $source->notation_required && $source->status !== 'active') {
+                $this->fail('Complete the ARE acknowledgment and division-manager notation before transferring this property.');
+            }
             if ($source === null || $asset->current_custodian_reference_id === null || $source->recipient_reference_id !== $asset->current_custodian_reference_id || ! $asset->is_assignable) {
                 $this->fail('An assignable property with an existing PAR/ICS is required.');
             }
@@ -68,8 +72,13 @@ class InventoryPropertyTransferService
     /** @return list<string> */
     public function allowedActions(InventoryPropertyTransfer $transfer, User $actor): array
     {
+        $receiptActions = $actor->is_active && $actor->employee?->is_active
+            && ! $transfer->isExternal() && $transfer->status === 'approved'
+            && $actor->hris_reference_id === $transfer->recipient_reference_id
+            && ! $transfer->actions()->where('action', 'acknowledge_receipt')->exists()
+                ? ['acknowledge_receipt'] : [];
         if (! $actor->can('manage-inventory')) {
-            return [];
+            return $receiptActions;
         }
         $actions = match ($transfer->status) {
             'submitted' => $actor->getKey() !== $transfer->created_by_user_id ? ['verify', 'reject', 'cancel'] : ['cancel'],
@@ -78,13 +87,30 @@ class InventoryPropertyTransferService
             default => [],
         };
 
-        return $actions;
+        return [...$receiptActions, ...$actions];
+    }
+
+    /** @return Builder<InventoryPropertyTransfer> */
+    public function visibleTo(User $actor): Builder
+    {
+        $query = InventoryPropertyTransfer::query();
+        if ($actor->can('manage-inventory')) {
+            return $query;
+        }
+
+        return $query->where(function (Builder $query) use ($actor): void {
+            $query->where('created_by_user_id', $actor->id)
+                ->orWhereHas('actions', fn (Builder $query) => $query->where('actor_user_id', $actor->id));
+            if ($actor->hris_reference_id !== null) {
+                $query->orWhere('recipient_reference_id', $actor->hris_reference_id);
+            }
+        });
     }
 
     /** @param array<string, mixed> $data */
     public function transition(InventoryPropertyTransfer $transfer, array $data, User $actor): InventoryPropertyTransfer
     {
-        abort_unless($actor->can('manage-inventory'), 403);
+        abort_unless($actor->can('manage-inventory') || in_array($data['action'], $this->allowedActions($transfer, $actor), true), 403);
 
         return DB::transaction(function () use ($transfer, $data, $actor): InventoryPropertyTransfer {
             $asset = InventoryAsset::withTrashed()->whereKey($transfer->inventory_asset_id)->lockForUpdate()->firstOrFail();
@@ -97,12 +123,24 @@ class InventoryPropertyTransferService
             if (in_array($action, ['reject', 'cancel'], true)) {
                 $to = $action === 'reject' ? 'rejected' : 'cancelled';
             } else {
-                $source = $asset->accountabilityDocuments()->whereKey($locked->source_document_id)->whereIn('status', ['active', 'pending_recipient'])->first();
+                $source = $asset->accountabilityDocuments()->whereKey($locked->source_document_id)->whereIn('status', ['active', 'pending_note', 'pending_recipient'])->first();
                 $recipient = $locked->isExternal() ? null : HrisReference::query()->whereKey($locked->recipient_reference_id)->where('type', HrisReference::TYPE_EMPLOYEE)->where('is_active', true)->first();
                 if ($asset->trashed() || ! $asset->is_assignable || $source === null || (! $locked->isExternal() && $recipient === null)
                     || $this->sourceSnapshot($asset, $source) !== $locked->source_snapshot
                     || (! $locked->isExternal() && $this->recipientSnapshot($recipient) !== $locked->recipient_snapshot)) {
                     $this->fail('Property, custody, or recipient details changed. Cancel and prepare a corrected transfer.');
+                }
+                if ($action === 'acknowledge_receipt') {
+                    $approval = $locked->actions()->where('action', 'approve')->sole();
+                    if ($data['handover_date'] < $approval->created_at->toDateString() || $data['handover_date'] > today()->toDateString()) {
+                        $this->fail('Receipt cannot predate approval or be future dated.');
+                    }
+                    $this->record($locked, $actor, $action, $from, $from, $data['attestation'], [
+                        'handover_date' => $data['handover_date'],
+                        'hris_reference_id' => $actor->hris_reference_id,
+                    ]);
+
+                    return $locked->refresh();
                 }
                 $to = match ($action) {
                     'verify' => 'verified', 'approve' => 'approved', 'complete' => 'completed', default => $this->fail('Unknown transfer decision.')
@@ -116,6 +154,16 @@ class InventoryPropertyTransferService
                     $locked->update(['approved_by_user_id' => $actor->getKey()]);
                 } else {
                     $approval = $locked->actions()->where('action', 'approve')->sole();
+                    $receipt = $locked->actions()->where('action', 'acknowledge_receipt')->first();
+                    if ($receipt !== null && $data['handover_date'] !== $receipt->evidence['handover_date']) {
+                        $this->fail('The handover date must match the end user receipt acknowledgment.');
+                    }
+                    $receiptReference = $receipt !== null
+                        ? $locked->document_no.'-RECEIPT-'.$receipt->getKey()
+                        : ($data['receipt_reference'] ?? null);
+                    if (blank($receiptReference)) {
+                        $this->fail('An end-user acknowledgment or signed receipt reference is required.');
+                    }
                     if ($data['handover_date'] < $approval->created_at->toDateString() || $data['handover_date'] > today()->toDateString()) {
                         $this->fail('Physical handover must be on or after approval and cannot be future dated.');
                     }
@@ -125,7 +173,8 @@ class InventoryPropertyTransferService
                         'approved_by_name' => $approval->actor_name,
                         'approval_date' => $approval->created_at->toDateString(),
                         'handover_date' => $data['handover_date'], 'inspection_reference' => $data['inspection_reference'],
-                        'release_reference' => $data['release_reference'], 'receipt_reference' => $data['receipt_reference'],
+                        'release_reference' => $data['release_reference'], 'receipt_reference' => $receiptReference,
+                        ...($receipt !== null ? ['receipt_actor_name' => $receipt->actor_name, 'receipt_action_id' => $receipt->getKey(), 'receipt_recorded_at' => $receipt->created_at->toIso8601String()] : []),
                         'handover_attestation' => $data['attestation'],
                         'from_location' => $asset->location,
                     ];
@@ -151,6 +200,7 @@ class InventoryPropertyTransferService
                         $locked->update(['replacement_document_id' => $replacement->getKey()]);
                     }
                     $locked->update(['completed_at' => now()]);
+                    $data = [...$data, ...$evidence];
                 }
             }
             $locked->update(['status' => $to]);
@@ -164,7 +214,7 @@ class InventoryPropertyTransferService
     private function sourceSnapshot(InventoryAsset $asset, PropertyAccountabilityDocument $document): array
     {
         return [
-            ...array_intersect_key($asset->getAttributes(), array_flip(['current_custodian_reference_id', 'name', 'description', 'property_number', 'serial_number', 'acquisition_date', 'acquisition_cost', 'quantity_per_property_card', 'unit_of_measure', 'fund_cluster', 'location', 'condition_status', 'lifecycle_status', 'accounting_classification'])),
+            ...array_intersect_key($asset->historicalSnapshotAttributes(), array_flip(['current_custodian_reference_id', 'name', 'description', 'property_number', 'serial_number', 'acquisition_date', 'acquisition_cost', 'quantity_per_property_card', 'unit_of_measure', 'fund_cluster', 'location', 'condition_status', 'lifecycle_status', 'accounting_classification'])),
             'document_no' => $document->document_no, 'recipient_name' => $document->recipient_name,
             'recipient_code' => $document->recipient_code, 'recipient_position' => $document->recipient_position,
             'recipient_office' => $document->recipient_office,

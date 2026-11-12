@@ -1,11 +1,14 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { DataPagination } from '@/components/data-pagination';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableHeader,
     TableHead,
     TableRow,
+    TableRowLink,
     TableBody,
     TableCell,
 } from '@/components/shared/data-table';
@@ -16,13 +19,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index, create, show } from '@/routes/inventory/deliveries';
 import type { Paginated } from '@/types/inventory';
+import RecordShipmentDialog from './RecordShipmentDialog';
+import type { RecordShipmentProps } from './RecordShipmentDialog';
 import { title, manilaTime } from './types';
 import type { Delivery } from './types';
 export default function DeliveryIndex({
     documents,
     filters,
+    shipmentPreparation,
 }: {
     documents: Paginated<Delivery>;
+    shipmentPreparation?: RecordShipmentProps;
     filters: {
         search?: string;
         status?: string;
@@ -35,7 +42,10 @@ export default function DeliveryIndex({
     return (
         <>
             <Head title="Delivery inspection" />
-            <div className="space-y-6 p-4 sm:p-6">
+            {shipmentPreparation && (
+                <RecordShipmentDialog {...shipmentPreparation} />
+            )}
+            <PageContainer>
                 <div className="flex flex-wrap justify-between gap-3">
                     <div>
                         <h1 className="text-2xl font-semibold">
@@ -128,6 +138,10 @@ export default function DeliveryIndex({
                                 href={show(doc.id)}
                             >
                                 {doc.document_no}
+                                <RecordChangeBadge
+                                    collection="documents"
+                                    record={doc}
+                                />
                             </Link>
                             <Badge variant="outline">{title(doc.status)}</Badge>
                             <p className="text-sm">
@@ -153,14 +167,18 @@ export default function DeliveryIndex({
                         </TableHeader>
                         <TableBody>
                             {documents.data.map((doc) => (
-                                <TableRow key={doc.id}>
+                                <TableRowLink
+                                    key={doc.id}
+                                    href={show.url(doc.id)}
+                                >
                                     <TableCell>
-                                        <Link
-                                            href={show(doc.id)}
-                                            className="font-medium underline"
-                                        >
+                                        <span className="font-medium">
                                             {doc.document_no}
-                                        </Link>
+                                            <RecordChangeBadge
+                                                collection="documents"
+                                                record={doc}
+                                            />
+                                        </span>
                                         <p className="text-xs">
                                             {doc.delivery_reference}
                                         </p>
@@ -178,7 +196,7 @@ export default function DeliveryIndex({
                                             {title(doc.status)}
                                         </Badge>
                                     </TableCell>
-                                </TableRow>
+                                </TableRowLink>
                             ))}
                         </TableBody>
                     </Table>
@@ -189,7 +207,7 @@ export default function DeliveryIndex({
                     </p>
                 )}
                 <DataPagination links={documents.links} />
-            </div>
+            </PageContainer>
         </>
     );
 }

@@ -2,10 +2,10 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\Http\Requests\ValidatedFormRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 
-class DepartmentAllocationRequest extends FormRequest
+class DepartmentAllocationRequest extends ValidatedFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -23,7 +23,7 @@ class DepartmentAllocationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'supply_request_id' => ['required', 'integer', 'exists:supply_requests,id'],
+            'issuance_slip_id' => ['required', 'integer', 'exists:issuance_slips,id'],
             'date' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.now('Asia/Manila')->toDateString()],
         ];
     }

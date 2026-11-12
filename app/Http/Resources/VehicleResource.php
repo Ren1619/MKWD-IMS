@@ -21,7 +21,7 @@ class VehicleResource extends JsonResource
             'property_tag_uuid' => $this->property_tag_uuid,
             'property_number' => $this->property_number,
             'serial_number' => $this->serial_number,
-            'name' => $this->name,
+            'name' => $this->item_description,
             'brand' => $this->brand,
             'model' => $this->model,
             'description' => $this->description,

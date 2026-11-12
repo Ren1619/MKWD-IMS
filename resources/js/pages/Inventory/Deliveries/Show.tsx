@@ -2,6 +2,8 @@ import { Head, Link, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import { HrisReferenceCombobox } from '@/components/hris-reference-combobox';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableHeader,
@@ -566,7 +568,7 @@ function DeliveryDecision({
                                                 }
                                             >
                                                 <option value="warehouse">
-                                                    Warehouse / property
+                                                    Stockroom / property
                                                     register
                                                 </option>
                                                 <option value="direct_use">
@@ -825,7 +827,7 @@ export default function DeliveryShow({
     return (
         <>
             <Head title={document.document_no} />
-            <div className="space-y-6 p-4 sm:p-6">
+            <PageContainer>
                 <div className="flex flex-wrap justify-between gap-3">
                     <div>
                         <Link href={index()} className="text-sm underline">
@@ -833,6 +835,10 @@ export default function DeliveryShow({
                         </Link>
                         <h1 className="text-2xl font-semibold">
                             {document.document_no}
+                            <RecordChangeBadge
+                                collection="document"
+                                record={document}
+                            />
                         </h1>
                         <Badge variant="outline">
                             {title(document.status)}
@@ -1136,7 +1142,7 @@ export default function DeliveryShow({
                             today={today}
                         />
                     )}
-            </div>
+            </PageContainer>
         </>
     );
 }

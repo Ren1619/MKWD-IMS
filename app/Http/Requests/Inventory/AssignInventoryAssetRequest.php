@@ -2,12 +2,14 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\AssetAccountingClassification;
+use App\Http\Requests\ValidatedFormRequest;
 use App\Models\HrisReference;
+use App\Models\InventoryAsset;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class AssignInventoryAssetRequest extends FormRequest
+class AssignInventoryAssetRequest extends ValidatedFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -24,7 +26,14 @@ class AssignInventoryAssetRequest extends FormRequest
      */
     public function rules(): array
     {
+        $asset = $this->route('asset');
+
         return [
+            'attested' => [
+                Rule::requiredIf($asset instanceof InventoryAsset && $asset->accounting_classification === AssetAccountingClassification::Ppe),
+                'nullable',
+                'accepted',
+            ],
             'hris_reference_id' => [
                 'required',
                 'integer',

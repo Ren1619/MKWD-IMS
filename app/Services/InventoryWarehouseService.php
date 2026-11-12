@@ -6,6 +6,7 @@ use App\Models\InventoryBatchPlacement;
 use App\Models\InventoryItem;
 use App\Models\InventoryItemBatch;
 use App\Models\User;
+use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
@@ -21,10 +22,14 @@ class InventoryWarehouseService
 
         return DB::transaction(function () use ($batch, $data, $actor): InventoryBatchPlacement {
             $this->guard->assertMovementAllowed();
+            $warehouse = Warehouse::query()->whereKey($data['warehouse_id'])->lockForUpdate()->first();
+            if ($warehouse === null) {
+                throw ValidationException::withMessages(['warehouse_id' => 'Select an available registered stockroom.']);
+            }
             $item = InventoryItem::withTrashed()->whereKey($batch->inventory_item_id)->lockForUpdate()->firstOrFail();
             $batch = InventoryItemBatch::query()->whereKey($batch->getKey())->lockForUpdate()->firstOrFail();
             if ($item->trashed() || $item->status !== 'active') {
-                throw ValidationException::withMessages(['warehouse' => 'Restore and activate the catalog item before recording warehouse placement.']);
+                throw ValidationException::withMessages(['warehouse' => 'Restore and activate the catalog item before recording stockroom placement.']);
             }
             $latest = $batch->placements()->latest('id')->first();
             if (($latest?->id) !== (isset($data['latest_placement_id']) ? (int) $data['latest_placement_id'] : null)) {
@@ -37,7 +42,9 @@ class InventoryWarehouseService
                 throw ValidationException::withMessages(['warehouse' => 'A future-dated receipt cannot be confirmed as stored today. Correct its source record first.']);
             }
             $placement = $batch->placements()->create([
-                ...collect($data)->only(['warehouse', 'area', 'rack', 'bin', 'observed_quantity', 'source_evidence_reference', 'remarks'])->all(),
+                ...collect($data)->only(['area', 'rack', 'bin', 'observed_quantity', 'source_evidence_reference', 'remarks'])->all(),
+                'warehouse_id' => $warehouse->id,
+                'warehouse' => $warehouse->name,
                 'version' => $latest === null ? 1 : $latest->version + 1,
                 'source_details' => ['stock_number' => $item->stock_number, 'item_name' => $item->name, 'unit_of_measure' => $item->unit_of_measure,
                     'batch_number' => $batch->batch_number, 'source_reference' => $batch->reference_no, 'source' => $batch->source,

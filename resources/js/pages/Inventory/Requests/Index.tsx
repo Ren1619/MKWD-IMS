@@ -5,6 +5,8 @@ import type { FormEvent, ReactNode } from 'react';
 import { DataPagination } from '@/components/data-pagination';
 
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 
 import type { ResponsibilityCenterOption } from '@/components/responsibility-center-combobox';
 import {
@@ -35,6 +37,7 @@ import {
 } from '@/components/ui/tooltip';
 import { WorkflowActionDialog } from '@/components/workflow-action-dialog';
 import { WorkflowStatus } from '@/components/workflow-status';
+import { supplyRequestHistoryDescription } from '@/lib/supply-request-history';
 import { index, transition } from '@/routes/inventory/requests';
 import type { Paginated } from '@/types/inventory';
 import { IssuanceLiquidationDialog } from './IssuanceLiquidation';
@@ -44,7 +47,11 @@ import type {
 } from './IssuanceLiquidation';
 import { IssuanceRequestForm } from './IssuanceRequestForm';
 import type { IssuanceContext } from './IssuanceRequestForm';
+import { RequestDocuments } from './RequestDocuments';
+import type { DocumentEmployee } from './RequestDocuments';
 import { ReturnSlipDialog } from './ReturnSlipDialog';
+import { ReturnSlipSummary } from './ReturnSlipSummary';
+import type { ReturnDocumentSummary } from './ReturnSlipSummary';
 
 type Item = {
     inventory_item_id: number;
@@ -66,6 +73,7 @@ type RequestLine = {
     is_new_item: boolean;
 };
 type ActionHistory = {
+    metadata?: { approval_stage?: string | null } | null;
     id: number;
     action: string;
     to_status: string;
@@ -74,11 +82,16 @@ type ActionHistory = {
     actor: { name: string };
 };
 type RequestRecord = {
+    return_documents: ReturnDocumentSummary[];
+    issuance_slips: { id: number; slip_no: string; issued_at: string }[];
+    approval_stage: 'division' | 'department';
+    can_approve_as_head: boolean;
     id: number;
     ris_no: string;
-    isf_no: string | null;
+    irf_no: string | null;
     return_slip_no: string | null;
     return_slip_date: string | null;
+    has_active_return: boolean;
     requester_name: string;
     office_name: string | null;
     purpose: string;
@@ -98,6 +111,7 @@ type WorkflowAction = {
 
 const workflowSteps = [
     'submitted',
+    'division_approved',
     'approved',
     'ready_for_release',
     'released',
@@ -107,15 +121,19 @@ const fieldClassName =
     'min-h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm';
 
 function statusLabel(status: string): string {
-    return status.replaceAll('_', ' ');
+    return status
+        .split('_')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
 }
 
 function nextAction(status: string): string {
     return (
         (
             {
-                submitted:
-                    'Waiting for an inventory manager to review and approve.',
+                submitted: 'Waiting for the responsible head to approve.',
+                division_approved:
+                    'Division head approved. Waiting for department head approval.',
                 approved: 'Approved. Stock availability must now be reviewed.',
                 awaiting_replenishment:
                     'Some items are unavailable. Review after replenishment or release reserved quantities.',
@@ -145,9 +163,19 @@ function actionsFor(status: string): WorkflowAction[] {
         submitted: [
             {
                 action: 'approve',
-                label: 'Approve request',
+                label: 'Approve',
                 description:
                     'Confirm that this request is necessary and authorized.',
+            },
+            close('reject'),
+            close('cancel'),
+        ],
+        division_approved: [
+            {
+                action: 'approve',
+                label: 'Approve',
+                description:
+                    'Record the separate department head approval before stock review.',
             },
             close('reject'),
             close('cancel'),
@@ -214,9 +242,11 @@ export default function RequestsIndex({
     liquidationDocuments,
     items,
     canManage,
+    isSuperAdmin,
 
     responsibilityCenters,
     issuanceContext,
+    employees,
     filters,
 }: {
     requests: Paginated<RequestRecord>;
@@ -224,10 +254,12 @@ export default function RequestsIndex({
     liquidationDocuments: LiquidationDocument[];
     items: Item[];
     canManage: boolean;
+    isSuperAdmin: boolean;
 
     responsibilityCenters: ResponsibilityCenterOption[];
     filters: Filters;
     issuanceContext: IssuanceContext;
+    employees: DocumentEmployee[];
 }) {
     const [filterValues, setFilterValues] = useState({
         search: filters.search ?? '',
@@ -280,13 +312,24 @@ export default function RequestsIndex({
         actionForm.patch(transition.url(selectedAction.record.id), {
             preserveScroll: true,
             onSuccess: () => setSelectedAction(null),
+            onError: (errors) => {
+                const message = Object.values(errors).find(
+                    (error): error is string => typeof error === 'string',
+                );
+
+                actionForm.setError(
+                    'action',
+                    message ??
+                        'The release request failed without a validation message. Check the Laravel log for the server error.',
+                );
+            },
         });
     }
 
     return (
         <>
             <Head title="Supply Requests" />
-            <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-6 p-4 sm:p-6 lg:p-8">
+            <PageContainer>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                         <p className="text-sm font-medium text-primary">
@@ -320,13 +363,29 @@ export default function RequestsIndex({
                     documents={liquidationDocuments}
                     canManage={canManage}
                 />
-                {returnSlipRequest && (
-                    <ReturnSlipDialog
-                        key={returnSlipRequest.id}
-                        request={returnSlipRequest}
-                        onClose={() => setReturnSlipRequest(null)}
-                    />
-                )}
+                {returnSlipRequest &&
+                    canManage &&
+                    !returnSlipRequest.has_active_return && (
+                        <ReturnSlipDialog
+                            key={returnSlipRequest.id}
+                            request={returnSlipRequest}
+                            onClose={() => setReturnSlipRequest(null)}
+                        />
+                    )}
+
+                {returnSlipRequest &&
+                    (!canManage || returnSlipRequest.has_active_return) && (
+                        <ReturnSlipSummary
+                            documents={returnSlipRequest.return_documents}
+                            reference={
+                                returnSlipRequest.irf_no ??
+                                returnSlipRequest.ris_no
+                            }
+                            legacyNumber={returnSlipRequest.return_slip_no}
+                            legacyDate={returnSlipRequest.return_slip_date}
+                            onClose={() => setReturnSlipRequest(null)}
+                        />
+                    )}
 
                 <Card>
                     <CardHeader>
@@ -345,7 +404,7 @@ export default function RequestsIndex({
                                             id="request-search"
                                             className="min-h-11 pl-9"
                                             maxLength={100}
-                                            placeholder="ISF no., requester, department, item…"
+                                            placeholder="IRF no., requester, department, item…"
                                             value={filterValues.search}
                                             onChange={(event) =>
                                                 setFilterValues({
@@ -371,6 +430,7 @@ export default function RequestsIndex({
                                         <option value="">All statuses</option>
                                         {[
                                             'submitted',
+                                            'division_approved',
                                             'approved',
                                             'awaiting_replenishment',
                                             'ready_for_release',
@@ -407,7 +467,10 @@ export default function RequestsIndex({
                                     </FormSelect>
                                 </Field>
                                 <div className="flex gap-2 md:items-end">
-                                    <Button className="min-h-11 flex-1 md:flex-none">
+                                    <Button
+                                        type="submit"
+                                        className="min-h-11 flex-1 md:flex-none"
+                                    >
                                         Apply
                                     </Button>
                                     <Button
@@ -450,9 +513,10 @@ export default function RequestsIndex({
                             </caption>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead scope="col">ISF No.</TableHead>
+                                    <TableHead scope="col">IRF No.</TableHead>
                                     <TableHead scope="col">Requester</TableHead>
                                     <TableHead scope="col">Office</TableHead>
+                                    <TableHead scope="col">IS No.</TableHead>
                                     <TableHead scope="col">Submitted</TableHead>
                                     <TableHead
                                         scope="col"
@@ -472,7 +536,7 @@ export default function RequestsIndex({
                                                     role="button"
                                                     tabIndex={0}
                                                     aria-haspopup="dialog"
-                                                    aria-label={`View details for ${record.isf_no ?? record.ris_no}`}
+                                                    aria-label={`View details for ${record.irf_no ?? record.ris_no}`}
                                                     className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                                                     onClick={() =>
                                                         setSelectedRequest(
@@ -495,13 +559,22 @@ export default function RequestsIndex({
                                             }
                                         >
                                             <TableCell className="font-medium">
-                                                {record.isf_no ?? record.ris_no}
+                                                {record.irf_no ?? record.ris_no}
+                                                <RecordChangeBadge
+                                                    collection="requests"
+                                                    record={record}
+                                                />
                                             </TableCell>
                                             <TableCell>
                                                 {record.requester_name}
                                             </TableCell>
                                             <TableCell>
                                                 {record.office_name ?? '—'}
+                                            </TableCell>
+                                            <TableCell>
+                                                {record.issuance_slips
+                                                    .map((slip) => slip.slip_no)
+                                                    .join(', ') || 'N/A'}
                                             </TableCell>
                                             <TableCell className="whitespace-nowrap">
                                                 {new Date(
@@ -525,7 +598,7 @@ export default function RequestsIndex({
                                 {requests.data.length === 0 && (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={6}
+                                            colSpan={7}
                                             className="h-32 text-center text-muted-foreground"
                                         >
                                             No requests match the selected
@@ -545,7 +618,11 @@ export default function RequestsIndex({
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <CardTitle className="flex items-center gap-2">
                                         <ClipboardList className="size-5" />{' '}
-                                        {record.isf_no ?? record.ris_no}
+                                        {record.irf_no ?? record.ris_no}
+                                        <RecordChangeBadge
+                                            collection="requests"
+                                            record={record}
+                                        />
                                     </CardTitle>
                                     <span className="w-fit rounded-full border px-3 py-1 text-xs font-medium capitalize">
                                         {statusLabel(record.status)}
@@ -576,6 +653,14 @@ export default function RequestsIndex({
                                             {record.office_name
                                                 ? ` — ${record.office_name}`
                                                 : ''}
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt className="font-medium">IS No.</dt>
+                                        <dd className="text-muted-foreground">
+                                            {record.issuance_slips
+                                                .map((slip) => slip.slip_no)
+                                                .join(', ') || 'N/A'}
                                         </dd>
                                     </div>
                                     <div>
@@ -641,7 +726,7 @@ export default function RequestsIndex({
                                     <Table className="w-full text-sm">
                                         <caption className="sr-only">
                                             Items requested under{' '}
-                                            {record.isf_no ?? record.ris_no}
+                                            {record.irf_no ?? record.ris_no}
                                         </caption>
                                         <TableHeader>
                                             <TableRow className="border-b text-left">
@@ -697,11 +782,19 @@ export default function RequestsIndex({
                                         </TableBody>
                                     </Table>
                                 </div>
-                                {canManage &&
+                                {(canManage || record.can_approve_as_head) &&
                                     actionsFor(record.status).length > 0 && (
                                         <div className="grid gap-2 sm:flex sm:flex-wrap">
-                                            {actionsFor(record.status).map(
-                                                (action) => (
+                                            {actionsFor(record.status)
+                                                .filter((action) =>
+                                                    action.action === 'approve'
+                                                        ? record.can_approve_as_head
+                                                        : canManage ||
+                                                          (record.can_approve_as_head &&
+                                                              action.action ===
+                                                                  'reject'),
+                                                )
+                                                .map((action) => (
                                                     <Button
                                                         key={action.action}
                                                         className="min-h-11 w-full sm:w-auto"
@@ -722,8 +815,7 @@ export default function RequestsIndex({
                                                     >
                                                         {action.label}
                                                     </Button>
-                                                ),
-                                            )}
+                                                ))}
                                         </div>
                                     )}
                                 <details>
@@ -738,11 +830,9 @@ export default function RequestsIndex({
                                                 className="rounded-lg border p-3 text-xs"
                                             >
                                                 <p>
-                                                    <b>{action.actor.name}</b> —{' '}
-                                                    {statusLabel(action.action)}{' '}
-                                                    to{' '}
-                                                    {statusLabel(
-                                                        action.to_status,
+                                                    <b>{action.actor.name}</b>{' '}
+                                                    {supplyRequestHistoryDescription(
+                                                        action,
                                                     )}
                                                 </p>
                                                 <p className="text-muted-foreground">
@@ -782,7 +872,7 @@ export default function RequestsIndex({
                     )}
                 </div>
                 <DataPagination links={requests.links} />
-            </div>
+            </PageContainer>
             <Dialog
                 open={selectedRequest !== null}
                 onOpenChange={(open) => !open && setSelectedRequest(null)}
@@ -793,7 +883,7 @@ export default function RequestsIndex({
                             <DialogHeader className="pr-8">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <DialogTitle>
-                                        {selectedRequest.isf_no ??
+                                        {selectedRequest.irf_no ??
                                             selectedRequest.ris_no}
                                     </DialogTitle>
                                     <span className="rounded-full border px-3 py-1 text-xs font-medium capitalize">
@@ -844,7 +934,7 @@ export default function RequestsIndex({
                                 <Table>
                                     <caption className="sr-only">
                                         Items requested under{' '}
-                                        {selectedRequest.isf_no ??
+                                        {selectedRequest.irf_no ??
                                             selectedRequest.ris_no}
                                     </caption>
                                     <TableHeader>
@@ -894,44 +984,37 @@ export default function RequestsIndex({
                                 </Table>
                             </div>
 
-                            {canManage && (
-                                <div className="flex flex-wrap gap-2">
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => {
-                                            setLiquidationRequestId(
-                                                selectedRequest.id,
-                                            );
-                                            setSelectedRequest(null);
-                                        }}
-                                    >
-                                        RIS liquidation
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        disabled={
-                                            !selectedRequest.lines.some(
-                                                (line) =>
-                                                    line.quantity_released > 0,
-                                            )
-                                        }
-                                        onClick={() => {
-                                            setReturnSlipRequest(
-                                                selectedRequest,
-                                            );
-                                            setSelectedRequest(null);
-                                        }}
-                                    >
-                                        Return slip
-                                    </Button>
-                                </div>
-                            )}
-                            {canManage &&
+                            <RequestDocuments
+                                key={selectedRequest.id}
+                                requestId={selectedRequest.id}
+                                slips={selectedRequest.issuance_slips}
+                                employees={employees}
+                                status={selectedRequest.status}
+                                isSuperAdmin={isSuperAdmin}
+                                onLiquidation={() => {
+                                    setLiquidationRequestId(selectedRequest.id);
+                                    setSelectedRequest(null);
+                                }}
+                                onReturn={() => {
+                                    setReturnSlipRequest(selectedRequest);
+                                    setSelectedRequest(null);
+                                }}
+                            />
+                            {(canManage ||
+                                selectedRequest.can_approve_as_head) &&
                                 actionsFor(selectedRequest.status).length >
                                     0 && (
                                     <div className="flex flex-wrap gap-2">
-                                        {actionsFor(selectedRequest.status).map(
-                                            (action) => (
+                                        {actionsFor(selectedRequest.status)
+                                            .filter((action) =>
+                                                action.action === 'approve'
+                                                    ? selectedRequest.can_approve_as_head
+                                                    : canManage ||
+                                                      (selectedRequest.can_approve_as_head &&
+                                                          action.action ===
+                                                              'reject'),
+                                            )
+                                            .map((action) => (
                                                 <Button
                                                     key={action.action}
                                                     className="min-h-11"
@@ -955,8 +1038,7 @@ export default function RequestsIndex({
                                                 >
                                                     {action.label}
                                                 </Button>
-                                            ),
-                                        )}
+                                            ))}
                                     </div>
                                 )}
 
@@ -972,9 +1054,10 @@ export default function RequestsIndex({
                                             className="rounded-lg border p-3 text-xs"
                                         >
                                             <p>
-                                                <b>{action.actor.name}</b> —{' '}
-                                                {statusLabel(action.action)} to{' '}
-                                                {statusLabel(action.to_status)}
+                                                <b>{action.actor.name}</b>{' '}
+                                                {supplyRequestHistoryDescription(
+                                                    action,
+                                                )}
                                             </p>
                                             <p className="text-muted-foreground">
                                                 {new Date(
@@ -1004,7 +1087,7 @@ export default function RequestsIndex({
                 onOpenChange={(open) => !open && setSelectedAction(null)}
                 title={
                     selectedAction
-                        ? `${selectedAction.action.label}: ${selectedAction.record.isf_no ?? selectedAction.record.ris_no}`
+                        ? `${selectedAction.action.label}: ${selectedAction.record.irf_no ?? selectedAction.record.ris_no}`
                         : 'Request action'
                 }
                 description={selectedAction?.action.description ?? ''}

@@ -36,13 +36,13 @@ class InventoryDisposalController extends Controller
                 ->whereNotIn('lifecycle_status', [AssetLifecycleStatus::Disposed, AssetLifecycleStatus::Lost, AssetLifecycleStatus::TransferredOut])
                 ->where(fn ($query) => $query->where('condition_status', AssetConditionStatus::NonUsable)->orWhereIn('lifecycle_status', [AssetLifecycleStatus::ForDisposal, AssetLifecycleStatus::Retired]))
                 ->whereDoesntHave('activeBorrowing')
-                ->whereDoesntHave('accountabilityDocuments', fn ($query) => $query->whereIn('status', ['active', 'pending_recipient']))
+                ->whereDoesntHave('accountabilityDocuments', fn ($query) => $query->whereIn('status', ['active', 'pending_note', 'pending_recipient']))
                 ->where('accounting_status', '!=', AssetAccountingStatus::Derecognized)
                 ->where(fn ($query) => $query->where('accounting_classification', AssetAccountingClassification::Ppe)->orWhere('physical_status', SemiExpendablePhysicalStatus::ForDisposal))
                 ->whereNotIn('inventory_asset_id', InventoryDisposalLine::query()->select('inventory_asset_id')->whereNotNull('inventory_asset_id')->whereHas('document', fn ($query) => $query->whereIn('status', ['submitted', 'approved'])))
-                ->when($request->filled('search'), fn ($query) => $query->where(fn ($nested) => $nested->where('name', 'like', '%'.$request->validated('search').'%')->orWhere('property_number', 'like', '%'.$request->validated('search').'%')))
-                ->orderBy('name')->limit(100)->get()
-                ->map(fn (InventoryAsset $asset): array => $asset->only(['inventory_asset_id', 'name', 'property_number', 'unit_of_measure', 'quantity_per_property_card'])),
+                ->when($request->filled('search'), fn ($query) => $query->where(fn ($nested) => $nested->where('item_description', 'like', '%'.$request->validated('search').'%')->orWhere('property_number', 'like', '%'.$request->validated('search').'%')))
+                ->orderBy('item_description')->limit(100)->get()
+                ->map(fn (InventoryAsset $asset): array => $asset->only(['inventory_asset_id', 'item_description', 'property_number', 'unit_of_measure', 'quantity_per_property_card'])),
             'employees' => HrisReference::query()->where('type', HrisReference::TYPE_EMPLOYEE)->where('is_active', true)->orderBy('name')->get()->map(fn (HrisReference $reference): array => $reference->toSelectionOption()),
             'filters' => $request->safe()->only(['search', 'status']),
         ]);
@@ -75,6 +75,6 @@ class InventoryDisposalController extends Controller
 
     public function print(InventoryDisposal $document): View
     {
-        return view('inventory.waste-material',['document' => $document->load(['lines', 'actions'])]);
+        return view('inventory.waste-material', ['document' => $document->load(['lines', 'actions'])]);
     }
 }

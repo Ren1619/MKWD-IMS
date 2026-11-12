@@ -21,9 +21,9 @@
     </style>
 </head>
 <body>
+<x-print-layout>
     <div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div>
-    <h1>{{ config('app.name') }}</h1>
-    <h2>Physical Inventory — {{ ucfirst($document) }}</h2>
+    <h1>Physical Inventory — {{ ucfirst($document) }}</h1>
     <p><strong>{{ $session->document_no }}</strong> — {{ $session->title }} — Status: {{ ucfirst($session->status) }}</p>
     <p>Memorandum: {{ $session->memorandum_reference }} — Cut-off: {{ $session->cutoff_at?->timezone('Asia/Manila')->format('Y-m-d H:i:s') ?? 'Not started' }}</p>
     @if ($session->status !== 'approved')
@@ -73,5 +73,6 @@
         <div>{{ $signatures->get('approve') }}<br>Approved by</div>
     </div>
     <p>Retain the signed tags, memorandum, and supporting source documents for accounting and audit submission.</p>
+</x-print-layout>
 </body>
 </html>

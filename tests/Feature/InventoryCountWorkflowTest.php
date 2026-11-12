@@ -6,6 +6,7 @@ use App\Models\InventoryStockControl;
 use App\Models\SupplyRequest;
 use App\Models\SupplyRequestLine;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\InventoryCountService;
 use App\Services\InventoryStockService;
 use Illuminate\Support\Carbon;
@@ -35,11 +36,38 @@ function saveConsumableObservation(int $quantity, array $overrides = []): void
     $line = test()->session->lines()->firstOrFail();
     test()->actingAs(test()->planner)->patch(route('inventory.counts.record', [test()->session, $line]), [
         'quantity' => $quantity, 'latest_entry_id' => $line->latestEntry?->id, 'condition' => 'good',
-        'location' => 'Main stockroom', 'aisle' => 'A', 'bin' => '1',
+        'location_type' => 'other', 'location' => 'Main stockroom', 'other_location' => 'Main stockroom', 'aisle' => 'A', 'bin' => '1',
         'counter_name' => 'Warehouse counter', 'checker_name' => 'Accounting checker', 'validator_name' => 'Internal Control validator',
         'remarks' => 'Joint count verified against signed tags.', 'attested' => true, ...$overrides,
     ])->assertSessionHasNoErrors();
 }
+
+test('count observations may identify a registered stockroom or a custom location', function () {
+    startConsumableCount();
+    $line = $this->session->lines()->firstOrFail();
+    $stockroom = Warehouse::factory()->create(['name' => 'Central Store']);
+    $base = [
+        'quantity' => 10, 'condition' => 'good', 'aisle' => '', 'bin' => '',
+        'counter_name' => 'Warehouse counter', 'checker_name' => 'Accounting checker',
+        'validator_name' => 'Internal Control validator', 'remarks' => 'Joint count.',
+        'attested' => true,
+    ];
+
+    $this->actingAs($this->planner)->patch(route('inventory.counts.record', [$this->session, $line]), [
+        ...$base, 'location_type' => 'stockroom', 'location' => $stockroom->name,
+    ])->assertSessionHasNoErrors();
+    expect($line->latestEntry()->first()->location)->toBe('Central Store');
+
+    $this->actingAs($this->planner)->patch(route('inventory.counts.record', [$this->session, $line]), [
+        ...$base, 'latest_entry_id' => $line->latestEntry?->id, 'location_type' => 'other', 'other_location' => 'Temporary staging area',
+        'remarks' => 'Found away from the stockroom.',
+    ])->assertSessionHasNoErrors();
+    expect($line->latestEntry()->first()->location)->toBe('Temporary staging area');
+
+    $this->patch(route('inventory.counts.record', [$this->session, $line]), [
+        ...$base, 'latest_entry_id' => $line->latestEntry?->id, 'location_type' => 'stockroom', 'location' => 'Unknown room',
+    ])->assertSessionHasErrors('location');
+});
 
 function approveConsumableCount(): void
 {
@@ -187,12 +215,12 @@ test('recounts retain immutable history reject stale edits and scope lines to th
     saveConsumableObservation(9);
     $line = $this->session->lines()->first();
     $this->actingAs($this->planner)->patch(route('inventory.counts.record', [$this->session, $line]), [
-        'quantity' => 10, 'latest_entry_id' => null, 'condition' => 'good', 'location' => 'Main',
+        'quantity' => 10, 'latest_entry_id' => null, 'condition' => 'good', 'location_type' => 'other', 'location' => 'Main', 'other_location' => 'Main',
         'counter_name' => 'Counter', 'checker_name' => 'Checker', 'validator_name' => 'Validator', 'remarks' => 'Stale change', 'attested' => true,
     ])->assertSessionHasErrors('quantity');
     $other = app(InventoryCountService::class)->create(['title' => 'Other', 'scheduled_date' => '2026-10-12', 'memorandum_reference' => 'M-2', 'team_details' => 'Team'], $this->planner);
     $this->patch(route('inventory.counts.record', [$other, $line]), [
-        'quantity' => 10, 'condition' => 'good', 'location' => 'Main', 'counter_name' => 'Counter', 'checker_name' => 'Checker', 'validator_name' => 'Validator', 'attested' => true,
+        'quantity' => 10, 'condition' => 'good', 'location_type' => 'other', 'location' => 'Main', 'other_location' => 'Main', 'counter_name' => 'Counter', 'checker_name' => 'Checker', 'validator_name' => 'Validator', 'attested' => true,
     ])->assertNotFound();
     expect(fn () => $line->entries()->sole()->update(['quantity' => 10]))->toThrow(LogicException::class);
     expect($line->entries()->count())->toBe(1);
@@ -214,7 +242,7 @@ test('RPCI uses approved frozen observations and never invents physical quantiti
     saveConsumableObservation(8);
     approveConsumableCount();
     app(InventoryStockService::class)->stockIn($this->item, ['quantity' => 100, 'unit_cost' => 50]);
-    $this->get($url)->assertOk()->assertSee($this->session->document_no)->assertSee('Counted consumable')->assertDontSee('108');
+    $this->get($url)->assertOk()->assertSee($this->session->document_no)->assertSee('Counted consumable')->assertDontSeeText('108');
     $this->get(route('inventory.reports.print', ['rpci', 'as_of' => '2026-10-11']))->assertSee('No approved physical count available');
     $this->get(route('inventory.reports.print', ['variance-reconciliation', 'as_of' => '2026-10-12']))->assertOk()->assertSee('Consumable')->assertSee('Counted consumable');
 });
@@ -279,3 +307,26 @@ test('printable tags worksheets reconciliation and adjustments preserve count re
         $this->get(route('inventory.counts.print', [$this->session, $document]))->assertSee('Account group')->assertSee('Taken by:')->assertSee('Checked by:');
     }
 })->with(['tags', 'worksheet', 'reconciliation', 'adjustments']);
+
+test('count planning returns actionable field errors without creating a session', function () {
+    $this->actingAs($this->planner)
+        ->from(route('inventory.counts.index'))
+        ->post(route('inventory.counts.store'), [
+            'title' => '   ',
+            'scheduled_date' => 'invalid-date',
+            'memorandum_reference' => '',
+            'team_details' => '',
+            'attested' => false,
+        ])
+        ->assertRedirect(route('inventory.counts.index'))
+        ->assertSessionHasErrors([
+            'title' => 'Enter a count title.',
+            'scheduled_date' => 'Select a valid scheduled date.',
+            'memorandum_reference' => 'Enter the approved memorandum reference.',
+            'team_details' => 'Enter the team and counting arrangements.',
+            'attested' => 'Confirm that this plan follows the approved inventory memorandum.',
+        ]);
+
+    expect(InventoryCountSession::query()->count())->toBe(1)
+        ->and(InventoryStockControl::query()->find(1)->active_count_session_id)->toBeNull();
+});

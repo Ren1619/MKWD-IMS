@@ -13,10 +13,12 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { ArchiveRecordDialog } from '@/components/archive-record-dialog';
-import { AssetDetailsDialog } from '@/components/asset-details-dialog';
 import { DataPagination } from '@/components/data-pagination';
 import { HrisReferenceCombobox } from '@/components/hris-reference-combobox';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { PpeModuleNav } from '@/components/ppe-module-nav';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -61,13 +63,13 @@ import {
 } from '@/components/ui/tooltip';
 import { useAppPage } from '@/hooks/use-app-page';
 import { useFilterSubmit } from '@/hooks/use-filter-submit';
-import { index as transfersIndex } from '@/routes/inventory/transfers';
 import {
     assign,
     destroy,
     index,
     restore,
     property_tag,
+    show,
     returnMethod,
     store,
     unassign,
@@ -77,9 +79,11 @@ import {
 import { store as storeAssetEvent } from '@/routes/inventory/assets/events';
 import {
     index as semiExpendableIndex,
+    show as showSemiExpendable,
     store as storeSemiExpendable,
 } from '@/routes/inventory/semi_expendable';
 import { store as storeSemiExpendableEvent } from '@/routes/inventory/semi_expendable/events';
+import { index as transfersIndex } from '@/routes/inventory/transfers';
 import type {
     AssetCategory,
     AssetStateOption,
@@ -228,8 +232,8 @@ function AssetAccountingDialog({
                     <DialogTitle>Update PPE accounting settings</DialogTitle>
                     <DialogDescription>
                         Change the residual percentage or depreciation start
-                        basis for {asset.name}. Every change is written to the
-                        audit log.
+                        basis for {asset.item_description}. Every change is
+                        written to the audit log.
                     </DialogDescription>
                 </DialogHeader>
                 <Form action={update_accounting(asset)} className="grid gap-4">
@@ -357,8 +361,9 @@ function CustodianDialog({
                     <DialogHeader>
                         <DialogTitle>Transfer accountability</DialogTitle>
                         <DialogDescription>
-                            Prepare a PTR for {asset.name}. Custody changes
-                            after verification, approval, and recorded handover.
+                            Prepare a PTR for {asset.item_description}. Custody
+                            changes after verification, approval, and recorded
+                            handover.
                         </DialogDescription>
                     </DialogHeader>
                     <Button
@@ -377,13 +382,18 @@ function CustodianDialog({
             </Dialog>
         );
     }
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent onClick={(event) => event.stopPropagation()}>
                 <DialogHeader>
-                    <DialogTitle>Assign custodian</DialogTitle>
+                    <DialogTitle>
+                        {asset.accounting_classification === 'ppe'
+                            ? 'Prepare ARE'
+                            : 'Assign custodian'}
+                    </DialogTitle>
                     <DialogDescription>
-                        {asset.name} · {asset.serial_number}
+                        {asset.item_description} · {asset.serial_number}
                     </DialogDescription>
                 </DialogHeader>
                 <Form action={assign(asset)} className="grid gap-4">
@@ -432,8 +442,29 @@ function CustodianDialog({
                                     />
                                 </div>
                             )}
+                            {asset.accounting_classification === 'ppe' && (
+                                <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        name="attested"
+                                        value="1"
+                                        required
+                                        className="mt-1"
+                                    />
+                                    I certify, as the issuing supply officer,
+                                    that this equipment is issued to the
+                                    selected end user. The end user must
+                                    acknowledge receipt before division-manager
+                                    notation.
+                                    <InputError message={errors.attested} />
+                                </label>
+                            )}
                             <Button type="submit" disabled={processing}>
-                                {processing ? 'Assigning…' : 'Assign custodian'}
+                                {processing
+                                    ? 'Saving…'
+                                    : asset.accounting_classification === 'ppe'
+                                      ? 'Issue ARE'
+                                      : 'Assign custodian'}
                             </Button>
                         </>
                     )}
@@ -461,7 +492,7 @@ function BorrowDialog({
                 <DialogHeader>
                     <DialogTitle>Record borrowing</DialogTitle>
                     <DialogDescription>
-                        {asset.name} ·{' '}
+                        {asset.item_description} ·{' '}
                         {formatStateLabel(asset.lifecycle_status)}
                         {' · '}
                         {formatStateLabel(asset.condition_status)}
@@ -593,11 +624,11 @@ function AssetEventDialog({
                         lifecycle transaction
                     </DialogTitle>
                     <DialogDescription>
-                        Add an immutable, dated record for {asset.name}. Use a
-                        correcting transaction if a posted record needs to be
-                        superseded. Use Disposal / Waste Materials in the
-                        navigation for committee approval and witnessed
-                        disposal.
+                        Add an immutable, dated record for{' '}
+                        {asset.item_description}. Use a correcting transaction
+                        if a posted record needs to be superseded. Use Disposal
+                        / Waste Materials in the navigation for committee
+                        approval and witnessed disposal.
                     </DialogDescription>
                 </DialogHeader>
                 <Form
@@ -1231,7 +1262,7 @@ function AssetActions({
                         <Button
                             size="icon"
                             variant="ghost"
-                            aria-label={`Open actions for ${asset.name}`}
+                            aria-label={`Open actions for ${asset.item_description}`}
                         />
                     }
                 >
@@ -1325,7 +1356,10 @@ function AssetActions({
                                         {asset.current_custodian_reference_id !==
                                         null
                                             ? 'Transfer accountability'
-                                            : 'Assign custodian'}
+                                            : asset.accounting_classification ===
+                                                'ppe'
+                                              ? 'Prepare ARE'
+                                              : 'Assign custodian'}
                                     </DropdownMenuItem>
                                 )}
                                 {asset.current_custodian && (
@@ -1387,7 +1421,7 @@ function AssetActions({
                     )}
                     <ArchiveRecordDialog
                         action={destroy(asset)}
-                        recordName={asset.name}
+                        recordName={asset.item_description}
                         recordType="asset"
                         prerequisite="An asset must be returned and unassigned before it can be archived."
                         open={activeDialog === 'archive'}
@@ -1437,9 +1471,6 @@ export default function AssetsIndex({
     const { auth } = useAppPage().props;
     const canManageInventory = auth.permissions.manage_inventory;
     const showingArchived = filters.records === 'archived';
-    const [selectedAsset, setSelectedAsset] = useState<InventoryAsset | null>(
-        null,
-    );
     const [selectedCategoryId, setSelectedCategoryId] = useState('');
     const [registrationQuantity, setRegistrationQuantity] = useState(1);
     const selectedCategory = categories.find(
@@ -1455,7 +1486,8 @@ export default function AssetsIndex({
     return (
         <>
             <Head title={registryTitle} />
-            <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+            <PageContainer>
+                {isPpeRegistry && <PpeModuleNav active="register" />}
                 <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
                     <div>
                         <h1 className="text-2xl font-semibold">
@@ -1463,7 +1495,7 @@ export default function AssetsIndex({
                         </h1>
                         <p className="text-sm text-muted-foreground">
                             {isPpeRegistry
-                                ? `Capitalized property costing PHP ${capitalizationThreshold.toLocaleString()} and above, with PAR accountability and depreciation.`
+                                ? `Capitalized property costing PHP ${capitalizationThreshold.toLocaleString()} and above, with ARE accountability and depreciation.`
                                 : `Durable property below PHP ${capitalizationThreshold.toLocaleString()}, with ICS accountability and no depreciation.`}
                         </p>
                     </div>
@@ -1504,20 +1536,22 @@ export default function AssetsIndex({
                                         <>
                                             <div className="md:col-span-2">
                                                 <label
-                                                    htmlFor="asset-name"
+                                                    htmlFor="asset-item-description"
                                                     className="mb-1.5 block text-sm font-medium"
                                                 >
-                                                    Asset name
+                                                    Item description
                                                 </label>
                                                 <Input
-                                                    id="asset-name"
-                                                    name="name"
+                                                    id="asset-item-description"
+                                                    name="item_description"
                                                     placeholder="e.g. Dell Latitude Laptop"
                                                     maxLength={255}
                                                     required
                                                 />
                                                 <InputError
-                                                    message={errors.name}
+                                                    message={
+                                                        errors.item_description
+                                                    }
                                                 />
                                             </div>
                                             <div>
@@ -1779,24 +1813,26 @@ export default function AssetsIndex({
                                                     message={errors.brand}
                                                 />
                                             </div>
-                                            <div>
-                                                <label
-                                                    htmlFor="asset-manufacturer"
-                                                    className="mb-1.5 block text-sm font-medium"
-                                                >
-                                                    Manufacturer
-                                                </label>
-                                                <Input
-                                                    id="asset-manufacturer"
-                                                    name="manufacturer"
-                                                    maxLength={255}
-                                                />
-                                                <InputError
-                                                    message={
-                                                        errors.manufacturer
-                                                    }
-                                                />
-                                            </div>
+                                            {!isPpeRegistry && (
+                                                <div>
+                                                    <label
+                                                        htmlFor="asset-manufacturer"
+                                                        className="mb-1.5 block text-sm font-medium"
+                                                    >
+                                                        Manufacturer
+                                                    </label>
+                                                    <Input
+                                                        id="asset-manufacturer"
+                                                        name="manufacturer"
+                                                        maxLength={255}
+                                                    />
+                                                    <InputError
+                                                        message={
+                                                            errors.manufacturer
+                                                        }
+                                                    />
+                                                </div>
+                                            )}
                                             <div>
                                                 <label
                                                     htmlFor="asset-model"
@@ -2015,20 +2051,23 @@ export default function AssetsIndex({
                                                     message={errors.invoice_no}
                                                 />
                                             </div>
-                                            <div>
-                                                <label className="mb-1.5 block text-sm font-medium">
-                                                    Disbursement voucher number
-                                                </label>
-                                                <Input
-                                                    name="disbursement_voucher_no"
-                                                    maxLength={120}
-                                                />
-                                                <InputError
-                                                    message={
-                                                        errors.disbursement_voucher_no
-                                                    }
-                                                />
-                                            </div>
+                                            {!isPpeRegistry && (
+                                                <div>
+                                                    <label className="mb-1.5 block text-sm font-medium">
+                                                        Disbursement voucher
+                                                        number
+                                                    </label>
+                                                    <Input
+                                                        name="disbursement_voucher_no"
+                                                        maxLength={120}
+                                                    />
+                                                    <InputError
+                                                        message={
+                                                            errors.disbursement_voucher_no
+                                                        }
+                                                    />
+                                                </div>
+                                            )}
                                             <div>
                                                 <label className="mb-1.5 block text-sm font-medium">
                                                     Delivery date
@@ -2494,7 +2533,7 @@ export default function AssetsIndex({
                         <Form
                             action={registryIndex()}
                             options={{ preserveState: true }}
-                            className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
+                            className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end"
                         >
                             {({ errors }) => (
                                 <>
@@ -2509,46 +2548,55 @@ export default function AssetsIndex({
                                             id="asset-search"
                                             name="search"
                                             defaultValue={filters.search}
-                                            placeholder="e.g. Dell Laptop, SN-9F3A21B7, or PPE-2026-001"
+                                            placeholder={
+                                                isPpeRegistry
+                                                    ? 'Name, serial or property number'
+                                                    : 'Name, property number, custodian or ICS'
+                                            }
                                             maxLength={100}
                                             onChange={submitAfterDelay}
                                         />
                                         <InputError message={errors.search} />
                                     </div>
-                                    <div className="grid w-full gap-1.5 sm:w-44">
-                                        <label
-                                            htmlFor="asset-lifecycle-filter"
-                                            className="text-sm font-medium"
-                                        >
-                                            Lifecycle
-                                        </label>
-                                        <FormSelect
-                                            id="asset-lifecycle-filter"
-                                            name="lifecycle_status"
-                                            defaultValue={
-                                                filters.lifecycle_status ?? ''
-                                            }
-                                            className={selectClass}
-                                            onChange={submitImmediately}
-                                        >
-                                            <option value="">
-                                                All lifecycles
-                                            </option>
-                                            {assetStateOptions.lifecycles.map(
-                                                (option) => (
-                                                    <option
-                                                        key={option.value}
-                                                        value={option.value}
-                                                    >
-                                                        {option.label}
-                                                    </option>
-                                                ),
-                                            )}
-                                        </FormSelect>
-                                        <InputError
-                                            message={errors.lifecycle_status}
-                                        />
-                                    </div>
+                                    {isPpeRegistry && (
+                                        <div className="grid w-full gap-1.5 sm:w-44">
+                                            <label
+                                                htmlFor="asset-lifecycle-filter"
+                                                className="text-sm font-medium"
+                                            >
+                                                Lifecycle
+                                            </label>
+                                            <FormSelect
+                                                id="asset-lifecycle-filter"
+                                                name="lifecycle_status"
+                                                defaultValue={
+                                                    filters.lifecycle_status ??
+                                                    ''
+                                                }
+                                                className={selectClass}
+                                                onChange={submitImmediately}
+                                            >
+                                                <option value="">
+                                                    All lifecycles
+                                                </option>
+                                                {assetStateOptions.lifecycles.map(
+                                                    (option) => (
+                                                        <option
+                                                            key={option.value}
+                                                            value={option.value}
+                                                        >
+                                                            {option.label}
+                                                        </option>
+                                                    ),
+                                                )}
+                                            </FormSelect>
+                                            <InputError
+                                                message={
+                                                    errors.lifecycle_status
+                                                }
+                                            />
+                                        </div>
+                                    )}
                                     <div className="grid w-full gap-1.5 sm:w-44">
                                         <label
                                             htmlFor="asset-condition-filter"
@@ -2583,70 +2631,52 @@ export default function AssetsIndex({
                                             message={errors.condition_status}
                                         />
                                     </div>
-                                    <div className="grid w-full gap-1.5 sm:w-44">
-                                        <label
-                                            htmlFor="asset-custody-filter"
-                                            className="text-sm font-medium"
-                                        >
-                                            Custody
-                                        </label>
-                                        <FormSelect
-                                            id="asset-custody-filter"
-                                            name="custody_status"
-                                            defaultValue={
-                                                filters.custody_status ?? ''
-                                            }
-                                            className={selectClass}
-                                            onChange={submitImmediately}
-                                        >
-                                            <option value="">
-                                                All custody states
-                                            </option>
-                                            <option value="available">
-                                                Available
-                                            </option>
-                                            <option value="assigned">
-                                                Assigned
-                                            </option>
-                                            <option value="borrowed">
-                                                Borrowed
-                                            </option>
-                                        </FormSelect>
-                                        <InputError
-                                            message={errors.custody_status}
-                                        />
-                                    </div>
+                                    {isPpeRegistry && (
+                                        <div className="grid w-full gap-1.5 sm:w-44">
+                                            <label
+                                                htmlFor="asset-custody-filter"
+                                                className="text-sm font-medium"
+                                            >
+                                                Custody
+                                            </label>
+                                            <FormSelect
+                                                id="asset-custody-filter"
+                                                name="custody_status"
+                                                defaultValue={
+                                                    filters.custody_status ?? ''
+                                                }
+                                                className={selectClass}
+                                                onChange={submitImmediately}
+                                            >
+                                                <option value="">
+                                                    All custody states
+                                                </option>
+                                                <option value="available">
+                                                    Available
+                                                </option>
+                                                <option value="assigned">
+                                                    Assigned
+                                                </option>
+                                                <option value="borrowed">
+                                                    Borrowed
+                                                </option>
+                                            </FormSelect>
+                                            <InputError
+                                                message={errors.custody_status}
+                                            />
+                                        </div>
+                                    )}
                                     {!isPpeRegistry && (
                                         <>
-                                            <div className="grid w-full gap-1.5 sm:w-44">
-                                                <label className="text-sm font-medium">
-                                                    Value class
-                                                </label>
-                                                <FormSelect
-                                                    name="value_class"
-                                                    defaultValue={
-                                                        filters.value_class ??
-                                                        ''
-                                                    }
-                                                    className={selectClass}
-                                                    onChange={submitImmediately}
-                                                >
-                                                    <option value="">
-                                                        All values
-                                                    </option>
-                                                    <option value="low">
-                                                        Low-valued
-                                                    </option>
-                                                    <option value="high">
-                                                        High-valued
-                                                    </option>
-                                                </FormSelect>
-                                            </div>
                                             <div className="grid w-full gap-1.5 sm:w-52">
-                                                <label className="text-sm font-medium">
+                                                <label
+                                                    htmlFor="asset-accountability-filter"
+                                                    className="text-sm font-medium"
+                                                >
                                                     Accountability
                                                 </label>
                                                 <FormSelect
+                                                    id="asset-accountability-filter"
                                                     name="accountability_status"
                                                     defaultValue={
                                                         filters.accountability_status ??
@@ -2681,50 +2711,16 @@ export default function AssetsIndex({
                                                     </option>
                                                 </FormSelect>
                                             </div>
-                                            <div className="grid w-full gap-1.5 sm:w-48">
-                                                <label className="text-sm font-medium">
-                                                    Physical state
-                                                </label>
-                                                <FormSelect
-                                                    name="physical_status"
-                                                    defaultValue={
-                                                        filters.physical_status ??
-                                                        ''
-                                                    }
-                                                    className={selectClass}
-                                                    onChange={submitImmediately}
-                                                >
-                                                    <option value="">
-                                                        All physical states
-                                                    </option>
-                                                    <option value="in_property_custody">
-                                                        Property custody
-                                                    </option>
-                                                    <option value="issued">
-                                                        Issued
-                                                    </option>
-                                                    <option value="returned">
-                                                        Returned
-                                                    </option>
-                                                    <option value="transferred">
-                                                        Transferred
-                                                    </option>
-                                                    <option value="for_disposal">
-                                                        For disposal
-                                                    </option>
-                                                    <option value="disposed">
-                                                        Disposed
-                                                    </option>
-                                                    <option value="missing">
-                                                        Missing
-                                                    </option>
-                                                </FormSelect>
-                                            </div>
+
                                             <div className="grid w-full gap-1.5 sm:w-44">
-                                                <label className="text-sm font-medium">
+                                                <label
+                                                    htmlFor="asset-ics-renewal-filter"
+                                                    className="text-sm font-medium"
+                                                >
                                                     ICS renewal
                                                 </label>
                                                 <FormSelect
+                                                    id="asset-ics-renewal-filter"
                                                     name="ics_renewal"
                                                     defaultValue={
                                                         filters.ics_renewal ??
@@ -2771,69 +2767,75 @@ export default function AssetsIndex({
                                         </FormSelect>
                                         <InputError message={errors.records} />
                                     </div>
-                                    <div className="grid w-full gap-1.5 sm:w-48">
-                                        <label
-                                            htmlFor="asset-sort"
-                                            className="text-sm font-medium"
-                                        >
-                                            Sort by
-                                        </label>
-                                        <FormSelect
-                                            id="asset-sort"
-                                            name="sort"
-                                            value={
-                                                filters.sort ||
-                                                'inventory_asset_id'
-                                            }
-                                            className={selectClass}
-                                            onChange={submitImmediately}
-                                        >
-                                            <option value="inventory_asset_id">
-                                                Newest record
-                                            </option>
-                                            <option value="property_number">
-                                                Property number
-                                            </option>
-                                            <option value="name">Name</option>
-                                            <option value="acquisition_date">
-                                                Acquisition date
-                                            </option>
-                                            <option value="acquisition_cost">
-                                                Acquisition cost
-                                            </option>
-                                            <option value="updated_at">
-                                                Last updated
-                                            </option>
-                                        </FormSelect>
-                                        <InputError message={errors.sort} />
-                                    </div>
-                                    <div className="grid w-full gap-1.5 sm:w-40">
-                                        <label
-                                            htmlFor="asset-direction"
-                                            className="text-sm font-medium"
-                                        >
-                                            Direction
-                                        </label>
-                                        <FormSelect
-                                            id="asset-direction"
-                                            name="direction"
-                                            defaultValue={
-                                                filters.direction ?? 'desc'
-                                            }
-                                            className={selectClass}
-                                            onChange={submitImmediately}
-                                        >
-                                            <option value="asc">
-                                                Ascending
-                                            </option>
-                                            <option value="desc">
-                                                Descending
-                                            </option>
-                                        </FormSelect>
-                                        <InputError
-                                            message={errors.direction}
-                                        />
-                                    </div>
+                                    {isPpeRegistry && (
+                                        <div className="grid w-full gap-1.5 sm:w-48">
+                                            <label
+                                                htmlFor="asset-sort"
+                                                className="text-sm font-medium"
+                                            >
+                                                Sort by
+                                            </label>
+                                            <FormSelect
+                                                id="asset-sort"
+                                                name="sort"
+                                                value={
+                                                    filters.sort ||
+                                                    'inventory_asset_id'
+                                                }
+                                                className={selectClass}
+                                                onChange={submitImmediately}
+                                            >
+                                                <option value="inventory_asset_id">
+                                                    Newest record
+                                                </option>
+                                                <option value="property_number">
+                                                    Property number
+                                                </option>
+                                                <option value="item_description">
+                                                    Item description
+                                                </option>
+                                                <option value="acquisition_date">
+                                                    Acquisition date
+                                                </option>
+                                                <option value="acquisition_cost">
+                                                    Acquisition cost
+                                                </option>
+                                                <option value="updated_at">
+                                                    Last updated
+                                                </option>
+                                            </FormSelect>
+                                            <InputError message={errors.sort} />
+                                        </div>
+                                    )}
+                                    {isPpeRegistry && (
+                                        <div className="grid w-full gap-1.5 sm:w-40">
+                                            <label
+                                                htmlFor="asset-direction"
+                                                className="text-sm font-medium"
+                                            >
+                                                Direction
+                                            </label>
+                                            <FormSelect
+                                                id="asset-direction"
+                                                name="direction"
+                                                defaultValue={
+                                                    filters.direction ?? 'desc'
+                                                }
+                                                className={selectClass}
+                                                onChange={submitImmediately}
+                                            >
+                                                <option value="asc">
+                                                    Ascending
+                                                </option>
+                                                <option value="desc">
+                                                    Descending
+                                                </option>
+                                            </FormSelect>
+                                            <InputError
+                                                message={errors.direction}
+                                            />
+                                        </div>
+                                    )}
                                 </>
                             )}
                         </Form>
@@ -2874,10 +2876,9 @@ export default function AssetsIndex({
                                             <TooltipTrigger
                                                 render={
                                                     <TableRow
-                                                        role="button"
+                                                        role="link"
                                                         tabIndex={0}
-                                                        aria-haspopup="dialog"
-                                                        aria-label={`View details for ${asset.name}`}
+                                                        aria-label={`View details for ${asset.item_description}`}
                                                         className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                                                         onClick={(event) => {
                                                             if (
@@ -2885,8 +2886,15 @@ export default function AssetsIndex({
                                                                     event.target,
                                                                 )
                                                             ) {
-                                                                setSelectedAsset(
-                                                                    asset,
+                                                                router.visit(
+                                                                    asset.accounting_classification ===
+                                                                        'ppe'
+                                                                        ? show(
+                                                                              asset,
+                                                                          )
+                                                                        : showSemiExpendable(
+                                                                              asset,
+                                                                          ),
                                                                 );
                                                             }
                                                         }}
@@ -2900,8 +2908,15 @@ export default function AssetsIndex({
                                                                         ' ')
                                                             ) {
                                                                 event.preventDefault();
-                                                                setSelectedAsset(
-                                                                    asset,
+                                                                router.visit(
+                                                                    asset.accounting_classification ===
+                                                                        'ppe'
+                                                                        ? show(
+                                                                              asset,
+                                                                          )
+                                                                        : showSemiExpendable(
+                                                                              asset,
+                                                                          ),
                                                                 );
                                                             }
                                                         }}
@@ -2919,7 +2934,27 @@ export default function AssetsIndex({
                                                 </TableCell>
                                                 <TableCell className="py-3">
                                                     <div className="font-medium">
-                                                        {asset.name}
+                                                        <Link
+                                                            href={
+                                                                asset.accounting_classification ===
+                                                                'ppe'
+                                                                    ? show(
+                                                                          asset,
+                                                                      )
+                                                                    : showSemiExpendable(
+                                                                          asset,
+                                                                      )
+                                                            }
+                                                            className="hover:underline focus-visible:underline"
+                                                        >
+                                                            {
+                                                                asset.item_description
+                                                            }
+                                                        </Link>
+                                                        <RecordChangeBadge
+                                                            collection="assets"
+                                                            record={asset}
+                                                        />
                                                     </div>
                                                     <Badge
                                                         variant="outline"
@@ -3078,19 +3113,7 @@ export default function AssetsIndex({
                         <DataPagination links={assets.links} />
                     </CardContent>
                 </Card>
-
-                {selectedAsset && (
-                    <AssetDetailsDialog
-                        asset={selectedAsset}
-                        open
-                        onOpenChange={(open) => {
-                            if (!open) {
-                                setSelectedAsset(null);
-                            }
-                        }}
-                    />
-                )}
-            </div>
+            </PageContainer>
         </>
     );
 }

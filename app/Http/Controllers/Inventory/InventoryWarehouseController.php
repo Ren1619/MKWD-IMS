@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\InventoryWarehouseIndexRequest;
 use App\Http\Requests\Inventory\StoreInventoryBatchPlacementRequest;
 use App\Models\InventoryItemBatch;
+use App\Models\Warehouse;
 use App\Services\InventoryWarehouseService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -25,6 +28,7 @@ class InventoryWarehouseController extends Controller
                     $nested->where('reference_no', 'like', $search)->orWhere('source', 'like', $search)
                         ->orWhereHas('item', fn ($items) => $items->withoutGlobalScope(SoftDeletingScope::class)->where(fn ($match) => $match->where('name', 'like', $search)->orWhere('stock_number', 'like', $search)));
                 }))
+                ->when($request->filled('warehouse_id'), fn ($query) => $query->whereHas('latestPlacement', fn ($placement) => $placement->where('warehouse_id', $request->integer('warehouse_id'))))
                 ->when($request->filled('warehouse'), fn ($query) => $query->whereHas('latestPlacement', fn ($placement) => $placement->where('warehouse', $request->validated('warehouse'))))
                 ->when($request->validated('placement') === 'unplaced', fn ($query) => $query->whereDoesntHave('latestPlacement'))
                 ->when($request->validated('placement') === 'placed', fn ($query) => $query->whereHas('latestPlacement'))
@@ -33,22 +37,25 @@ class InventoryWarehouseController extends Controller
 
                     return $batch;
                 }),
-            'filters' => $request->safe()->only(['search', 'warehouse', 'placement', 'include_depleted']),
+            'warehouses' => Warehouse::query()->orderBy('name')->get(['id', 'name']),
+            'filters' => $request->safe()->only(['search', 'warehouse_id', 'warehouse', 'placement', 'include_depleted']),
         ]);
     }
 
-    public function show(InventoryItemBatch $batch): Response
+    public function show(Request $request, InventoryItemBatch $batch): Response|JsonResponse
     {
         $batch->load(['item' => fn ($query) => $query->withTrashed(), 'latestPlacement', 'placements' => fn ($query) => $query->latest('id')]);
         $batch->item->setAppends([]);
 
-        return Inertia::render('Inventory/Warehouse/Show', ['batch' => $batch]);
+        $data = ['batch' => $batch, 'warehouses' => Warehouse::query()->orderBy('name')->get(['id', 'name'])];
+
+        return $request->expectsJson() ? response()->json($data) : Inertia::render('Inventory/Warehouse/Show', $data);
     }
 
     public function store(StoreInventoryBatchPlacementRequest $request, InventoryItemBatch $batch, InventoryWarehouseService $warehouse): RedirectResponse
     {
         $warehouse->place($batch, $request->validated(), $request->user());
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Warehouse location and counter-check recorded.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Stockroom location and counter-check recorded.']);
 
         return back();
     }

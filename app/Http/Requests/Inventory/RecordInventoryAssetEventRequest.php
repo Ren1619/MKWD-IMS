@@ -3,14 +3,14 @@
 namespace App\Http\Requests\Inventory;
 
 use App\AssetConditionStatus;
+use App\Http\Requests\ValidatedFormRequest;
 use App\InventoryAssetEventType;
 use App\Models\InventoryAsset;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
-class RecordInventoryAssetEventRequest extends FormRequest
+class RecordInventoryAssetEventRequest extends ValidatedFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.

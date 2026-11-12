@@ -34,6 +34,7 @@ import { index as assetsIndex } from '@/routes/inventory/assets';
 import { index as categoriesIndex } from '@/routes/inventory/categories';
 import { index as countsIndex } from '@/routes/inventory/counts';
 import { index as deliveriesIndex } from '@/routes/inventory/deliveries';
+import { index as disposalsIndex } from '@/routes/inventory/disposals';
 import { index as itemsIndex } from '@/routes/inventory/items';
 import { index as monthlyReportsIndex } from '@/routes/inventory/monthly_reports';
 import { index as procurementIndex } from '@/routes/inventory/procurement';
@@ -41,9 +42,7 @@ import { index as reportsIndex } from '@/routes/inventory/reports';
 import { index as requestsIndex } from '@/routes/inventory/requests';
 import { index as returnsIndex } from '@/routes/inventory/returns';
 import { index as semiExpendableIndex } from '@/routes/inventory/semi_expendable';
-import { index as warehouseIndex } from '@/routes/inventory/warehouse';
 import { index as transfersIndex } from '@/routes/inventory/transfers';
-import { index as disposalsIndex } from '@/routes/inventory/disposals';
 import type { NavItem } from '@/types';
 
 const overviewNavItems: NavItem[] = [
@@ -100,11 +99,6 @@ const configurationNavItems: NavItem[] = [
         icon: ClipboardSignature,
     },
     {
-        title: 'Warehouse Storage',
-        href: warehouseIndex(),
-        icon: Boxes,
-    },
-    {
         title: 'Monthly Report Packages',
         href: monthlyReportsIndex(),
         icon: ScrollText,
@@ -145,6 +139,7 @@ const procurementNavItems: NavItem[] = [
 
 export function AppSidebar() {
     const { auth } = useAppPage().props;
+    const { component } = useAppPage();
     const reportsAndConfigurationItems: NavItem[] = auth.permissions
         .manage_inventory
         ? [
@@ -165,7 +160,14 @@ export function AppSidebar() {
                   icon: ClipboardSignature,
               },
           ]
-        : propertyManagementNavItems;
+        : [
+              ...propertyManagementNavItems,
+              {
+                  title: 'Property Transfers',
+                  href: transfersIndex(),
+                  icon: ClipboardSignature,
+              },
+          ];
     const administrationItems =
         auth.user?.role === 'super_admin' ? administrationNavItems : [];
 
@@ -189,7 +191,18 @@ export function AppSidebar() {
                 <NavMain
                     label="Inventory Operations"
                     items={[
-                        ...inventoryOperationsNavItems,
+                        ...inventoryOperationsNavItems.map((item) => ({
+                            ...item,
+                            isActive:
+                                item.title === 'Consumable Inventory'
+                                    ? component.startsWith(
+                                          'Inventory/Items/',
+                                      ) ||
+                                      component ===
+                                          'Inventory/Warehouse/Index' ||
+                                      component === 'Inventory/Warehouse/Show'
+                                    : undefined,
+                        })),
                         ...(auth.permissions.manage_inventory
                             ? [
                                   {

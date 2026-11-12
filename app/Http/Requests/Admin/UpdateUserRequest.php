@@ -2,16 +2,16 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Http\Requests\ValidatedFormRequest;
 use App\Models\User;
 use App\UserRole;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\Validator;
 
-class UpdateUserRequest extends FormRequest
+class UpdateUserRequest extends ValidatedFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.

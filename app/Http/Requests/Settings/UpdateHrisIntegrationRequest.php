@@ -2,13 +2,13 @@
 
 namespace App\Http\Requests\Settings;
 
+use App\Http\Requests\ValidatedFormRequest;
 use App\Rules\SafeHrisApiUrl;
 use App\Services\HrisEndpointGuard;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
 
-class UpdateHrisIntegrationRequest extends FormRequest
+class UpdateHrisIntegrationRequest extends ValidatedFormRequest
 {
     protected function prepareForValidation(): void
     {

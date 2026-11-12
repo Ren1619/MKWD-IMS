@@ -21,7 +21,7 @@
 <body>
     <main>
         <span class="verified">Verified property tag</span>
-        <h1>{{ $asset->name }}</h1>
+        <h1>{{ $asset->item_description }}</h1>
         <p class="agency">Recorded by {{ config('app.name') }}</p>
         <dl>
             <dt>Property number</dt><dd>{{ $asset->property_number ?: 'Not assigned' }}</dd>

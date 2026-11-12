@@ -37,7 +37,7 @@ class ProcurementDeliveryController extends Controller
             ->with(['lines' => fn ($query) => $query->withSum(['deliveryLines as delivery_committed_quantity' => fn ($lines) => $lines->whereHas('delivery', fn ($documents) => $documents->whereIn('status', ['received', 'inspected', 'accepted']))], 'quantity_committed')])
             ->orderByDesc('id')->get();
 
-        return Inertia::render('Inventory/Deliveries/Create', ['orders' => $orders->map(fn (ProcurementRequest $order): array => [
+        return $this->index($request)->with('shipmentPreparation', ['orders' => $orders->map(fn (ProcurementRequest $order): array => [
             'id' => $order->id, 'pr_no' => $order->pr_no, 'purchase_order_no' => $order->purchase_order_no,
             'lines' => $order->lines->map(fn (ProcurementRequestLine $line): array => $this->lineOption($line))->all()])->all(),
             'selectedOrderId' => $request->integer('procurement_request_id') ?: null]);

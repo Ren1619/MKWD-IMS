@@ -72,7 +72,7 @@ test('delivery workspaces authorize managers and show ordered PO lines and immut
     $employee = User::factory()->employee()->create();
     $this->actingAs($employee)->get(route('inventory.deliveries.index'))->assertForbidden();
     $this->post(route('inventory.deliveries.store'), shipmentIntake())->assertForbidden();
-    $this->actingAs($this->recorder)->get(route('inventory.deliveries.create'))->assertInertia(fn (Assert $page) => $page->component('Inventory/Deliveries/Create')->has('orders', 1)->where('orders.0.lines.0.available_quantity', 10));
+    $this->actingAs($this->recorder)->get(route('inventory.deliveries.create'))->assertInertia(fn (Assert $page) => $page->component('Inventory/Deliveries/Index')->has('documents.data')->has('shipmentPreparation.orders', 1)->where('shipmentPreparation.orders.0.lines.0.available_quantity', 10));
     $document = receiveShipment();
     $this->get(route('inventory.deliveries.index'))->assertInertia(fn (Assert $page) => $page->component('Inventory/Deliveries/Index')->has('documents.data', 1));
     $this->get(route('inventory.deliveries.show', $document))->assertInertia(fn (Assert $page) => $page->component('Inventory/Deliveries/Show')->where('allowedActions', ['postpone', 'cancel'])->has('document.lines', 1));
@@ -488,4 +488,12 @@ test('multiple inspected lines may record the same non-conformance category with
     $this->actingAs($this->recorder)->get(route('inventory.deliveries.print', [$document, 'evaluation']))->assertSuccessful()->assertSee('Second delivery material')->assertSee('[X] Packing / packaging');
     $observations = $document->actions()->where('action', 'inspect')->sole()->metadata['lines'];
     expect($observations)->toHaveCount(2)->and($observations[0]['line_id'])->not->toBe($observations[1]['line_id']);
+});
+
+test('shipment preparation opens over the delivery list with its selected purchase order and retains validation context', function () {
+    $url = route('inventory.deliveries.create', ['procurement_request_id' => $this->order->id]);
+    $this->actingAs($this->recorder)->get($url)->assertInertia(fn (Assert $page) => $page->component('Inventory/Deliveries/Index')->where('shipmentPreparation.selectedOrderId', $this->order->id)->has('shipmentPreparation.orders', 1));
+    $this->from($url)->post(route('inventory.deliveries.store'), shipmentIntake(['supplier_name' => '']))->assertRedirect($url)->assertSessionHasErrors('supplier_name');
+    expect(ProcurementDelivery::query()->count())->toBe(0)->and($this->item->fresh()->quantity)->toBe(0);
+    $this->get(route('inventory.deliveries.index'))->assertInertia(fn (Assert $page) => $page->component('Inventory/Deliveries/Index')->missing('shipmentPreparation'));
 });

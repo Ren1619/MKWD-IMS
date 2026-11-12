@@ -2,12 +2,12 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Http\Requests\ValidatedFormRequest;
 use App\UserRole;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class UserIndexRequest extends FormRequest
+class UserIndexRequest extends ValidatedFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.

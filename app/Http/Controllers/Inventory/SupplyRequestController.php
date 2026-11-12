@@ -10,11 +10,15 @@ use App\Http\Requests\Inventory\TransitionSupplyRequestRequest;
 use App\Models\DepartmentLiquidation;
 use App\Models\HrisReference;
 use App\Models\InventoryItem;
+use App\Models\InventoryReturn;
+use App\Models\InventoryReturnLine;
 use App\Models\SupplyRequest;
 use App\Models\User;
 use App\Services\DepartmentLiquidationService;
+use App\Services\InventoryReturnService;
 use App\Services\IssuanceLiquidationService;
 use App\Services\SupplyRequestWorkflow;
+use App\Services\TemporaryHeadApprovalAccess;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -47,11 +51,28 @@ class SupplyRequestController extends Controller
                 );
             });
         $requests = SupplyRequest::query()
-            ->when(! $user->canManageInventory(), fn ($query) => $query->where('requester_user_id', $user->id))
+            ->when(! $user->canManageInventory(), fn ($query) => $query->where(function ($query) use ($user): void {
+                $query->where('requester_user_id', $user->id)
+                    ->when($user->hris_reference_id !== null, fn ($query) => $query->orWhere('requester_reference_id', $user->hris_reference_id))
+                    ->orWhereHas('actions', fn ($query) => $query->where('actor_user_id', $user->id))
+                    ->orWhere(function ($query) use ($user): void {
+                        $access = app(TemporaryHeadApprovalAccess::class);
+                        $query->whereIn('requester_reference_id', $access->employees($user)->select('id'))
+                            ->where(function ($query) use ($user, $access): void {
+                                $query->where('status', $access->pendingStatus($user));
+                                if ($access->pendingStatus($user) === 'division_approved') {
+                                    $query->orWhere(function ($query) use ($user, $access): void {
+                                        $query->where('status', 'submitted')->whereIn('requester_reference_id', $access->employees($user)
+                                            ->whereNull('metadata->position->division')->select('id'));
+                                    });
+                                }
+                            });
+                    });
+            }))
             ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($query) use ($search): void {
                     $query->where('ris_no', 'like', "%{$search}%")
-                        ->orWhere('isf_no', 'like', "%{$search}%")
+                        ->orWhere('irf_no', 'like', "%{$search}%")
                         ->orWhereHas('issuanceSlips', fn ($query) => $query->where('slip_no', 'like', "%{$search}%"))
                         ->orWhere('requester_name', 'like', "%{$search}%")
                         ->orWhere('office_name', 'like', "%{$search}%")
@@ -63,15 +84,39 @@ class SupplyRequestController extends Controller
             ->when(($filters['queue'] ?? null) === 'needs_action', fn ($query) => $query->whereNotIn('status', ['released', 'rejected', 'cancelled']))
             ->when(($filters['queue'] ?? null) === 'completed', fn ($query) => $query->whereIn('status', ['released', 'rejected', 'cancelled']))
             ->when(($filters['queue'] ?? null) === 'awaiting_liquidation', fn ($query) => $query->whereHas('issuanceSlips', fn ($query) => $query->where('status', '!=', 'approved')))
-            ->with(['lines.item:inventory_item_id,name,quantity,unit_of_measure', 'lines.item.batches', 'actions.actor:id,name', 'issuanceSlips'])
+            ->with(['requestedFor', 'lines.item:inventory_item_id,name,quantity,unit_of_measure', 'lines.item.batches', 'actions.actor:id,name', 'issuanceSlips'])
             ->latest()
             ->paginate(15)
             ->withQueryString();
+        $activeReturnRequestIds = InventoryReturnLine::query()
+            ->whereIn('source_supply_request_id', $requests->getCollection()->modelKeys())
+            ->whereHas('document', fn ($query) => $query->whereIn('status', InventoryReturnService::committedStatuses()))
+            ->distinct()
+            ->pluck('source_supply_request_id')
+            ->all();
+        foreach ($requests as $record) {
+            $record->setAttribute('has_active_return', in_array($record->getKey(), $activeReturnRequestIds, true));
+            $record->setAttribute('can_approve_as_head', app(TemporaryHeadApprovalAccess::class)->canApprove($user, $record));
+            $record->setAttribute('approval_stage', app(TemporaryHeadApprovalAccess::class)->requiredStage($record));
+            $record->unsetRelation('requestedFor');
+        }
         $liquidations = app(IssuanceLiquidationService::class);
         $departmentLiquidations = app(DepartmentLiquidationService::class);
-        $liquidationDocuments = $user->canManageInventory()
-            ? DepartmentLiquidation::query()->with('supplyRequest')->latest()->get()->each(fn (DepartmentLiquidation $document) => $document->setAttribute('available_action', $departmentLiquidations->availableAction($document, $user)))
-            : [];
+        $liquidationDocuments = DepartmentLiquidation::query()->with(['supplyRequest', 'issuanceSlip.supplyRequest'])
+            ->when(! $user->canManageInventory(), fn ($query) => $query->where(fn ($query) => $query
+                ->whereIn('supply_request_id', $requests->getCollection()->modelKeys())
+                ->orWhereHas('issuanceSlip', fn ($query) => $query->whereIn('supply_request_id', $requests->getCollection()->modelKeys()))))
+            ->latest()->get()->each(fn (DepartmentLiquidation $document) => $document->setAttribute('available_action', $user->canManageInventory() ? $departmentLiquidations->availableAction($document, $user) : null));
+        $returns = InventoryReturn::query()
+            ->whereHas('lines', fn ($query) => $query->whereIn('source_supply_request_id', $requests->getCollection()->modelKeys()))
+            ->with(['lines' => fn ($query) => $query->whereIn('source_supply_request_id', $requests->getCollection()->modelKeys())])
+            ->get();
+        foreach ($requests as $record) {
+            $record->setAttribute('return_documents', $returns->filter(fn ($document) => $document->lines->contains('source_supply_request_id', $record->id))
+                ->map(fn ($document): array => ['document_no' => $document->document_no, 'status' => $document->status,
+                    'return_date' => $document->return_date?->toDateString(),
+                    'lines' => $document->lines->where('source_supply_request_id', $record->id)->values()->map(fn ($line): array => ['item_description' => $line->item_name, 'quantity' => $line->quantity_declared, 'unit_of_measure' => $line->unit_of_measure])])->values());
+        }
         foreach ($requests as $record) {
             foreach ($record->issuanceSlips as $slip) {
                 $slip->setAttribute('available_action', $liquidations->availableAction($slip, $user));
@@ -79,7 +124,7 @@ class SupplyRequestController extends Controller
         }
 
         $issuanceContext = $this->issuanceContext($user);
-        $nextIsfNumber = (int) DB::table('issuance_request_sequences')
+        $nextIrfNumber = (int) DB::table('issuance_request_sequences')
             ->where('date', $issuanceContext['date'])
             ->value('last_number') + 1;
 
@@ -89,19 +134,18 @@ class SupplyRequestController extends Controller
             'liquidationDocuments' => $liquidationDocuments,
             'items' => $items,
             'canManage' => $user->canManageInventory(),
+            'isSuperAdmin' => $user->isSuperAdmin(),
             'requesterOffice' => $user->employee?->officeName(),
-            'employees' => $user->canManageInventory()
-                ? HrisReference::query()
-                    ->where('type', HrisReference::TYPE_EMPLOYEE)
-                    ->where('is_active', true)
-                    ->orderBy('name')
-                    ->get()
-                    ->map(fn (HrisReference $employee): array => $employee->toSelectionOption())
-                : [],
+            'employees' => $user->isSuperAdmin() ? HrisReference::query()
+                ->where('type', HrisReference::TYPE_EMPLOYEE)
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get()
+                ->map(fn (HrisReference $employee): array => [...$employee->toSelectionOption(), 'position_name' => data_get($employee->metadata, 'position.name')]) : [],
             'responsibilityCenters' => [],
             'issuanceContext' => [
                 ...$issuanceContext,
-                'isf_no' => $nextIsfNumber <= 999 ? sprintf('%s-%03d', substr($issuanceContext['date'], 5), $nextIsfNumber) : null,
+                'irf_no' => $nextIrfNumber <= 999 ? sprintf('%s-%03d', substr($issuanceContext['date'], 5), $nextIrfNumber) : null,
             ],
             'filters' => $filters,
         ]);
@@ -124,13 +168,13 @@ class SupplyRequestController extends Controller
                 $sequence = DB::table('issuance_request_sequences')->where('date', $date)->lockForUpdate()->first();
                 $number = $sequence->last_number + 1;
                 if ($number > 999) {
-                    throw ValidationException::withMessages(['issuance_form' => 'The daily ISF number limit has been reached.']);
+                    throw ValidationException::withMessages(['issuance_form' => 'The daily IRF number limit has been reached.']);
                 }
                 DB::table('issuance_request_sequences')->where('date', $date)->update(['last_number' => $number]);
                 $record->update([
-                    'isf_no' => sprintf('%s-%03d', substr($date, 5), $number),
-                    'isf_date' => $date,
-                    'isf_sequence' => $number,
+                    'irf_no' => sprintf('%s-%03d', substr($date, 5), $number),
+                    'irf_date' => $date,
+                    'irf_sequence' => $number,
                     'office_name' => $context['department'],
                     'issuance_details' => [...$context, 'date' => $date],
                 ]);

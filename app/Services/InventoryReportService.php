@@ -193,7 +193,7 @@ class InventoryReportService
         return ['columns' => ['Property No.', 'Description', 'Location', 'Accountable person', 'Unit', 'Card qty.', 'Physical qty.', 'Short/(Over)', 'Unit cost', 'Condition', 'Remarks'], 'rows' => $assets->map(function (InventoryAsset $asset) use ($filters): array {
             $physicalQuantity = $this->physicalQuantityAt($asset, $filters['as_of']);
 
-            return [$asset->property_number, $asset->name, $this->locationAt($asset, $filters['as_of']), $this->custodianAt($asset, $filters['as_of']), $asset->unit_of_measure, $asset->quantity_per_property_card, $physicalQuantity, $asset->quantity_per_property_card - $physicalQuantity, $asset->acquisition_cost, $this->conditionAt($asset, $filters['as_of']), $asset->physical_count_remarks];
+            return [$asset->property_number, $asset->item_description, $this->locationAt($asset, $filters['as_of']), $this->custodianAt($asset, $filters['as_of']), $asset->unit_of_measure, $asset->quantity_per_property_card, $physicalQuantity, $asset->quantity_per_property_card - $physicalQuantity, $asset->acquisition_cost, $this->conditionAt($asset, $filters['as_of']), $asset->physical_count_remarks];
         }), 'summary' => ['records' => $assets->count(), 'acquisition cost' => $assets->sum(fn (InventoryAsset $asset): float => (float) $asset->acquisition_cost)]];
     }
 
@@ -241,7 +241,7 @@ class InventoryReportService
             $physicalQuantity = $this->physicalQuantityAt($asset, $filters['as_of']);
             $variance = $physicalQuantity - $asset->quantity_per_property_card;
 
-            return ['PPE', $asset->property_number, $asset->name, $asset->quantity_per_property_card, $physicalQuantity, $variance, $asset->acquisition_cost, $variance * (float) $asset->acquisition_cost, $asset->physical_count_remarks];
+            return ['PPE', $asset->property_number, $asset->item_description, $asset->quantity_per_property_card, $physicalQuantity, $variance, $asset->acquisition_cost, $variance * (float) $asset->acquisition_cost, $asset->physical_count_remarks];
         })->all();
         $count = $this->approvedConsumableCount($filters['as_of']);
         foreach ($count === null ? [] : $count->lines as $line) {
@@ -272,7 +272,7 @@ class InventoryReportService
             ->get();
 
         return ['columns' => ['Accountable person', 'Employee No.', 'Property No.', 'Description', 'Serial No.', 'Unit', 'Qty.', 'Acquisition date', 'Amount', 'Location', 'Condition'], 'rows' => $assets->map(fn (InventoryAsset $asset): array => [
-            $asset->currentCustodian?->name, $asset->currentCustodian?->code, $asset->property_number, $asset->name, $asset->serial_number,
+            $asset->currentCustodian?->name, $asset->currentCustodian?->code, $asset->property_number, $asset->item_description, $asset->serial_number,
             $asset->unit_of_measure, $asset->quantity_per_property_card, $asset->acquisition_date?->toDateString(), $asset->acquisition_cost, $asset->location, $asset->condition_status->label(),
         ]), 'summary' => ['records' => $assets->count(), 'amount' => $assets->sum(fn (InventoryAsset $asset): float => (float) $asset->acquisition_cost)]];
     }
@@ -289,7 +289,7 @@ class InventoryReportService
             return [
                 $asset->property_number,
                 $asset->old_property_number,
-                $asset->name,
+                $asset->item_description,
                 $asset->category?->name,
                 $asset->account_code,
                 $asset->fund_cluster,
@@ -349,7 +349,7 @@ class InventoryReportService
                 $event->event_type->label(),
                 $event->reference_no,
                 $event->asset?->property_number,
-                $event->asset?->name,
+                $event->asset?->item_description,
                 $event->asset?->category?->name,
                 $event->amount,
                 $event->quantity,
@@ -381,7 +381,7 @@ class InventoryReportService
             'rows' => $assets->map(function (InventoryAsset $asset) use ($filters): array {
                 $valuation = $this->depreciation->calculate($asset, $filters['as_of']);
 
-                return [$asset->property_number, $asset->name, $asset->category?->name, $this->custodianAt($asset, $filters['as_of']), $this->locationAt($asset, $filters['as_of']), $asset->available_for_use_date?->toDateString(), $valuation->grossCarryingAmount, $valuation->accumulatedDepreciation, $valuation->carryingAmount, $asset->condition_status->label()];
+                return [$asset->property_number, $asset->item_description, $asset->category?->name, $this->custodianAt($asset, $filters['as_of']), $this->locationAt($asset, $filters['as_of']), $asset->available_for_use_date?->toDateString(), $valuation->grossCarryingAmount, $valuation->accumulatedDepreciation, $valuation->carryingAmount, $asset->condition_status->label()];
             }),
             'summary' => ['records' => $assets->count()],
         ];
@@ -417,7 +417,7 @@ class InventoryReportService
                     ? $latestEvent->quantity
                     : 0;
 
-                return [$asset->property_number, $asset->name, $this->custodianAt($asset, $filters['as_of']), $this->locationAt($asset, $filters['as_of']), $asset->quantity_per_property_card, $count, $count - $asset->quantity_per_property_card, $latestEvent?->reference_no, $latestEvent?->notes];
+                return [$asset->property_number, $asset->item_description, $this->custodianAt($asset, $filters['as_of']), $this->locationAt($asset, $filters['as_of']), $asset->quantity_per_property_card, $count, $count - $asset->quantity_per_property_card, $latestEvent?->reference_no, $latestEvent?->notes];
             }),
             'summary' => ['records' => $assets->count()],
         ];
@@ -439,7 +439,7 @@ class InventoryReportService
                     ->minus($valuation->impairmentLosses)
                     ->minus($valuation->carryingAmount);
 
-                return [$asset->property_number, $asset->name, $asset->category?->name, $asset->fund_cluster, $valuation->grossCarryingAmount, $valuation->accumulatedDepreciation, $valuation->impairmentLosses, $valuation->carryingAmount, (string) $difference->toScale(2, RoundingMode::HalfUp)];
+                return [$asset->property_number, $asset->item_description, $asset->category?->name, $asset->fund_cluster, $valuation->grossCarryingAmount, $valuation->accumulatedDepreciation, $valuation->impairmentLosses, $valuation->carryingAmount, (string) $difference->toScale(2, RoundingMode::HalfUp)];
             }),
             'summary' => $this->valuationSummary($assets, $filters['as_of']),
         ];
@@ -463,7 +463,7 @@ class InventoryReportService
             'rows' => $assets->map(function (InventoryAsset $asset) use ($filters): array {
                 $valuation = $this->depreciation->calculate($asset, $filters['as_of']);
 
-                return [$asset->property_number, $asset->category?->name, $asset->name, $asset->available_for_use_date?->toDateString(), $valuation->grossCarryingAmount, $asset->depreciation_useful_life_months, $valuation->residualValue, $valuation->monthlyDepreciation, $valuation->accumulatedDepreciation, $valuation->impairmentLosses, $valuation->carryingAmount];
+                return [$asset->property_number, $asset->category?->name, $asset->item_description, $asset->available_for_use_date?->toDateString(), $valuation->grossCarryingAmount, $asset->depreciation_useful_life_months, $valuation->residualValue, $valuation->monthlyDepreciation, $valuation->accumulatedDepreciation, $valuation->impairmentLosses, $valuation->carryingAmount];
             }),
             'summary' => $this->valuationSummary($assets, $filters['as_of']),
         ];
@@ -657,7 +657,7 @@ class InventoryReportService
         return ['columns' => ['Property No.', 'Description', 'Acquired', 'Gross amount', 'Accumulated depreciation', 'Carrying amount', 'Condition', 'Location', 'Appraised value', 'Disposal recommendation'], 'rows' => $assets->map(function (InventoryAsset $asset) use ($filters): array {
             $valuation = $this->depreciation->calculate($asset, $filters['as_of']);
 
-            return [$asset->property_number, $asset->name, $asset->acquisition_date?->toDateString(), $valuation->grossCarryingAmount, $valuation->accumulatedDepreciation, $valuation->carryingAmount, $asset->condition_status->label(), $this->locationAt($asset, $filters['as_of']), $asset->appraised_value, $asset->disposal_method];
+            return [$asset->property_number, $asset->item_description, $asset->acquisition_date?->toDateString(), $valuation->grossCarryingAmount, $valuation->accumulatedDepreciation, $valuation->carryingAmount, $asset->condition_status->label(), $this->locationAt($asset, $filters['as_of']), $asset->appraised_value, $asset->disposal_method];
         })];
     }
 
@@ -709,7 +709,7 @@ class InventoryReportService
 
             $gainOrLoss = BigDecimal::of($proceeds)->minus($valuation->carryingAmount);
 
-            return [$event->event_date->toDateString(), data_get($event->details, 'approval_no', $event->reference_no), $asset?->property_number, $asset?->name, $valuation->grossCarryingAmount, $valuation->accumulatedDepreciation, $valuation->carryingAmount, data_get($event->details, 'disposal_method'), data_get($event->details, 'appraised_value'), $proceeds, (string) $gainOrLoss->toScale(2, RoundingMode::HalfUp), data_get($event->details, 'recipient') ?? $event->notes];
+            return [$event->event_date->toDateString(), data_get($event->details, 'approval_no', $event->reference_no), $asset?->property_number, $asset?->item_description, $valuation->grossCarryingAmount, $valuation->accumulatedDepreciation, $valuation->carryingAmount, data_get($event->details, 'disposal_method'), data_get($event->details, 'appraised_value'), $proceeds, (string) $gainOrLoss->toScale(2, RoundingMode::HalfUp), data_get($event->details, 'recipient') ?? $event->notes];
         })];
     }
 
@@ -727,7 +727,7 @@ class InventoryReportService
         return ['columns' => ['Report No.', 'Report date', 'Type', 'Property No.', 'Description', 'Accountable person', 'Gross amount', 'Carrying amount', 'Circumstances'], 'rows' => $events->map(function (InventoryAssetEvent $event): array {
             $valuation = $this->depreciation->calculate($event->asset, $event->event_date);
 
-            return [$event->reference_no, $event->event_date->toDateString(), data_get($event->details, 'loss_type'), $event->asset?->property_number, $event->asset?->name, $event->asset?->currentCustodian?->name, $valuation->grossCarryingAmount, $valuation->carryingAmount, data_get($event->details, 'circumstances', $event->notes)];
+            return [$event->reference_no, $event->event_date->toDateString(), data_get($event->details, 'loss_type'), $event->asset?->property_number, $event->asset?->item_description, $event->asset?->currentCustodian?->name, $valuation->grossCarryingAmount, $valuation->carryingAmount, data_get($event->details, 'circumstances', $event->notes)];
         })];
     }
 
@@ -740,13 +740,13 @@ class InventoryReportService
                 ? 'PPE'
                 : 'Semi-expendable';
             if ($asset->property_number === null) {
-                $rows->push([$recordType, $asset->serial_number, $asset->name, 'Missing property number', 'Assign and tag before count']);
+                $rows->push([$recordType, $asset->serial_number, $asset->item_description, 'Missing property number', 'Assign and tag before count']);
             }
             if ($asset->current_custodian_reference_id === null && $asset->lifecycle_status === AssetLifecycleStatus::Active) {
-                $rows->push([$recordType, $asset->property_number, $asset->name, 'No accountable custodian', 'Issue PAR/ICS or document storage custody']);
+                $rows->push([$recordType, $asset->property_number, $asset->item_description, 'No accountable custodian', 'Issue PAR/ICS or document storage custody']);
             }
             if ($asset->quantity_per_property_card !== $asset->quantity_per_physical_count) {
-                $rows->push([$recordType, $asset->property_number, $asset->name, 'Physical count variance', 'Investigate and reconcile']);
+                $rows->push([$recordType, $asset->property_number, $asset->item_description, 'Physical count variance', 'Investigate and reconcile']);
             }
             if ($asset->accounting_classification === AssetAccountingClassification::SemiExpendable) {
                 $cost = BigDecimal::of((string) $asset->acquisition_cost);
@@ -755,18 +755,18 @@ class InventoryReportService
                     : SemiExpendableValueClass::High;
 
                 if ($cost->isGreaterThanOrEqualTo(AssetAccountingClassification::capitalizationThreshold())) {
-                    $rows->push([$recordType, $asset->property_number, $asset->name, 'Cost meets the PPE threshold', 'Review cross-module classification before reclassification']);
+                    $rows->push([$recordType, $asset->property_number, $asset->item_description, 'Cost meets the PPE threshold', 'Review cross-module classification before reclassification']);
                 }
                 if ($asset->semi_expendable_value_class !== $expectedClass) {
-                    $rows->push([$recordType, $asset->property_number, $asset->name, 'Low/high value class conflicts with unit cost', 'Run an authorized classification correction']);
+                    $rows->push([$recordType, $asset->property_number, $asset->item_description, 'Low/high value class conflicts with unit cost', 'Run an authorized classification correction']);
                 }
                 if ($asset->current_custodian_reference_id !== null
-                    && ! $asset->accountabilityDocuments->where('document_type', 'ICS')->whereIn('status', ['pending_recipient', 'active'])->count()) {
-                    $rows->push([$recordType, $asset->property_number, $asset->name, 'Assigned property has no active ICS', 'Issue or reconcile the missing ICS']);
+                    && ! $asset->accountabilityDocuments->where('document_type', 'ICS')->whereIn('status', ['pending_recipient', 'pending_note', 'active'])->count()) {
+                    $rows->push([$recordType, $asset->property_number, $asset->item_description, 'Assigned property has no active ICS', 'Issue or reconcile the missing ICS']);
                 }
                 if ($asset->physical_status === SemiExpendablePhysicalStatus::Disposed
                     && in_array($asset->accountability_status, [SemiExpendableAccountabilityStatus::PendingRecipient, SemiExpendableAccountabilityStatus::Accountable, SemiExpendableAccountabilityStatus::PendingRelief], true)) {
-                    $rows->push([$recordType, $asset->property_number, $asset->name, 'Disposed property retains active accountability', 'Review disposal and accountability closure history']);
+                    $rows->push([$recordType, $asset->property_number, $asset->item_description, 'Disposed property retains active accountability', 'Review disposal and accountability closure history']);
                 }
             }
         });
@@ -793,7 +793,7 @@ class InventoryReportService
                     ->first();
 
                 return [
-                    $asset->property_number, $asset->name, $asset->category?->name, $asset->serial_number,
+                    $asset->property_number, $asset->item_description, $asset->category?->name, $asset->serial_number,
                     $asset->acquisition_cost, $asset->semi_expendable_value_class?->label(), $asset->acquisition_date?->toDateString(),
                     $asset->fund_cluster, $asset->accounting_status->label(), $asset->physical_status?->label(),
                     $this->conditionAt($asset, $filters['as_of']), $this->custodianAt($asset, $filters['as_of']),
@@ -880,7 +880,7 @@ class InventoryReportService
             'columns' => ['Date', 'Transaction', 'Reference', 'Property No.', 'Description', 'Value class', 'Accountable person', 'From location', 'To location', 'Condition', 'Amount', 'Remarks', 'Recorded by'],
             'rows' => $events->map(fn (InventoryAssetEvent $event): array => [
                 $event->event_date->toDateString(), $event->event_type->label(), $event->reference_no,
-                $event->asset?->property_number, $event->asset?->name, $event->asset?->semi_expendable_value_class?->label(),
+                $event->asset?->property_number, $event->asset?->item_description, $event->asset?->semi_expendable_value_class?->label(),
                 $event->asset?->currentCustodian?->name, $event->from_location, $event->to_location,
                 $event->condition_status?->label(), $event->amount, $event->notes, $event->recordedBy?->name,
             ]),
@@ -910,7 +910,7 @@ class InventoryReportService
                 return [
                     $event->reference_no, $incident->toDateString(), data_get($event->details, 'date_discovered'),
                     $event->event_date->toDateString(), $deadline->toDateString(), $timeliness,
-                    data_get($event->details, 'loss_type'), $event->asset?->property_number, $event->asset?->name,
+                    data_get($event->details, 'loss_type'), $event->asset?->property_number, $event->asset?->item_description,
                     $event->asset?->currentCustodian?->name, $event->asset?->acquisition_cost,
                     $event->asset?->relief_status?->value, data_get($event->details, 'security_reference'),
                     data_get($event->details, 'circumstances', $event->notes),
@@ -931,7 +931,7 @@ class InventoryReportService
             'rows' => $assets->map(function (InventoryAsset $asset) use ($filters): array {
                 $physical = $this->physicalQuantityAt($asset, $filters['as_of']);
 
-                return [$asset->property_number, $asset->name, $asset->fund_cluster, $asset->semi_expendable_value_class?->label(), $this->locationAt($asset, $filters['as_of']), $this->custodianAt($asset, $filters['as_of']), 1, $physical, 1 - $physical, $this->conditionAt($asset, $filters['as_of']), $asset->physical_count_remarks];
+                return [$asset->property_number, $asset->item_description, $asset->fund_cluster, $asset->semi_expendable_value_class?->label(), $this->locationAt($asset, $filters['as_of']), $this->custodianAt($asset, $filters['as_of']), 1, $physical, 1 - $physical, $this->conditionAt($asset, $filters['as_of']), $asset->physical_count_remarks];
             }),
         ];
     }
@@ -974,7 +974,7 @@ class InventoryReportService
         return [
             'columns' => ['Property No.', 'Description', 'Accountable person', 'Expiration', 'Expiration state', 'Accountability state', 'Physical state'],
             'rows' => $assets->map(fn (InventoryAsset $asset): array => [
-                $asset->property_number, $asset->name, $asset->currentCustodian?->name, $asset->accountability_expires_at?->toDateString(),
+                $asset->property_number, $asset->item_description, $asset->currentCustodian?->name, $asset->accountability_expires_at?->toDateString(),
                 $asset->accountability_status === SemiExpendableAccountabilityStatus::AccountabilityExtinguished
                     ? 'Extinguished'
                     : ($asset->accountability_expires_at?->lt($asOf) ? 'Due for expiration' : ($asset->accountability_expires_at?->lte($dueSoon) ? 'Due soon' : 'Active')),
@@ -989,7 +989,7 @@ class InventoryReportService
         $asOf = Carbon::parse($filters['as_of']);
         $documents = PropertyAccountabilityDocument::query()->with('asset.currentCustodian')
             ->where('document_type', 'ICS')->where('value_class', SemiExpendableValueClass::High)
-            ->whereIn('status', ['pending_recipient', 'active'])
+            ->whereIn('status', ['pending_recipient', 'pending_note', 'active'])
             ->get()->filter(fn (PropertyAccountabilityDocument $document): bool => $document->issued_at->copy()->addMonths($document->estimated_useful_life_months ?? 0)->lte($asOf));
 
         return [
@@ -1009,7 +1009,7 @@ class InventoryReportService
             ->where('accounting_classification', AssetAccountingClassification::SemiExpendable)
             ->where('available_for_reissue', true)->get();
 
-        return ['columns' => ['Property No.', 'Description', 'Value class', 'Condition', 'Location', 'Unit cost', 'Accounting state'], 'rows' => $assets->map(fn (InventoryAsset $asset): array => [$asset->property_number, $asset->name, $asset->semi_expendable_value_class?->label(), $asset->condition_status->label(), $asset->location, $asset->acquisition_cost, $asset->accounting_status->label()])];
+        return ['columns' => ['Property No.', 'Description', 'Value class', 'Condition', 'Location', 'Unit cost', 'Accounting state'], 'rows' => $assets->map(fn (InventoryAsset $asset): array => [$asset->property_number, $asset->item_description, $asset->semi_expendable_value_class?->label(), $asset->condition_status->label(), $asset->location, $asset->acquisition_cost, $asset->accounting_status->label()])];
     }
 
     /** @param array<string, mixed> $filters @return array<string, mixed> */
@@ -1382,7 +1382,7 @@ class InventoryReportService
             ->when($filters['search'] !== '', function (Builder $query) use ($filters): void {
                 $search = '%'.$filters['search'].'%';
                 $query->where(fn (Builder $nested) => $nested
-                    ->where('name', 'like', $search)
+                    ->where('item_description', 'like', $search)
                     ->orWhere('serial_number', 'like', $search)
                     ->orWhere('property_number', 'like', $search));
             })
@@ -1459,7 +1459,7 @@ class InventoryReportService
         return [
             $asset->property_number,
             $asset->serial_number,
-            $asset->name,
+            $asset->item_description,
             $asset->category?->name,
             $asset->subcategory?->name,
             $asset->custody_status,

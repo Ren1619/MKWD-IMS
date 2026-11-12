@@ -8,10 +8,10 @@
 </style>
 </head>
 <body>
+<x-print-layout>
 @php $returnAuthorization=$delivery->actions->firstWhere('action','authorize_supplier_return'); @endphp
 <div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div>
-<h1>{{ config('app.name') }}</h1>
-<h2>{{ match($document) {'iar'=>'Inspection and Acceptance Report','receiving-report'=>'Receiving Report',default=>'Return to Supplier Notice'} }}</h2>
+<h1>{{ match($document) {'iar'=>'Inspection and Acceptance Report','receiving-report'=>'Receiving Report',default=>'Return to Supplier Notice'} }}</h1>
 <p><strong>{{ match($document) {'iar'=>$delivery->inspection_acceptance_no ?? 'IAR pending inspection','receiving-report'=>$delivery->receiving_report_no ?? 'RR pending acceptance',default=>$delivery->supplier_return_no} }}</strong> | {{ $delivery->document_no }} | Status: {{ ucfirst($delivery->status) }}</p>
 <p>PR: {{ $delivery->procurementRequest->pr_no }} | PO: {{ $delivery->purchase_order_no }} | Supplier: {{ $delivery->supplier_name }}</p>
 <p>Invoice: {{ $delivery->invoice_number }} | Delivery Receipt: {{ $delivery->delivery_reference }} | Received: {{ $delivery->received_at->timezone('Asia/Manila')->format('Y-m-d H:i') }}</p>
@@ -54,4 +54,5 @@ $endorsement=$delivery->actions->firstWhere('action','endorse');
 <p>COA representative / witness: {{ $delivery->inspection['coa_witness_name'] ?? '' }} | Acceptance recorded by: {{ $acceptor?->actor_name }} | Signed acceptance reference: {{ $acceptor?->metadata['signed_acceptance_reference'] ?? 'Pending' }}</p>
 @endif
 @if($endorsement)<p>Pre-audit / accounting endorsement: {{ $endorsement->metadata['endorsement_reference'] ?? '' }} | Recipient: {{ $endorsement->metadata['endorsement_recipient'] ?? '' }} | {{ $endorsement->created_at->timezone('Asia/Manila')->format('Y-m-d H:i') }}</p>@endif
+</x-print-layout>
 </body></html>

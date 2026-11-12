@@ -1,9 +1,19 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { Pencil, Plus, ShieldCheck, UserCheck, UserX } from 'lucide-react';
+import {
+    Pencil,
+    Plus,
+    ShieldCheck,
+    Trash2,
+    UserCheck,
+    UserX,
+} from 'lucide-react';
 import { useState } from 'react';
 import { DataPagination } from '@/components/data-pagination';
 import { HrisReferenceCombobox } from '@/components/hris-reference-combobox';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import PasswordInput from '@/components/password-input';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -23,6 +33,7 @@ import {
 } from '@/components/ui/card';
 import {
     Dialog,
+    DialogClose,
     DialogContent,
     DialogDescription,
     DialogHeader,
@@ -32,7 +43,7 @@ import {
 import { FormSelect } from '@/components/ui/form-select';
 import { Input } from '@/components/ui/input';
 import { useFilterSubmit } from '@/hooks/use-filter-submit';
-import { index, store, update } from '@/routes/admin/users';
+import { destroy, index, store, update } from '@/routes/admin/users';
 import type { UserRole } from '@/types/auth';
 import type { HrisReference, Paginated } from '@/types/inventory';
 
@@ -148,7 +159,7 @@ function CreateUserDialog({
                                 idPrefix="create"
                                 required
                             />
-                            <Button disabled={processing}>
+                            <Button type="submit" disabled={processing}>
                                 {processing ? 'Creating…' : 'Create account'}
                             </Button>
                         </>
@@ -235,10 +246,10 @@ function PasswordFields({
                 >
                     {required ? 'Temporary password' : 'New password'}
                 </label>
-                <Input
+                <PasswordInput
                     id={`${idPrefix}-password`}
                     name="password"
-                    type="password"
+                    aria-invalid={Boolean(errors.password)}
                     autoComplete="new-password"
                     placeholder={
                         required
@@ -256,10 +267,10 @@ function PasswordFields({
                 >
                     Confirm password
                 </label>
-                <Input
+                <PasswordInput
                     id={`${idPrefix}-password-confirmation`}
                     name="password_confirmation"
-                    type="password"
+                    aria-invalid={Boolean(errors.password_confirmation)}
                     autoComplete="new-password"
                     required={required}
                     placeholder={
@@ -271,6 +282,60 @@ function PasswordFields({
                 <InputError message={errors.password_confirmation} />
             </div>
         </div>
+    );
+}
+
+function DeleteUserDialog({ user }: { user: ManagedUser }) {
+    const [open, setOpen] = useState(false);
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger render={<Button size="sm" variant="destructive" />}>
+                <Trash2 /> Delete
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Delete IMS account?</DialogTitle>
+                    <DialogDescription>
+                        Permanently delete {user.name} ({user.email}) from IMS?
+                        Their HRIS account and employee record will remain. A
+                        successful HRIS login may create an IMS account again.
+                    </DialogDescription>
+                </DialogHeader>
+                <Form
+                    action={destroy(user.id)}
+                    onSuccess={() => setOpen(false)}
+                    className="grid gap-4"
+                >
+                    {({ errors, processing }) => (
+                        <>
+                            <InputError message={errors.user} />
+                            <div className="flex justify-end gap-2">
+                                <DialogClose
+                                    render={
+                                        <Button
+                                            variant="outline"
+                                            disabled={processing}
+                                        />
+                                    }
+                                >
+                                    Cancel
+                                </DialogClose>
+                                <Button
+                                    type="submit"
+                                    variant="destructive"
+                                    disabled={processing}
+                                >
+                                    {processing
+                                        ? 'Deleting…'
+                                        : 'Delete account'}
+                                </Button>
+                            </div>
+                        </>
+                    )}
+                </Form>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -367,7 +432,7 @@ function EditUserDialog({
                                 errors={errors}
                                 idPrefix={`edit-${user.id}`}
                             />
-                            <Button disabled={processing}>
+                            <Button type="submit" disabled={processing}>
                                 {processing ? 'Saving…' : 'Save changes'}
                             </Button>
                         </>
@@ -394,7 +459,7 @@ export default function UsersIndex({
     return (
         <>
             <Head title="User Management" />
-            <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+            <PageContainer>
                 <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
                     <div>
                         <p className="text-sm font-medium text-primary">
@@ -537,6 +602,10 @@ export default function UsersIndex({
                                             <TableCell className="py-3">
                                                 <div className="font-medium">
                                                     {user.name}
+                                                    <RecordChangeBadge
+                                                        collection="users"
+                                                        record={user}
+                                                    />
                                                 </div>
                                                 <div className="text-xs text-muted-foreground">
                                                     {user.email}
@@ -604,6 +673,7 @@ export default function UsersIndex({
                                                     employees={employees}
                                                     roles={roles}
                                                 />
+                                                <DeleteUserDialog user={user} />
                                             </TableCell>
                                         </TableRow>
                                     ))}
@@ -623,14 +693,14 @@ export default function UsersIndex({
                         <DataPagination links={users.links} />
                     </CardContent>
                 </Card>
-            </div>
+            </PageContainer>
         </>
     );
 }
 
 UsersIndex.layout = {
     breadcrumbs: [
-        { title: 'Administration', href: index() },
+        { title: 'Administration' },
         { title: 'User Management', href: index() },
     ],
 };

@@ -9,8 +9,12 @@ use App\Http\Requests\Admin\UserIndexRequest;
 use App\Models\HrisReference;
 use App\Models\User;
 use App\UserRole;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -79,6 +83,39 @@ class UserController extends Controller
         Inertia::flash('toast', [
             'type' => 'success',
             'message' => 'User account updated.',
+        ]);
+
+        return to_route('admin.users.index');
+    }
+
+    public function destroy(Request $request, User $user): RedirectResponse
+    {
+        if ($request->user()->is($user)) {
+            throw ValidationException::withMessages([
+                'user' => 'You cannot delete your own account.',
+            ]);
+        }
+
+        try {
+            DB::transaction(function () use ($user): void {
+                $user->tokens()->delete();
+                DB::table('sessions')->where('user_id', $user->id)->delete();
+                DB::table('password_reset_tokens')->where('email', $user->email)->delete();
+                $user->delete();
+            });
+        } catch (QueryException $exception) {
+            if (! in_array((string) $exception->getCode(), ['23000', '23503'], true)) {
+                throw $exception;
+            }
+
+            throw ValidationException::withMessages([
+                'user' => 'This account is required by existing inventory transactions. Deactivate it instead.',
+            ]);
+        }
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => 'IMS user account deleted.',
         ]);
 
         return to_route('admin.users.index');

@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /** @property Carbon|null $return_slip_date */
-#[Fillable(['ris_no', 'isf_no', 'isf_date', 'isf_sequence', 'issuance_details', 'return_slip_no', 'return_slip_date', 'requester_user_id', 'requester_reference_id', 'requester_name', 'office_name', 'responsibility_center_code', 'purpose', 'date_needed', 'status', 'submitted_at', 'completed_at'])]
+#[Fillable(['ris_no', 'irf_no', 'irf_date', 'irf_sequence', 'issuance_details', 'return_slip_no', 'return_slip_date', 'requester_user_id', 'requester_reference_id', 'requester_name', 'office_name', 'responsibility_center_code', 'purpose', 'date_needed', 'status', 'submitted_at', 'completed_at'])]
 class SupplyRequest extends Model
 {
     /** @use HasFactory<SupplyRequestFactory> */
@@ -19,13 +19,19 @@ class SupplyRequest extends Model
 
     protected function casts(): array
     {
-        return ['isf_date' => 'date', 'return_slip_date' => 'date', 'isf_sequence' => 'integer', 'issuance_details' => 'array', 'date_needed' => 'date', 'submitted_at' => 'datetime', 'completed_at' => 'datetime'];
+        return ['irf_date' => 'date', 'return_slip_date' => 'date', 'irf_sequence' => 'integer', 'issuance_details' => 'array', 'date_needed' => 'date', 'submitted_at' => 'datetime', 'completed_at' => 'datetime'];
     }
 
     /** @return BelongsTo<User, $this> */
     public function requester(): BelongsTo
     {
         return $this->belongsTo(User::class, 'requester_user_id');
+    }
+
+    /** @return BelongsTo<HrisReference, $this> */
+    public function requestedFor(): BelongsTo
+    {
+        return $this->belongsTo(HrisReference::class, 'requester_reference_id');
     }
 
     /** @return HasMany<SupplyRequestLine, $this> */

@@ -2,6 +2,8 @@ import { Form, Head, Link } from '@inertiajs/react';
 import { Activity, LogIn, LogOut, Pencil, Plus, Trash2 } from 'lucide-react';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -69,7 +71,7 @@ export default function AuditLogsIndex({
     return (
         <>
             <Head title="Audit Logs" />
-            <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+            <PageContainer>
                 <div>
                     <p className="text-sm font-medium text-primary">
                         Administration
@@ -224,6 +226,10 @@ export default function AuditLogsIndex({
                                                     {new Date(
                                                         log.created_at,
                                                     ).toLocaleString()}
+                                                    <RecordChangeBadge
+                                                        collection="auditLogs"
+                                                        record={log}
+                                                    />
                                                 </TableCell>
                                                 <TableCell className="py-3">
                                                     <div className="font-medium">
@@ -271,14 +277,14 @@ export default function AuditLogsIndex({
                         <DataPagination links={auditLogs.links} />
                     </CardContent>
                 </Card>
-            </div>
+            </PageContainer>
         </>
     );
 }
 
 AuditLogsIndex.layout = {
     breadcrumbs: [
-        { title: 'Administration', href: index() },
+        { title: 'Administration' },
         { title: 'Audit Logs', href: index() },
     ],
 };

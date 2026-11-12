@@ -79,7 +79,7 @@ class InventoryAssetService
             }
 
             $supersededDocument = $lockedAsset->accountabilityDocuments()
-                ->whereIn('status', ['pending_recipient', 'active'])
+                ->whereIn('status', ['pending_recipient', 'pending_note', 'active'])
                 ->first();
             $outgoingCustodian = $lockedAsset->currentCustodian()->first();
 
@@ -138,7 +138,7 @@ class InventoryAssetService
                 throw new InvalidArgumentException('Property transferred to another agency cannot be returned through internal custody controls.');
             }
             $currentDocument = $lockedAsset->accountabilityDocuments()
-                ->whereIn('status', ['pending_recipient', 'active'])
+                ->whereIn('status', ['pending_recipient', 'pending_note', 'active'])
                 ->first();
             $this->accountability->closeCurrentForAsset($lockedAsset, $actor, 'returned', $reason);
             $lockedAsset->custodianAssignments()->whereNull('unassigned_at')->update(['unassigned_at' => now()]);

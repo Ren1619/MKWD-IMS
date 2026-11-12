@@ -11,7 +11,7 @@ use Inertia\Testing\AssertableInertia as Assert;
 beforeEach(function () {
     $this->travelTo(now('Asia/Manila')->setDate(2026, 10, 9)->startOfDay());
     $this->manager = User::factory()->inventoryManager()->create();
-    $this->record = SupplyRequest::factory()->create(['status' => 'ready_for_release', 'isf_no' => '10-09-007', 'office_name' => 'Operations', 'responsibility_center_code' => 'RC-1']);
+    $this->record = SupplyRequest::factory()->create(['status' => 'ready_for_release', 'irf_no' => '10-09-007', 'office_name' => 'Operations', 'responsibility_center_code' => 'RC-1']);
     $this->item = InventoryItem::factory()->create();
     app(InventoryStockService::class)->stockIn($this->item, ['quantity' => 10, 'unit_cost' => 25]);
     $this->line = $this->record->lines()->create(['inventory_item_id' => $this->item->id ?? $this->item->getKey(), 'item_name' => $this->item->name, 'unit_of_measure' => 'pc', 'quantity_requested' => 10, 'quantity_approved' => 10, 'quantity_reserved' => 4]);
@@ -20,7 +20,7 @@ beforeEach(function () {
 });
 
 test('partial releases get independent slip numbers and immutable issued quantities', function () {
-    expect($this->slip->slip_no)->toBe('10-09-001')->and($this->slip->snapshot['isf_no'])->toBe('10-09-007')->and($this->slip->lines[0]['quantity_issued'])->toBe(4);
+    expect($this->slip->slip_no)->toBe('10-09-001')->and($this->slip->snapshot['irf_no'])->toBe('10-09-007')->and($this->slip->lines[0]['quantity_issued'])->toBe(4);
     $this->line->update(['quantity_reserved' => 10]);
     $this->patch(route('inventory.requests.transition', $this->record), ['action' => 'release', 'attested' => true])->assertSessionHasNoErrors();
     $slips = $this->record->issuanceSlips()->orderBy('id')->get();
@@ -72,13 +72,13 @@ test('slip number exhaustion rolls back release stock and quantities', function 
     expect($this->item->fresh()->quantity)->toBe(6)->and($this->line->fresh()->quantity_released)->toBe(4)->and(IssuanceSlip::query()->count())->toBe(1);
 });
 
-test('the liquidation dialog receives ISF materials independently of request filters', function () {
+test('the liquidation dialog receives IRF materials independently of request filters', function () {
     $this->get(route('inventory.requests.index', ['search' => 'no matching request']))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->has('requests.data', 0)
             ->has('issuanceAllocations', 1)
-            ->where('issuanceAllocations.0.isf_no', '10-09-007')
+            ->where('issuanceAllocations.0.is_no', '10-09-001')
             ->where('issuanceAllocations.0.department', 'Operations')
             ->where('issuanceAllocations.0.lines.0.quantity_issued', 4));
     $this->actingAs(User::factory()->employee()->create())

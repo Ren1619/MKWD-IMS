@@ -13,6 +13,7 @@ import type { PaginationLink as PaginationLinkData } from '@/types/inventory';
 
 type DataPaginationProps = {
     links: PaginationLinkData[];
+    onNavigate?: (url: string) => void;
 };
 
 function DisabledPaginationLink({
@@ -33,7 +34,11 @@ function DisabledPaginationLink({
     );
 }
 
-function visitPage(event: MouseEvent<HTMLAnchorElement>, url: string) {
+function visitPage(
+    event: MouseEvent<HTMLAnchorElement>,
+    url: string,
+    onNavigate?: (url: string) => void,
+) {
     if (
         event.defaultPrevented ||
         event.button !== 0 ||
@@ -46,10 +51,15 @@ function visitPage(event: MouseEvent<HTMLAnchorElement>, url: string) {
     }
 
     event.preventDefault();
-    router.visit(url);
+
+    if (onNavigate) {
+        onNavigate(url);
+    } else {
+        router.visit(url);
+    }
 }
 
-export function DataPagination({ links }: DataPaginationProps) {
+export function DataPagination({ links, onNavigate }: DataPaginationProps) {
     if (links.length < 3) {
         return null;
     }
@@ -66,7 +76,11 @@ export function DataPagination({ links }: DataPaginationProps) {
                         <PaginationPrevious
                             href={previous.url}
                             onClick={(event) =>
-                                visitPage(event, previous.url as string)
+                                visitPage(
+                                    event,
+                                    previous.url as string,
+                                    onNavigate,
+                                )
                             }
                         />
                     ) : (
@@ -82,7 +96,11 @@ export function DataPagination({ links }: DataPaginationProps) {
                                 isActive={page.active}
                                 aria-label={`Go to page ${page.label}`}
                                 onClick={(event) =>
-                                    visitPage(event, page.url as string)
+                                    visitPage(
+                                        event,
+                                        page.url as string,
+                                        onNavigate,
+                                    )
                                 }
                             >
                                 {page.label}
@@ -98,7 +116,7 @@ export function DataPagination({ links }: DataPaginationProps) {
                         <PaginationNext
                             href={next.url}
                             onClick={(event) =>
-                                visitPage(event, next.url as string)
+                                visitPage(event, next.url as string, onNavigate)
                             }
                         />
                     ) : (

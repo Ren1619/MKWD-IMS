@@ -11,11 +11,14 @@ import {
 import { useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { ArchiveRecordDialog } from '@/components/archive-record-dialog';
+import { ConsumableInventoryNav } from '@/components/consumable-inventory-nav';
 import { DataPagination } from '@/components/data-pagination';
 import { FormErrorSummary } from '@/components/form-error-summary';
 import { HrisReferenceCombobox } from '@/components/hris-reference-combobox';
 import InputError from '@/components/input-error';
 import { InventoryItemDetailsDialog } from '@/components/inventory-item-details-dialog';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -868,7 +871,8 @@ export default function ItemsIndex({
     return (
         <>
             <Head title="Consumable Inventory" />
-            <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+            <PageContainer>
+                <ConsumableInventoryNav active="items" />
                 <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
                     <div>
                         <h1 className="text-2xl font-semibold">
@@ -1582,6 +1586,10 @@ export default function ItemsIndex({
                                         >
                                             <TableCell className="py-3 font-mono text-xs">
                                                 {item.stock_number ?? '—'}
+                                                <RecordChangeBadge
+                                                    collection="items"
+                                                    record={item}
+                                                />
                                             </TableCell>
                                             <TableCell className="py-3">
                                                 <div className="font-medium">
@@ -1713,7 +1721,7 @@ export default function ItemsIndex({
                         }}
                     />
                 )}
-            </div>
+            </PageContainer>
         </>
     );
 }

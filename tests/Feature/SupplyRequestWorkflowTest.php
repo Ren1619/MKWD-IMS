@@ -9,6 +9,20 @@ use App\Models\User;
 use App\Services\InventoryStockService;
 use Inertia\Testing\AssertableInertia as Assert;
 
+function approveSupplyRequestByHeads(SupplyRequest $record): void
+{
+    $recipient = $record->requestedFor ?? HrisReference::factory()->create();
+    $recipient->update(['metadata' => ['position' => ['department' => ['id' => 1], 'division' => ['id' => 2]]]]);
+    $record->update(['requester_reference_id' => $recipient->id]);
+    foreach (['division', 'department'] as $stage) {
+        $reference = HrisReference::factory()->create(['metadata' => ['position' => [
+            'department' => ['id' => 1], 'division' => $stage === 'division' ? ['id' => 2] : null,
+        ]]]);
+        $head = User::factory()->employee()->create(['email' => $stage.'.head@obx.gov.ph', 'hris_reference_id' => $reference->id]);
+        test()->actingAs($head)->patch(route('inventory.requests.transition', $record), ['action' => 'approve', 'attested' => true])->assertRedirect()->assertSessionHasNoErrors();
+    }
+}
+
 test('a request may contain multiple existing and new supply lines and returns visible feedback', function () {
     $employee = User::factory()->employee()->create();
     $item = InventoryItem::factory()->create();
@@ -180,7 +194,7 @@ test('request and procurement queues can be searched and limited to records need
             ->where('filters.queue', 'needs_action'));
 });
 
-test('employees submit requests but only a different inventory manager can authorize and release stock', function () {
+test('employees submit requests and managers review and release stock after both head approvals', function () {
     $employee = User::factory()->employee()->create();
     $manager = User::factory()->inventoryManager()->create();
     $item = InventoryItem::factory()->create(['quantity' => 0]);
@@ -188,19 +202,20 @@ test('employees submit requests but only a different inventory manager can autho
     $this->actingAs($employee)->post(route('inventory.requests.store'), ['purpose' => 'Official office operations', 'lines' => [['inventory_item_id' => $item->getKey(), 'is_new_item' => false, 'quantity' => 6]]])->assertRedirect();
     $request = SupplyRequest::query()->with('lines')->sole();
     expect($request->ris_no)->toMatch('/^RIS-\d{4}-\d{6}$/')->and($request->status)->toBe('submitted');
-    foreach (['approve', 'review', 'release'] as $action) {
+    approveSupplyRequestByHeads($request);
+    foreach (['review', 'release'] as $action) {
         $this->actingAs($manager)->patch(route('inventory.requests.transition', $request), ['action' => $action, 'attested' => true, 'remarks' => 'Reviewed supporting records.'])->assertRedirect();
     }
-    expect($request->fresh()->status)->toBe('released')->and($request->lines()->first()->quantity_released)->toBe(6)->and($item->fresh()->quantity)->toBe(14)->and($request->actions()->count())->toBe(4);
+    expect($request->fresh()->status)->toBe('released')->and($request->lines()->first()->quantity_released)->toBe(6)->and($item->fresh()->quantity)->toBe(14)->and($request->actions()->count())->toBe(5);
 });
 test('requesters cannot authorize their own supply request', function () {
     $manager = User::factory()->inventoryManager()->create();
     $item = InventoryItem::factory()->create();
     $this->actingAs($manager)->post(route('inventory.requests.store'), ['purpose' => 'Manager request', 'lines' => [['inventory_item_id' => $item->getKey(), 'is_new_item' => false, 'quantity' => 1]]]);
-    $this->patch(route('inventory.requests.transition', SupplyRequest::query()->sole()), ['action' => 'approve', 'attested' => true])->assertSessionHasErrors('action');
+    $this->patch(route('inventory.requests.transition', SupplyRequest::query()->sole()), ['action' => 'approve', 'attested' => true])->assertForbidden();
 });
 
-test('super admins can approve supply requests they submitted for another employee', function () {
+test('requests submitted by super admins for another employee still require head approvals', function () {
     $adminEmployee = HrisReference::factory()->create();
     $requestedForEmployee = HrisReference::factory()->create();
     $admin = User::factory()->superAdmin()->create(['hris_reference_id' => $adminEmployee->getKey()]);
@@ -217,8 +232,9 @@ test('super admins can approve supply requests they submitted for another employ
     $this->patch(route('inventory.requests.transition', $request), [
         'action' => 'approve',
         'attested' => true,
-    ])->assertSessionHasNoErrors();
+    ])->assertForbidden();
 
+    approveSupplyRequestByHeads($request);
     expect($request->fresh()->status)->toBe('approved');
 });
 
@@ -236,7 +252,7 @@ test('inventory managers cannot authorize a supply request requested for themsel
     $this->patch(route('inventory.requests.transition', SupplyRequest::query()->sole()), [
         'action' => 'approve',
         'attested' => true,
-    ])->assertSessionHasErrors('action');
+    ])->assertForbidden();
 });
 
 test('procurement stocks goods only after planning budget and inspection attestations', function () {
@@ -279,7 +295,8 @@ test('reviewed supply shortages flow through procurement acceptance and become r
     ])->assertRedirect();
     $supplyRequest = SupplyRequest::query()->with('lines')->sole();
 
-    foreach (['approve', 'review', 'review'] as $action) {
+    approveSupplyRequestByHeads($supplyRequest);
+    foreach (['review', 'review'] as $action) {
         $this->actingAs($reviewer)->patch(route('inventory.requests.transition', $supplyRequest), [
             'action' => $action,
             'attested' => true,
@@ -348,7 +365,8 @@ test('accepted procurement creates requested new catalog items and links them ba
     ])->assertSessionHasNoErrors();
     $supplyRequest = SupplyRequest::query()->with('lines')->sole();
 
-    foreach (['approve', 'review'] as $action) {
+    approveSupplyRequestByHeads($supplyRequest);
+    foreach (['review'] as $action) {
         $this->actingAs($reviewer)->patch(route('inventory.requests.transition', $supplyRequest), [
             'action' => $action,
             'attested' => true,
@@ -491,4 +509,22 @@ test('procurement request types enforce their matching catalog line kinds', func
             'estimated_unit_cost' => 100,
         ]],
     ],
+]);
+
+test('request status filters return only the selected status', function (string $status) {
+    $manager = User::factory()->inventoryManager()->create();
+    $matching = SupplyRequest::factory()->create(['status' => $status]);
+    SupplyRequest::factory()->create(['status' => $status === 'released' ? 'submitted' : 'released']);
+
+    $this->actingAs($manager)
+        ->get(route('inventory.requests.index', ['status' => $status]))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('requests.data', 1)
+            ->where('requests.data.0.id', $matching->id)
+            ->where('requests.data.0.status', $status)
+            ->where('filters.status', $status));
+})->with([
+    'submitted', 'division_approved', 'approved', 'awaiting_replenishment', 'ready_for_release',
+    'partially_released', 'released', 'rejected', 'cancelled',
 ]);

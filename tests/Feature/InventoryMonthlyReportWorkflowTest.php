@@ -12,6 +12,7 @@ use App\Models\PropertyAccountabilityDocument;
 use App\Models\User;
 use App\Services\InventoryMonthlyReportBuilder;
 use App\Services\InventoryStockService;
+use App\UserRole;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -97,8 +98,10 @@ test('incomplete current or future months and malformed selections cannot be pre
 test('outstanding delivery return acknowledgement and stock reconciliation issues block monthly preparation', function (string $kind) {
     if ($kind === 'delivery') {
         ProcurementDelivery::factory()->create(['received_at' => '2026-09-20 08:00:00']);
-    } elseif ($kind === 'return') {
-        InventoryReturn::factory()->create(['return_date' => '2026-09-20']);
+    } elseif (in_array($kind, ['return', 'return-noted', 'return-received'], true)) {
+        InventoryReturn::factory()->create(['return_date' => '2026-09-20', 'status' => match ($kind) {
+            'return-noted' => 'noted', 'return-received' => 'received', default => 'submitted'
+        }]);
     } elseif ($kind === 'acknowledgement') {
         PropertyAccountabilityDocument::factory()->create(['issued_at' => '2026-09-20 08:00:00']);
     } else {
@@ -108,7 +111,7 @@ test('outstanding delivery return acknowledgement and stock reconciliation issue
     expect($built['readiness']['blockers'])->not->toBeEmpty();
     $this->actingAs($this->preparer)->post(route('inventory.monthly_reports.store'), monthlyIntake())->assertSessionHasErrors('reconciliation');
     expect(InventoryMonthlyReport::query()->count())->toBe(0);
-})->with(['delivery', 'return', 'acknowledgement', 'mismatch']);
+})->with(['delivery', 'return', 'return-noted', 'return-received', 'acknowledgement', 'mismatch']);
 test('source changes before approval require a new snapshot and repeat sign-off while preserving earlier evidence', function () {
     $packet = prepareMonthlyPackage();
     monthlyDecision($packet, 'check', $this->checker)->assertSessionHasNoErrors();
@@ -141,8 +144,7 @@ test('approved packages preserve report content and signatory names while explai
     app(InventoryStockService::class)->stockIn($this->item, ['quantity' => 1, 'unit_cost' => 60, 'received_at' => '2026-09-29', 'reference_no' => 'CORRECTED-SEP']);
     $this->preparer->update(['name' => 'Changed preparer name']);
     monthlyDecision($packet, 'refresh', $this->preparer)->assertSessionHasErrors('action');
-    $this->actingAs($this->preparer)->post(route('inventory.monthly_reports.store'), monthlyIntake())->assertSessionHasErrors('correction_reason');
-    $revision = prepareMonthlyPackage(['correction_reason' => 'Late source receipt requires corrected monthly statements.']);
+    $revision = prepareMonthlyPackage();
     expect($packet->fresh()->load('snapshot')->snapshot->payload)->toBe($payload)->and($packet->fresh()->signatories['prepared']['name'])->toBe($name)
         ->and($revision->revision)->toBe(2)->and($revision->supersedes_id)->toBe($packet->id)->and($revision->snapshot->payload)->not->toBe($payload);
 });
@@ -225,4 +227,82 @@ test('archived stock keeps its historical descriptions and exact receipt amounts
         expect($rows->first(fn ($row) => $row[1] === 'RR-SEP')[4])->toBe('Monthly stock item')
             ->and($rows->first(fn ($row) => $row[1] === 'RR-DECIMAL')[8])->toBe('0.30');
     }
+});
+
+test('a specific report is saved printed and retained through refresh and sign off', function () {
+    $data = monthlyIntake(['selected_report' => 'stock-master']);
+    unset($data['reconciliation_reference'], $data['correction_reason']);
+    $this->actingAs($this->preparer)->post(route('inventory.monthly_reports.store'), $data)->assertSessionHasNoErrors();
+    $packet = InventoryMonthlyReport::query()->with('snapshot')->sole();
+    expect(array_keys($packet->snapshot->payload['reports']))->toBe(['stock-master']);
+    $this->get(route('inventory.monthly_reports.show', $packet))->assertInertia(fn (Assert $page) => $page->where('isStale', false));
+    $this->get(route('inventory.monthly_reports.print', [$packet, 'packet']))->assertOk()->assertSee('Stock Master List')->assertDontSee('Materials Issuance Slip Register');
+    $this->get(route('inventory.monthly_reports.print', [$packet, 'issues']))->assertNotFound();
+    monthlyDecision($packet, 'refresh', $this->preparer)->assertSessionHasNoErrors();
+    expect(array_keys($packet->fresh()->snapshot->payload['reports']))->toBe(['stock-master']);
+    approveMonthlyPackage($packet);
+});
+
+test('different report selections can be prepared independently and unknown reports are rejected', function () {
+    prepareMonthlyPackage(['selected_report' => 'issues']);
+    prepareMonthlyPackage(['selected_report' => 'receipts']);
+    expect(InventoryMonthlyReport::query()->count())->toBe(2);
+    $this->actingAs($this->preparer)->post(route('inventory.monthly_reports.store'), monthlyIntake(['selected_report' => 'invalid']))->assertSessionHasErrors('selected_report');
+});
+
+test('stock master without zero includes monthly activity even with zero closing and excludes idle positive balances', function () {
+    $stock = app(InventoryStockService::class);
+    $idle = InventoryItem::factory()->create(['quantity' => 0, 'created_at' => '2026-08-01']);
+    $stock->stockIn($idle, ['quantity' => 4, 'unit_cost' => 10, 'received_at' => '2026-08-01']);
+    $exhausted = InventoryItem::factory()->create(['quantity' => 0, 'created_at' => '2026-08-01']);
+    $stock->stockIn($exhausted, ['quantity' => 2, 'unit_cost' => 10, 'received_at' => '2026-08-01']);
+    $stock->stockOut($exhausted, ['quantity' => 2, 'stocked_out_at' => '2026-09-15', 'recipient_name' => 'Field employee']);
+    $withZero = app(InventoryMonthlyReportBuilder::class)->build('2026-09', null, true, '01', 'stock-master');
+    $withoutZero = app(InventoryMonthlyReportBuilder::class)->build('2026-09', null, false, '01', 'stock-master');
+    $allNumbers = collect($withZero['payload']['reports']['stock-master']['rows'])->pluck(0)->all();
+    $activeNumbers = collect($withoutZero['payload']['reports']['stock-master']['rows'])->pluck(0)->all();
+    expect($allNumbers)->toContain($idle->stock_number, $exhausted->stock_number, $this->zero->stock_number)
+        ->and($activeNumbers)->toContain($exhausted->stock_number, $this->item->stock_number)
+        ->not->toContain($idle->stock_number, $this->zero->stock_number);
+});
+
+test('active employee accounts may be assigned and perform only their own monthly sign off stage', function () {
+    $this->checker->update(['role' => UserRole::Employee]);
+    $this->noter->update(['role' => UserRole::Employee]);
+    $this->approver->update(['role' => UserRole::Employee]);
+    $this->actingAs($this->preparer)->get(route('inventory.monthly_reports.create'))
+        ->assertInertia(fn (Assert $page) => $page->has('signatories', 4));
+    $packet = prepareMonthlyPackage();
+    $this->actingAs($this->checker)->get(route('inventory.monthly_reports.show', $packet))->assertOk();
+    $this->get(route('inventory.monthly_reports.print', [$packet, 'packet']))->assertOk();
+    monthlyDecision($packet, 'approve', $this->checker)->assertSessionHasErrors('action');
+    approveMonthlyPackage($packet);
+    expect($packet->fresh()->status)->toBe('approved');
+    $outsider = User::factory()->employee()->create();
+    $this->actingAs($outsider)->get(route('inventory.monthly_reports.show', $packet))->assertForbidden();
+    $this->get(route('inventory.monthly_reports.print', [$packet, 'packet']))->assertForbidden();
+    monthlyDecision($packet, 'transmit', $outsider)->assertForbidden();
+});
+
+test('inactive accounts cannot be selected as monthly signatories', function () {
+    $this->checker->update(['is_active' => false]);
+    $this->actingAs($this->preparer)->post(route('inventory.monthly_reports.store'), monthlyIntake())->assertSessionHasErrors('checked_by_user_id');
+});
+
+test('stock master print matches the grouped reference layout and shows exact FIFO movement amounts', function () {
+    $packet = prepareMonthlyPackage(['selected_report' => 'stock-master']);
+    $amounts = $packet->snapshot->payload['reports']['stock-master']['amounts'][$this->item->stock_number];
+    expect($amounts)->toMatchArray(['opening' => '200.00', 'received' => '150.00', 'issued' => '260.00', 'returned' => '0.00', 'adjusted' => '0.00']);
+    $response = $this->get(route('inventory.monthly_reports.print', [$packet, 'stock-master']));
+    $response->assertOk()->assertSee('size:legal landscape;margin:0', false)->assertSee('padding:10mm 8mm', false)->assertSee('STOCKMASTER LIST')->assertSee('BEGINNING BALANCE')->assertSee('ENDING BALANCE')
+        ->assertSee('ITEM GROUP SUMMARY')->assertSee('GRAND TOTAL')->assertSee('print-letterhead-row')
+        ->assertSee('Prepared by:')->assertSee('Checked by:')->assertSee('Noted by:')->assertSee('Approved by:')
+        ->assertSee('260.00')->assertSee('90.00');
+});
+
+test('packages containing stock master default to Legal landscape while other reports retain A4', function () {
+    $packet = prepareMonthlyPackage();
+    $this->get(route('inventory.monthly_reports.print', [$packet, 'packet']))->assertOk()->assertSee('size:legal landscape', false);
+    $this->get(route('inventory.monthly_reports.print', [$packet, 'stock-master']))->assertOk()->assertSee('size:legal landscape', false);
+    $this->get(route('inventory.monthly_reports.print', [$packet, 'issues']))->assertOk()->assertSee('size:A4 landscape', false);
 });

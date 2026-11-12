@@ -2,6 +2,8 @@ import { Form, Head, Link } from '@inertiajs/react';
 import { useState } from 'react';
 import { HrisReferenceCombobox } from '@/components/hris-reference-combobox';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -42,7 +44,7 @@ export default function DisposalShow({
     return (
         <>
             <Head title={document.document_no} />
-            <div className="flex flex-col gap-6 p-4 md:p-6">
+            <PageContainer>
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                         <Link href={index()} className="text-sm underline">
@@ -50,6 +52,10 @@ export default function DisposalShow({
                         </Link>
                         <h1 className="mt-2 text-2xl font-semibold">
                             {document.document_no}
+                            <RecordChangeBadge
+                                collection="document"
+                                record={document}
+                            />
                         </h1>
                         <p>
                             {label(document.status)} · {label(document.method)}
@@ -415,7 +421,7 @@ export default function DisposalShow({
                         </TableBody>
                     </Table>
                 </div>
-            </div>
+            </PageContainer>
         </>
     );
 }

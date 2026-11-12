@@ -40,8 +40,10 @@ type Material = {
     usage_details?: string | null;
 };
 export type IssuanceAllocation = {
+    issuance_slip_id: number;
+    is_no: string;
+    issued_at: string;
     supply_request_id: number;
-    isf_no: string;
     department: string;
     charge_code: string | null;
     requested_by_name: string;
@@ -52,7 +54,10 @@ export type IssuanceAllocation = {
 export type LiquidationDocument = {
     id: number;
     supply_request_id: number | null;
-    isf_no: string | null;
+    source_supply_request_id: number | null;
+    issuance_slip_id: number | null;
+    is_no: string | null;
+    irf_no: string | null;
     return_slip_no: string | null;
     return_slip_date: string | null;
     document_no: string;
@@ -86,7 +91,7 @@ export function IssuanceLiquidationDialog({
     canManage: boolean;
     supplyRequestId?: number;
 }) {
-    const [requestId, setRequestId] = useState('');
+    const [slipId, setSlipId] = useState('');
     const [selected, setSelected] = useState<LiquidationDocument | null>(null);
     const allocations = allAllocations.filter(
         (entry) =>
@@ -96,15 +101,17 @@ export function IssuanceLiquidationDialog({
     const documents = allDocuments.filter(
         (entry) =>
             supplyRequestId === undefined ||
-            entry.supply_request_id === supplyRequestId,
+            entry.source_supply_request_id === supplyRequestId,
     );
     const allocation = allocations.find(
         (entry) =>
-            String(entry.supply_request_id) === requestId ||
-            (supplyRequestId !== undefined && documents.length === 0),
+            String(entry.issuance_slip_id) === slipId ||
+            (supplyRequestId !== undefined &&
+                allocations.length === 1 &&
+                documents.length === 0),
     );
     const close = () => {
-        setRequestId('');
+        setSlipId('');
         setSelected(null);
         onOpenChange(false);
     };
@@ -116,7 +123,11 @@ export function IssuanceLiquidationDialog({
     if (selected || allocation) {
         return (
             <DepartmentForm
-                key={selected?.id ?? allocation?.supply_request_id}
+                key={
+                    selected
+                        ? `document-${selected.id}`
+                        : `slip-${allocation?.issuance_slip_id}`
+                }
                 allocation={allocation}
                 document={selected}
                 canManage={canManage}
@@ -131,43 +142,33 @@ export function IssuanceLiquidationDialog({
                 <DialogHeader>
                     <DialogTitle>RIS liquidation</DialogTitle>
                     <DialogDescription>
-                        Select one Issuance Request Form to account for its
-                        released materials, utilization, and balance.
+                        Select an issuance slip and provide its return slip
+                        reference to account for issued materials, utilization,
+                        and balance.
                     </DialogDescription>
                 </DialogHeader>
-                {canManage &&
-                    supplyRequestId !== undefined &&
-                    allocations.length > 0 && (
-                        <Button
-                            disabled={documents.some(
-                                (entry) => entry.status !== 'approved',
-                            )}
-                            onClick={() =>
-                                setRequestId(String(supplyRequestId))
-                            }
-                        >
-                            New RIS liquidation
-                        </Button>
-                    )}
-                {canManage && supplyRequestId === undefined && (
+                {canManage && allocations.length > 0 && (
                     <div className="grid gap-2">
-                        <Label htmlFor="liquidation-isf">
-                            Issuance Request Form
-                        </Label>
+                        <Label htmlFor="liquidation-slip">IS No.</Label>
                         <FormSelect
-                            id="liquidation-isf"
-                            value={requestId}
-                            onChange={(event) =>
-                                setRequestId(event.target.value)
-                            }
+                            id="liquidation-slip"
+                            value={slipId}
+                            onChange={(event) => setSlipId(event.target.value)}
                         >
-                            <option value="">Select an ISF</option>
+                            <option value="">Select an issuance slip</option>
                             {allocations.map((entry) => (
                                 <option
-                                    key={entry.supply_request_id}
-                                    value={String(entry.supply_request_id)}
+                                    key={entry.issuance_slip_id}
+                                    value={String(entry.issuance_slip_id)}
+                                    disabled={documents.some(
+                                        (document) =>
+                                            document.issuance_slip_id ===
+                                                entry.issuance_slip_id &&
+                                            document.status !== 'approved',
+                                    )}
                                 >
-                                    {entry.isf_no} · {entry.department}
+                                    {entry.is_no} · {entry.issued_at} ·{' '}
+                                    {entry.department}
                                 </option>
                             ))}
                         </FormSelect>
@@ -175,7 +176,7 @@ export function IssuanceLiquidationDialog({
                 )}
                 {allocations.length === 0 && (
                     <p className="text-sm text-muted-foreground">
-                        No ISFs with released materials are available for
+                        No issuance slips with linked releases are available for
                         liquidation.
                     </p>
                 )}
@@ -192,8 +193,10 @@ export function IssuanceLiquidationDialog({
                                 onClick={() => setSelected(entry)}
                             >
                                 {entry.document_no} ·{' '}
-                                {entry.isf_no ?? 'Legacy department record'} ·{' '}
-                                {entry.department} ·{' '}
+                                {entry.is_no
+                                    ? `IS ${entry.is_no}`
+                                    : 'Historical liquidation'}{' '}
+                                · {entry.department} ·{' '}
                                 {entry.liquidation_date.slice(0, 10)} ·{' '}
                                 {entry.status}
                             </Button>
@@ -225,8 +228,8 @@ function DepartmentForm({
     const editable = !document && canManage;
     const action = document?.available_action;
     const form = useForm({
-        supply_request_id:
-            document?.supply_request_id ?? allocation?.supply_request_id ?? 0,
+        issuance_slip_id:
+            document?.issuance_slip_id ?? allocation?.issuance_slip_id ?? 0,
         department: document?.department ?? allocation?.department ?? '',
         liquidation_date:
             document?.liquidation_date.slice(0, 10) ??
@@ -265,7 +268,7 @@ function DepartmentForm({
             const response = await fetch(
                 previewAllocations.url({
                     query: {
-                        supply_request_id: form.data.supply_request_id,
+                        issuance_slip_id: form.data.issuance_slip_id,
                         date,
                     },
                 }),
@@ -274,7 +277,7 @@ function DepartmentForm({
 
             if (!response.ok) {
                 throw new Error(
-                    'Unable to load ISF materials for this date. Check the date and try again.',
+                    'Unable to load issuance slip materials for this date. Check the date and try again.',
                 );
             }
 
@@ -295,7 +298,7 @@ function DepartmentForm({
         } catch {
             if (requestId === previewRequest.current) {
                 setPreviewError(
-                    'Unable to load ISF materials for this date. Check the date and try again.',
+                    'Unable to load issuance slip materials for this date. Check the date and try again.',
                 );
             }
         } finally {
@@ -314,7 +317,7 @@ function DepartmentForm({
                         {document ? ` — ${document.document_no}` : ''}
                     </DialogTitle>
                     <DialogDescription>
-                        Only released materials from the selected ISF are
+                        Only materials from the selected issuance slip are
                         included. Balance equals issued minus utilized. Returns
                         are referenced separately.
                     </DialogDescription>
@@ -337,16 +340,16 @@ function DepartmentForm({
                 >
                     <div className="grid gap-3 sm:grid-cols-2">
                         <div className="grid gap-1">
-                            <Label htmlFor="liquidation-isf-number">
-                                Issuance Request Form No.
+                            <Label htmlFor="liquidation-slip-number">
+                                IS No.
                             </Label>
                             <Input
-                                id="liquidation-isf-number"
+                                id="liquidation-slip-number"
                                 readOnly
                                 value={
-                                    document?.isf_no ??
-                                    allocation?.isf_no ??
-                                    'Legacy department record'
+                                    document?.is_no ??
+                                    allocation?.is_no ??
+                                    'Historical liquidation (no IS link)'
                                 }
                             />
                         </div>
@@ -401,10 +404,11 @@ function DepartmentForm({
                     <div className="grid gap-3 sm:grid-cols-2">
                         <div className="grid gap-1">
                             <Label htmlFor="liquidation-return-number">
-                                Return Slip No. (if applicable)
+                                Return Slip No.
                             </Label>
                             <Input
                                 id="liquidation-return-number"
+                                required={editable}
                                 disabled={!editable}
                                 value={form.data.return_slip_no}
                                 onChange={(event) =>
@@ -439,14 +443,14 @@ function DepartmentForm({
                             role="status"
                             className="animate-pulse text-sm text-muted-foreground"
                         >
-                            Loading ISF materials…
+                            Loading issuance slip materials…
                         </p>
                     )}
                     <InputError message={previewError} />
                     {materials.length === 0 && (
                         <p className="text-sm text-muted-foreground">
-                            No materials were released against this ISF by the
-                            selected date.
+                            No materials were released on this issuance slip by
+                            the selected date.
                         </p>
                     )}
                     <div className="overflow-x-auto">
@@ -615,14 +619,16 @@ function DepartmentForm({
                     )}
                     {document && (
                         <>
-                            <a
-                                className="text-sm underline"
-                                href={printLiquidation.url(document.id)}
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                Print IS Liquidation
-                            </a>
+                            {canManage && (
+                                <a
+                                    className="text-sm underline"
+                                    href={printLiquidation.url(document.id)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    Print IS Liquidation
+                                </a>
+                            )}
                             {document.history.map((entry, index) => (
                                 <p
                                     key={index}

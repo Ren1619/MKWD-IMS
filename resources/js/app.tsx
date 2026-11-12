@@ -1,5 +1,6 @@
 import { createInertiaApp } from '@inertiajs/react';
 import type { ReactNode } from 'react';
+import InputValidation from '@/components/input-validation';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
@@ -21,7 +22,7 @@ function AppProviders({ children }: { children: ReactNode }) {
 
     return (
         <TooltipProvider delay={0}>
-            {children}
+            <InputValidation>{children}</InputValidation>
             <Toaster />
         </TooltipProvider>
     );

@@ -31,7 +31,7 @@ class InventoryMonthlyReportBuilder
     /**
      * @return array{payload:array{entity_name:string,from:string,to:string,reports:array<string,array{title:string,columns:list<string>,rows:list<list<string|int|null>>}>,reconciliation:list<array<string,mixed>>},readiness:array{blockers:list<array<string,mixed>>,totals:array<string,int|string>},hash:string}
      */
-    public function build(string $month, ?int $categoryId, bool $includeZero, string $fundCluster): array
+    public function build(string $month, ?int $categoryId, bool $includeZero, string $fundCluster, ?string $selectedReport = null): array
     {
         $from = Carbon::createFromFormat('!Y-m', $month, 'Asia/Manila')->startOfMonth();
         $to = $from->copy()->endOfMonth();
@@ -109,13 +109,20 @@ class InventoryMonthlyReportBuilder
         }
         $reports['adjustments'] = $this->table('adjustments', ['Posting date', 'Approved count / IAM reference', 'Memorandum', 'Stock number', 'Description', 'Signed adjustment quantity', 'FIFO unit cost', 'Signed amount'], $adjustmentRows);
         $blockers = $this->pending($to);
-        [$stockRows,$reconciliation,$stockValue] = $this->stockMaster($from, $to, $categoryId, $includeZero, $blockers);
+        [$stockRows,$reconciliation,$stockValue,$stockAmounts] = $this->stockMaster($from, $to, $categoryId, $includeZero, $blockers);
         $reports['stock-master'] = $this->table('stock-master', ['Stock number', 'Description', 'Classification', 'Unit', 'Opening quantity', 'Receipts', 'Returns', 'Issued', 'Adjustments', 'Closing quantity', 'Closing FIFO value'], $stockRows);
+        $reports['stock-master']['amounts'] = $stockAmounts;
         $ordered = [];
         foreach (self::catalog() as $key => $name) {
             $ordered[$key] = $reports[$key];
         }
+        if ($selectedReport !== null) {
+            $ordered = array_intersect_key($ordered, [$selectedReport => true]);
+        }
         $payload = ['entity_name' => config('app.name'), 'from' => $from->toDateString(), 'to' => $to->toDateString(), 'reports' => $ordered, 'reconciliation' => $reconciliation];
+        if ($selectedReport !== null) {
+            $payload['selected_report'] = $selectedReport;
+        }
         $readiness = ['blockers' => $blockers, 'totals' => ['stock_master_rows' => count($stockRows), 'closing_stock_value' => $stockValue, 'issues' => count($issueRows), 'adjustments' => count($adjustmentRows), 'reports' => count($ordered)]];
 
         return ['payload' => $payload, 'readiness' => $readiness, 'hash' => hash('sha256', json_encode([$payload, $readiness], JSON_THROW_ON_ERROR))];
@@ -147,9 +154,9 @@ class InventoryMonthlyReportBuilder
         $sources = [
             ['Supply request', SupplyRequest::query()->where('status', 'submitted')->where('created_at', '<=', $to->copy()->timezone(config('app.timezone'))), 'ris_no'],
             ['Delivery inspection', ProcurementDelivery::query()->whereIn('status', ['received', 'inspected'])->where('received_at', '<=', $to->copy()->timezone(config('app.timezone'))), 'document_no'],
-            ['Return to stock', InventoryReturn::query()->whereIn('status', ['submitted', 'verified'])->whereDate('return_date', '<=', $to->toDateString()), 'document_no'],
+            ['Return to stock', InventoryReturn::query()->whereIn('status', ['submitted', 'noted', 'received', 'verified'])->whereDate('return_date', '<=', $to->toDateString()), 'document_no'],
             ['Physical count', InventoryCountSession::query()->whereIn('status', ['counting', 'submitted', 'verified'])->where('cutoff_at', '<=', $to->copy()->timezone(config('app.timezone'))), 'document_no'],
-            ['Property acknowledgement', PropertyAccountabilityDocument::query()->where('status', 'pending_recipient')->where('issued_at', '<=', $to->copy()->timezone(config('app.timezone'))), 'document_no'],
+            ['Property acknowledgement / ARE notation', PropertyAccountabilityDocument::query()->whereIn('status', ['pending_recipient', 'pending_note'])->where('issued_at', '<=', $to->copy()->timezone(config('app.timezone'))), 'document_no'],
             ['IS liquidation', DepartmentLiquidation::query()->whereIn('status', ['submitted', 'checked'])->whereDate('liquidation_date', '<=', $to->toDateString()), 'document_no'],
             ['Legacy delivery', ProcurementRequest::query()->where('status', 'delivered')->whereDoesntHave('deliveries')->whereHas('lines', fn ($query) => $query->whereDate('received_at', '<=', $to->toDateString())), 'pr_no'],
         ];
@@ -164,7 +171,7 @@ class InventoryMonthlyReportBuilder
 
     /**
      * @param  list<array<string,mixed>>  $blockers
-     * @return array{list<list<string|int|null>>,list<array<string,mixed>>,string}
+     * @return array{list<list<string|int|null>>,list<array<string,mixed>>,string,array<string,array<string,string>>}
      */
     private function stockMaster(Carbon $from, Carbon $to, ?int $categoryId, bool $includeZero, array &$blockers): array
     {
@@ -172,6 +179,7 @@ class InventoryMonthlyReportBuilder
         $rows = [];
         $reconciliation = [];
         $total = BigDecimal::of('0.00');
+        $amounts = [];
         foreach ($items as $item) {
             if ($item->created_at > $to && ! $item->batches->contains(fn ($batch): bool => $batch->received_at->toDateString() <= $to->toDateString())) {
                 continue;
@@ -179,6 +187,8 @@ class InventoryMonthlyReportBuilder
             if ($item->quantity !== $item->batches->sum('quantity_remaining')) {
                 $blockers[] = ['kind' => 'Stock reconciliation', 'reference' => $item->stock_number, 'status' => 'mismatch', 'reason' => 'Current catalog quantity differs from its batch balances. Investigate and use an approved correction; reports never overwrite stock.'];
             }
+            $movementAmounts = array_fill_keys(['opening', 'received', 'returned', 'issued', 'adjusted'], BigDecimal::of('0.00'));
+            $hasTransactions = false;
             $opening = 0;
             $closing = 0;
             $received = 0;
@@ -194,11 +204,15 @@ class InventoryMonthlyReportBuilder
                 $open = $before ? $batch->quantity_in : 0;
                 $remaining = $batch->quantity_in;
                 if (! $before) {
+                    $hasTransactions = true;
                     if ($batch->returnPostings->isNotEmpty()) {
+                        $movementAmounts['returned'] = $movementAmounts['returned']->plus(BigDecimal::of($batch->unit_cost)->multipliedBy($batch->quantity_in));
                         $returned += $batch->quantity_in;
                     } elseif ($batch->countAdjustments->contains(fn ($entry): bool => $entry->quantity > 0)) {
+                        $movementAmounts['adjusted'] = $movementAmounts['adjusted']->plus(BigDecimal::of($batch->unit_cost)->multipliedBy($batch->quantity_in));
                         $adjusted += $batch->quantity_in;
                     } else {
+                        $movementAmounts['received'] = $movementAmounts['received']->plus(BigDecimal::of($batch->unit_cost)->multipliedBy($batch->quantity_in));
                         $received += $batch->quantity_in;
                     }
                 }
@@ -208,6 +222,8 @@ class InventoryMonthlyReportBuilder
                     if ($date < $from->toDateString()) {
                         $open -= $allocation->quantity;
                     } else {
+                        $hasTransactions = true;
+                        $movementAmounts['issued'] = $movementAmounts['issued']->plus(BigDecimal::of($allocation->unit_cost)->multipliedBy($allocation->quantity));
                         $issued += $allocation->quantity;
                     }
                 }
@@ -219,12 +235,15 @@ class InventoryMonthlyReportBuilder
                     if ($adjustment->created_at < $from->copy()->timezone(config('app.timezone'))) {
                         $open += $adjustment->quantity;
                     } else {
+                        $hasTransactions = true;
+                        $movementAmounts['adjusted'] = $movementAmounts['adjusted']->plus(BigDecimal::of($adjustment->unit_cost)->multipliedBy($adjustment->quantity));
                         $adjusted += $adjustment->quantity;
                     }
                 }
                 if ($remaining < 0 || $open < 0) {
                     $blockers[] = ['kind' => 'Historical stock reconciliation', 'reference' => $item->stock_number, 'status' => 'negative', 'reason' => 'Issue or adjustment dates precede sufficient batch receipts. Correct the source evidence before signing this month.'];
                 }
+                $movementAmounts['opening'] = $movementAmounts['opening']->plus(BigDecimal::of($batch->unit_cost)->multipliedBy($open));
                 $opening += $open;
                 $closing += $remaining;
                 $value = $value->plus(BigDecimal::of($batch->unit_cost)->multipliedBy($remaining));
@@ -234,12 +253,13 @@ class InventoryMonthlyReportBuilder
             if ($closing !== $expected) {
                 $blockers[] = ['kind' => 'Period stock reconciliation', 'reference' => $item->stock_number, 'status' => 'mismatch', 'reason' => 'Opening plus movements does not equal closing stock.'];
             }
-            if (($categoryId === null || $item->series_category_id === $categoryId) && ($includeZero || $closing !== 0)) {
+            if (($categoryId === null || $item->series_category_id === $categoryId) && ($includeZero || $hasTransactions)) {
+                $amounts[$item->stock_number] = array_map(fn (BigDecimal $amount): string => (string) $amount, $movementAmounts);
                 $rows[] = [$item->stock_number, $item->name, $item->seriesCategory->name ?? 'Unclassified', $item->unit_of_measure, $opening, $received, $returned, $issued, $adjusted, $closing, (string) $value];
                 $total = $total->plus($value);
             }
         }
 
-        return [$rows, $reconciliation, (string) $total];
+        return [$rows, $reconciliation, (string) $total, $amounts];
     }
 }

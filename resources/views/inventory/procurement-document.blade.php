@@ -20,9 +20,10 @@
     </style>
 </head>
 <body>
+<x-print-layout>
     @php($details = $record->preprocurement ?? [])
     <div class="toolbar"><button type="button" onclick="window.print()">Print / Save as PDF</button> {{ $record->pr_no }} — {{ str_replace('_', ' ', $record->status) }}</div>
-    <header><p>Metro Kidapawan Water District</p><h1>{{ $record->document_kind === 'JO' ? 'JOB ORDER' : 'PURCHASE REQUISITION' }}</h1><p>{{ $record->pr_no }}</p></header>
+    <header><h1>{{ $record->document_kind === 'JO' ? 'JOB ORDER' : 'PURCHASE REQUISITION' }}</h1><p>{{ $record->pr_no }}</p></header>
     <section class="fields">
         <div><strong>{{ $record->document_kind }} type:</strong> {{ $details['requisition_type'] ?? str_replace('_', ' ', $record->type) }}</div>
         <div><strong>Category:</strong> {{ str_replace('_', ' ', $record->procurement_category ?? '') }}</div>
@@ -64,5 +65,6 @@
     <p><strong>Status:</strong> {{ str_replace('_', ' ', $record->status) }}</p>
     @if(isset($details['forward']))<p><strong>Endorsed to:</strong> {{ $details['forward']['recipient'] }} by {{ $details['forward']['name'] }} on {{ $details['forward']['at'] }}</p>@endif
     <p>Prepared on {{ $details['prepared_at'] ?? $record->created_at }}. Supporting documents and decision history are retained in IMS.</p>
+</x-print-layout>
 </body>
 </html>

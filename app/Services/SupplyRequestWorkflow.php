@@ -21,21 +21,28 @@ class SupplyRequestWorkflow
     {
         return DB::transaction(function () use ($request, $actor, $action, $remarks): SupplyRequest {
             $this->stockGuard->lock();
-            $request = SupplyRequest::query()->whereKey($request->getKey())->lockForUpdate()->with('lines.item')->firstOrFail();
+            $request = SupplyRequest::query()->whereKey($request->getKey())->lockForUpdate()->with(['lines.item', 'requestedFor'])->firstOrFail();
+            $headAccess = app(TemporaryHeadApprovalAccess::class);
+            if ($action === 'approve') {
+                abort_unless($headAccess->canApprove($actor, $request), 403);
+            }
+            abort_unless($actor->canManageInventory() || (in_array($action, ['approve', 'reject'], true)
+                && app(TemporaryHeadApprovalAccess::class)->canApprove($actor, $request)), 403);
             if ($this->isRequestedForActor($request, $actor) && in_array($action, ['approve', 'review', 'release'], true)) {
                 throw ValidationException::withMessages(['action' => 'A requester cannot approve, review, or release their own request.']);
             }
             $from = $request->status;
             $to = match ($action) {
-                'approve' => $this->allowed($from, ['submitted'], 'approved'),
+                'approve' => $this->allowed($from, ['submitted', 'division_approved'], $headAccess->requiredStage($request) === 'division' ? 'division_approved' : 'approved'),
                 'review' => $this->review($request, $actor),
                 'release' => $this->release($request, $actor),
-                'reject' => $this->allowed($from, ['submitted', 'approved', 'awaiting_replenishment', 'ready_for_release'], 'rejected'),
-                'cancel' => $this->allowed($from, ['submitted', 'approved', 'awaiting_replenishment', 'ready_for_release'], 'cancelled'),
+                'reject' => $this->allowed($from, ['submitted', 'division_approved', 'approved', 'awaiting_replenishment', 'ready_for_release'], 'rejected'),
+                'cancel' => $this->allowed($from, ['submitted', 'division_approved', 'approved', 'awaiting_replenishment', 'ready_for_release'], 'cancelled'),
                 default => throw ValidationException::withMessages(['action' => 'Unsupported workflow action.']),
             };
+            $approvalStage = $action === 'approve' ? $headAccess->requiredStage($request) : null;
             $request->update(['status' => $to, 'completed_at' => in_array($to, ['released', 'rejected', 'cancelled'], true) ? now() : null]);
-            $request->actions()->create(['actor_user_id' => $actor->id, 'action' => $action, 'from_status' => $from, 'to_status' => $to, 'remarks' => $remarks, 'attestation' => 'I confirm this action is accurate and authorized.', 'metadata' => ['ip' => request()->ip()]]);
+            $request->actions()->create(['actor_user_id' => $actor->id, 'action' => $action, 'from_status' => $from, 'to_status' => $to, 'remarks' => $remarks, 'attestation' => 'I confirm this action is accurate and authorized.', 'metadata' => ['ip' => request()->ip(), 'hris_reference_id' => $actor->hris_reference_id, 'approval_stage' => $approvalStage]]);
 
             return $request->load(['lines.item', 'actions.actor']);
         });

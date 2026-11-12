@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import type { FormEvent } from 'react';
 import { FormErrorSummary } from '@/components/form-error-summary';
 import InputError from '@/components/input-error';
+import { ResponsibilityCenterCombobox } from '@/components/responsibility-center-combobox';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
@@ -295,41 +296,26 @@ export function RequestForm({
                             <Label htmlFor="request-charge-account">
                                 Charge To
                             </Label>
-                            <Input
+                            <ResponsibilityCenterCombobox
                                 id="request-charge-account"
                                 name="charge_account"
-                                role="combobox"
-                                list="request-charge-accounts"
-                                aria-autocomplete="list"
-                                aria-controls="request-charge-accounts"
+                                options={accounts}
                                 value={form.data.charge_account}
-                                onChange={(event) =>
-                                    form.setData(
-                                        'charge_account',
-                                        event.target.value,
-                                    )
+                                onValueChange={(value) =>
+                                    form.setData('charge_account', value)
                                 }
-                                placeholder="Select account"
+                                placeholder="Select or enter a charge code"
                                 disabled={accounts.length === 0}
                                 aria-invalid={Boolean(
                                     form.errors.charge_account,
                                 )}
                             />
-                            <datalist id="request-charge-accounts">
-                                {accounts.map((account) => (
-                                    <option
-                                        key={account.code}
-                                        value={account.code}
-                                    >
-                                        {account.name}
-                                    </option>
-                                ))}
-                            </datalist>
                             {accounts.length === 0 && (
                                 <p className="text-xs text-muted-foreground">
                                     API from BAMS
                                 </p>
-                            )}{/* needs API date from BAMS */}
+                            )}
+                            {/* needs API date from BAMS */}
                             <InputError message={form.errors.charge_account} />
                         </div>
                     </div>

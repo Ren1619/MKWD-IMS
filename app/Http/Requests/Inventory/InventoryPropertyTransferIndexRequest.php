@@ -2,14 +2,14 @@
 
 namespace App\Http\Requests\Inventory;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\ValidatedFormRequest;
 use Illuminate\Validation\Rule;
 
-class InventoryPropertyTransferIndexRequest extends FormRequest
+class InventoryPropertyTransferIndexRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('manage-inventory') ?? false;
+        return $this->user() !== null;
     }
 
     /** @return array<string, array<mixed>> */

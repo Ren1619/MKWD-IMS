@@ -23,6 +23,8 @@ export type ReturnLine = {
     unit_cost: string;
     expiration_date: string | null;
     condition: string | null;
+    warehouse_id: number | null;
+    warehouse_name: string | null;
     storage_location: string | null;
     inspection_remarks: string | null;
     valuation_basis: string | null;
@@ -41,6 +43,8 @@ export type ReturnAction = {
     metadata: Record<string, unknown> | null;
 };
 export type ReturnDocument = {
+    workflow_version: number;
+    document_date: string;
     id: number;
     document_no: string;
     return_date: string;
@@ -49,7 +53,6 @@ export type ReturnDocument = {
     source_mode: 'linked' | 'legacy';
     status: string;
     reason: string;
-    endorsement_reference: string;
     inspection_reference: string | null;
     legacy_issue_reference: string | null;
     approved_at: string | null;

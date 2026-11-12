@@ -25,6 +25,7 @@ export type CountEntry = {
     remarks: string | null;
     created_at: string;
 };
+export type CountWarehouse = { id: number; name: string };
 export type CountLine = {
     id: number;
     tag_no: string;

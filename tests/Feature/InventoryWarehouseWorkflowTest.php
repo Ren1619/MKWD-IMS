@@ -7,6 +7,7 @@ use App\Models\InventoryItem;
 use App\Models\InventoryItemBatch;
 use App\Models\InventoryStockControl;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\InventoryStockService;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -20,7 +21,7 @@ beforeEach(function () {
 });
 function placementIntake(array $overrides = []): array
 {
-    return ['latest_placement_id' => null, 'warehouse' => 'Manongol Reservoir Complex', 'area' => 'Project materials', 'rack' => 'Rack A', 'bin' => 'Bin 1', 'observed_quantity' => 10,
+    return ['latest_placement_id' => null, 'warehouse_id' => Warehouse::query()->firstOrCreate(['name' => $overrides['warehouse'] ?? 'Manongol Reservoir Complex'])->id, 'warehouse' => 'Manongol Reservoir Complex', 'area' => 'Project materials', 'rack' => 'Rack A', 'bin' => 'Bin 1', 'observed_quantity' => 10,
         'source_evidence_reference' => 'SIGNED-RR-POSTED-1', 'remarks' => 'Quantity and description counter-checked against signed RR.', 'attested' => true, ...$overrides];
 }
 function confirmWarehousePlacement(array $overrides = []): void
@@ -81,7 +82,7 @@ test('warehouse confirmation requires evidence observed quantity and attestation
     expect(InventoryBatchPlacement::query()->count())->toBe(0);
 })->with([
     [['source_evidence_reference' => ''], 'source_evidence_reference'],
-    [['remarks' => ''], 'remarks'], [['attested' => false], 'attested'], [['warehouse' => ''], 'warehouse'], [['area' => ''], 'area'],
+    [['remarks' => ''], 'remarks'], [['attested' => false], 'attested'], [['warehouse_id' => ''], 'warehouse_id'], [['area' => ''], 'area'],
     [['rack' => str_repeat('a', 101)], 'rack'], [['latest_placement_id' => 0], 'latest_placement_id'],
 ]);
 test('inactive archived depleted and future receipts cannot be placed', function (string $state) {
@@ -128,4 +129,25 @@ test('warehouse pagination and invalid criteria are validated server side', func
     $this->get(route('inventory.warehouse.index'))->assertInertia(fn (Assert $page) => $page->has('batches.data', 15)->where('batches.total', 17));
     $this->get(route('inventory.warehouse.index', ['placement' => 'invalid']))->assertSessionHasErrors('placement');
     $this->get(route('inventory.warehouse.show', 999999))->assertNotFound();
+});
+
+test('batch storage dialogs load current placement and history through authorized json', function () {
+    $this->getJson(route('inventory.warehouse.show', $this->batch))
+        ->assertSuccessful()
+        ->assertJsonPath('batch.inventory_item_batch_id', $this->batch->getKey())
+        ->assertJsonPath('batch.item.name', 'Warehouse material')
+        ->assertJsonPath('batch.latest_placement', null)
+        ->assertJsonCount(0, 'batch.placements');
+
+    confirmWarehousePlacement();
+    $placement = $this->batch->latestPlacement()->sole();
+    $this->getJson(route('inventory.warehouse.show', $this->batch))
+        ->assertSuccessful()
+        ->assertJsonPath('batch.latest_placement.id', $placement->id)
+        ->assertJsonPath('batch.placements.0.source_evidence_reference', 'SIGNED-RR-POSTED-1')
+        ->assertJsonPath('warehouses.0.id', $placement->warehouse_id)
+        ->assertJsonCount(1, 'batch.placements');
+
+    $this->actingAs(User::factory()->employee()->create());
+    $this->getJson(route('inventory.warehouse.show', $this->batch))->assertForbidden();
 });

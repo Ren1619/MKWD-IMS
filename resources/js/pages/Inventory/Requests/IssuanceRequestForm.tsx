@@ -4,6 +4,8 @@ import { useRef } from 'react';
 import type { FormEvent } from 'react';
 import { FormErrorSummary } from '@/components/form-error-summary';
 import InputError from '@/components/input-error';
+import { InventoryItemCombobox } from '@/components/inventory-item-combobox';
+import { ResponsibilityCenterCombobox } from '@/components/responsibility-center-combobox';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -16,7 +18,7 @@ import { Label } from '@/components/ui/label';
 import { store } from '@/routes/inventory/requests';
 
 export type IssuanceContext = {
-    isf_no: string | null;
+    irf_no: string | null;
     department: string | null;
     date: string;
     requested_by: string;
@@ -80,6 +82,38 @@ export function IssuanceRequestForm({
         });
     }
 
+    function updateLine(
+        index: number,
+        key: 'quantity' | 'unit_of_measure' | 'item_name',
+        value: string,
+    ) {
+        const item =
+            key === 'item_name'
+                ? items.find((item) => item.name === value)
+                : undefined;
+        form.setData(
+            'lines',
+            form.data.lines.map((entry, entryIndex) =>
+                entryIndex === index
+                    ? {
+                          ...entry,
+                          [key]: key === 'quantity' ? Number(value) : value,
+                          ...(key === 'item_name'
+                              ? {
+                                    inventory_item_id: item
+                                        ? String(item.inventory_item_id)
+                                        : '',
+                                    unit_of_measure:
+                                        item?.unit_of_measure ??
+                                        entry.unit_of_measure,
+                                }
+                              : {}),
+                      }
+                    : entry,
+            ),
+        );
+    }
+
     return (
         <Dialog open={open} onOpenChange={close}>
             <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl">
@@ -89,18 +123,18 @@ export function IssuanceRequestForm({
                     </DialogHeader>
                     <div className="grid items-start gap-4 sm:grid-cols-3">
                         <div className="grid gap-2">
-                            <Label htmlFor="isf-department">Department</Label>
+                            <Label htmlFor="irf-department">Department</Label>
                             <Input
-                                id="isf-department"
+                                id="irf-department"
                                 value={context.department ?? ''}
                                 placeholder="Unavailable in system information"
                                 readOnly
                             />
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="isf-date">Date</Label>
+                            <Label htmlFor="irf-date">Date</Label>
                             <Input
-                                id="isf-date"
+                                id="irf-date"
                                 value={new Date(
                                     `${context.date}T00:00:00`,
                                 ).toLocaleDateString('en-PH', {
@@ -115,10 +149,10 @@ export function IssuanceRequestForm({
                             </p>
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="isf-number">ISF No.</Label>
+                            <Label htmlFor="irf-number">IRF No.</Label>
                             <Input
-                                id="isf-number"
-                                value={context.isf_no ?? ''}
+                                id="irf-number"
+                                value={context.irf_no ?? ''}
                                 placeholder="Daily number limit reached"
                                 readOnly
                             />
@@ -128,9 +162,9 @@ export function IssuanceRequestForm({
                         </div>
                     </div>
                     <div className="grid gap-2">
-                        <Label htmlFor="isf-purpose">Purpose</Label>
+                        <Label htmlFor="irf-purpose">Purpose</Label>
                         <textarea
-                            id="isf-purpose"
+                            id="irf-purpose"
                             rows={3}
                             className="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                             value={form.data.purpose}
@@ -147,16 +181,6 @@ export function IssuanceRequestForm({
                         <legend className="mb-3 text-sm font-medium">
                             List of Items Needed
                         </legend>
-                        <datalist id="isf-items">
-                            {items.map((item) => (
-                                <option
-                                    key={item.inventory_item_id}
-                                    value={item.name}
-                                >
-                                    {item.unit_of_measure}
-                                </option>
-                            ))}
-                        </datalist>
                         {form.data.lines.map((line, index) => (
                             <div
                                 key={index}
@@ -171,85 +195,62 @@ export function IssuanceRequestForm({
                                 ).map(([key, label]) => (
                                     <div key={key} className="grid gap-2">
                                         <Label
-                                            htmlFor={`isf-line-${index}-${key}`}
+                                            htmlFor={`irf-line-${index}-${key}`}
                                         >
                                             {label}
                                         </Label>
-                                        <Input
-                                            id={`isf-line-${index}-${key}`}
-                                            type={
-                                                key === 'quantity'
-                                                    ? 'number'
-                                                    : 'text'
-                                            }
-                                            min={
-                                                key === 'quantity'
-                                                    ? 1
-                                                    : undefined
-                                            }
-                                            list={
-                                                key === 'item_name'
-                                                    ? 'isf-items'
-                                                    : undefined
-                                            }
-                                            value={line[key]}
-                                            readOnly={
-                                                key === 'unit_of_measure' &&
-                                                Boolean(line.inventory_item_id)
-                                            }
-                                            onChange={(event) => {
-                                                const item =
-                                                    key === 'item_name'
-                                                        ? items.find(
-                                                              (item) =>
-                                                                  item.name ===
-                                                                  event.target
-                                                                      .value,
-                                                          )
-                                                        : undefined;
-                                                form.setData(
-                                                    'lines',
-                                                    form.data.lines.map(
-                                                        (entry, entryIndex) =>
-                                                            entryIndex === index
-                                                                ? {
-                                                                      ...entry,
-                                                                      [key]:
-                                                                          key ===
-                                                                          'quantity'
-                                                                              ? Number(
-                                                                                    event
-                                                                                        .target
-                                                                                        .value,
-                                                                                )
-                                                                              : event
-                                                                                    .target
-                                                                                    .value,
-                                                                      ...(key ===
-                                                                      'item_name'
-                                                                          ? {
-                                                                                inventory_item_id:
-                                                                                    item
-                                                                                        ? String(
-                                                                                              item.inventory_item_id,
-                                                                                          )
-                                                                                        : '',
-                                                                                unit_of_measure:
-                                                                                    item?.unit_of_measure ??
-                                                                                    entry.unit_of_measure,
-                                                                            }
-                                                                          : {}),
-                                                                  }
-                                                                : entry,
-                                                    ),
-                                                );
-                                            }}
-                                            aria-invalid={Boolean(
-                                                form.errors[
-                                                    `lines.${index}.${key}`
-                                                ],
-                                            )}
-                                        />
+                                        {key === 'item_name' ? (
+                                            <InventoryItemCombobox
+                                                id={`irf-line-${index}-${key}`}
+                                                items={items}
+                                                value={line.item_name}
+                                                onValueChange={(value) =>
+                                                    updateLine(
+                                                        index,
+                                                        key,
+                                                        value,
+                                                    )
+                                                }
+                                                aria-invalid={Boolean(
+                                                    form.errors[
+                                                        `lines.${index}.${key}`
+                                                    ],
+                                                )}
+                                            />
+                                        ) : (
+                                            <Input
+                                                id={`irf-line-${index}-${key}`}
+                                                type={
+                                                    key === 'quantity'
+                                                        ? 'number'
+                                                        : 'text'
+                                                }
+                                                min={
+                                                    key === 'quantity'
+                                                        ? 1
+                                                        : undefined
+                                                }
+                                                value={line[key]}
+                                                readOnly={
+                                                    key === 'unit_of_measure' &&
+                                                    Boolean(
+                                                        line.inventory_item_id,
+                                                    )
+                                                }
+                                                onChange={(event) =>
+                                                    updateLine(
+                                                        index,
+                                                        key,
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                aria-invalid={Boolean(
+                                                    form.errors[
+                                                        `lines.${index}.${key}`
+                                                    ],
+                                                )}
+                                            />
+                                        )}
                                         <InputError
                                             message={
                                                 form.errors[
@@ -297,33 +298,23 @@ export function IssuanceRequestForm({
                         </Button>
                     </fieldset>
                     <div className="grid gap-2">
-                        <Label htmlFor="isf-charge-code">CHARGE CODE</Label>
-                        <Input
-                            id="isf-charge-code"
-                            role="combobox"
-                            list="isf-charge-codes"
-                            aria-controls="isf-charge-codes"
-                            aria-autocomplete="list"
-                            placeholder="Select charge code"
+                        <Label htmlFor="irf-charge-code">CHARGE CODE</Label>
+                        <ResponsibilityCenterCombobox
+                            id="irf-charge-code"
+                            options={chargeCodes}
                             value={form.data.responsibility_center_code}
-                            disabled={chargeCodes.length === 0}
-                            onChange={(event) =>
+                            onValueChange={(value) =>
                                 form.setData(
                                     'responsibility_center_code',
-                                    event.target.value,
+                                    value,
                                 )
                             }
+                            placeholder="Select or enter a charge code"
+                            disabled={chargeCodes.length === 0}
                             aria-invalid={Boolean(
                                 form.errors.responsibility_center_code,
                             )}
                         />
-                        <datalist id="isf-charge-codes">
-                            {chargeCodes.map((account) => (
-                                <option key={account.code} value={account.code}>
-                                    {account.name}
-                                </option>
-                            ))}
-                        </datalist>
                         {chargeCodes.length === 0 && (
                             <p className="text-xs text-muted-foreground">
                                 Awaiting accounts from Budget and Accounting
@@ -343,9 +334,9 @@ export function IssuanceRequestForm({
                             ] as const
                         ).map(([key, label]) => (
                             <div key={key} className="grid gap-2">
-                                <Label htmlFor={`isf-${key}`}>{label}</Label>
+                                <Label htmlFor={`irf-${key}`}>{label}</Label>
                                 <Input
-                                    id={`isf-${key}`}
+                                    id={`irf-${key}`}
                                     value={context[key] ?? ''}
                                     placeholder="Unavailable in system information"
                                     readOnly

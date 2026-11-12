@@ -8,6 +8,8 @@ import {
     PackagePlus,
     Users,
 } from 'lucide-react';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -122,7 +124,7 @@ export default function InventoryDashboard({
     return (
         <>
             <Head title="IMS Dashboard" />
-            <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+            <PageContainer>
                 <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
                     <div>
                         <p className="text-sm font-medium text-primary">
@@ -373,6 +375,10 @@ export default function InventoryDashboard({
                                         >
                                             <TableCell className="py-3 font-medium">
                                                 {release.item.name}
+                                                <RecordChangeBadge
+                                                    collection="recentStockOuts"
+                                                    record={release}
+                                                />
                                             </TableCell>
                                             <TableCell className="py-3">
                                                 {release.recipient_reference
@@ -450,7 +456,7 @@ export default function InventoryDashboard({
                         </CardContent>
                     </Card>
                 </div>
-            </div>
+            </PageContainer>
         </>
     );
 }

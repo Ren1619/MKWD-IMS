@@ -12,6 +12,7 @@ use App\Models\User;
 use App\SemiExpendableAccountabilityStatus;
 use App\SemiExpendablePhysicalStatus;
 use App\SemiExpendableValueClass;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -26,6 +27,7 @@ class PropertyAccountabilityService
         ?PropertyAccountabilityDocument $supersedes = null,
     ): PropertyAccountabilityDocument {
         return DB::transaction(function () use ($asset, $assignment, $issuer, $supersedes): PropertyAccountabilityDocument {
+            abort_unless($issuer->canManageInventory(), 403);
             $lockedAsset = InventoryAsset::query()
                 ->whereKey($asset->getKey())
                 ->lockForUpdate()
@@ -46,7 +48,7 @@ class PropertyAccountabilityService
 
             if ($cost <= 0) {
                 throw ValidationException::withMessages([
-                    'asset' => 'An acquisition cost is required before issuing a PAR or ICS.',
+                    'asset' => 'An acquisition cost is required before issuing an ARE or ICS.',
                 ]);
             }
 
@@ -57,10 +59,17 @@ class PropertyAccountabilityService
                     'asset' => 'Resolve the asset accounting classification before issuing an accountability document.',
                 ]);
             }
+            if ($documentType === 'PAR') {
+                $documentType = 'ARE';
+            }
+
+            $position = data_get($lockedAsset->currentCustodian->metadata, 'position', []);
+            $departmentId = data_get($position, 'department.id');
+            $divisionId = data_get($position, 'division.id');
             $issuedAt = now();
             $issuerAttestation = 'I certify that the property was issued as described and custody was assigned to the named recipient.';
             $valueClass = $documentType === 'ICS' ? $lockedAsset->semi_expendable_value_class : null;
-            $sequence = $this->nextSequence($documentType, $valueClass?->value ?? 'all', $issuedAt->year);
+            $sequence = $this->nextSequence($documentType, $valueClass->value ?? 'all', $issuedAt->year);
             $accountabilityExpiresAt = $valueClass === SemiExpendableValueClass::Low
                 ? $issuedAt->copy()->addMonths($lockedAsset->depreciation_useful_life_months)->toDateString()
                 : null;
@@ -76,9 +85,13 @@ class PropertyAccountabilityService
                 'issued_by_user_id' => $issuer->id,
                 'supersedes_document_id' => $supersedes?->getKey(),
                 'status' => 'pending_recipient',
+                'notation_required' => $documentType === 'ARE' && filled($divisionId),
+                'recipient_department_id' => filled($departmentId) ? (string) $departmentId : null,
+                'recipient_division_id' => filled($divisionId) ? (string) $divisionId : null,
+                'recipient_division_name' => data_get($position, 'division.name'),
                 'entity_name' => config('app.name'),
                 'fund_cluster' => $lockedAsset->fund_cluster,
-                'asset_name' => $lockedAsset->name,
+                'asset_name' => $lockedAsset->item_description,
                 'asset_description' => $lockedAsset->description,
                 'property_number' => $lockedAsset->property_number,
                 'serial_number' => $lockedAsset->serial_number,
@@ -165,7 +178,7 @@ class PropertyAccountabilityService
             ]);
         }
 
-        if ($asset->accountabilityDocuments()->whereIn('status', ['pending_recipient', 'active'])->exists()) {
+        if ($asset->accountabilityDocuments()->whereIn('status', ['pending_recipient', 'pending_note', 'active'])->exists()) {
             throw ValidationException::withMessages([
                 'asset' => 'This asset already has a current accountability document.',
             ]);
@@ -206,13 +219,16 @@ class PropertyAccountabilityService
                     'remarks' => 'Describe how the recipient acknowledgment was verified.',
                 ]);
             }
+            if ($lockedDocument->document_type === 'ARE' && $witnessed) {
+                throw ValidationException::withMessages(['action' => 'The end user must personally acknowledge this ARE.']);
+            }
 
             $attestation = $witnessed
                 ? 'I certify that the named recipient acknowledged custody through the verification described in the remarks.'
                 : 'I acknowledge receipt and accept responsibility for the proper use and safekeeping of the listed government property.';
 
             $lockedDocument->update([
-                'status' => 'active',
+                'status' => $lockedDocument->document_type === 'ARE' && $lockedDocument->notation_required ? 'pending_note' : 'active',
                 'acknowledged_by_user_id' => $actor->id,
                 'recipient_attestation' => $attestation,
                 'acknowledged_at' => now(),
@@ -229,12 +245,78 @@ class PropertyAccountabilityService
                 $actor,
                 $witnessed ? 'record_witnessed_acknowledgment' : 'acknowledge',
                 'pending_recipient',
-                'active',
+                $lockedDocument->status,
                 $attestation,
                 $remarks,
             );
 
             return $lockedDocument->refresh();
+        });
+    }
+
+    public function canNote(PropertyAccountabilityDocument $document, User $user): bool
+    {
+        $scope = app(TemporaryHeadApprovalAccess::class)->jurisdiction($user);
+
+        return $document->document_type === 'ARE' && $document->notation_required
+            && $document->status === 'pending_note' && $document->acknowledged_at !== null
+            && $document->issued_by_user_id !== $user->id
+            && $document->recipient_reference_id !== $user->hris_reference_id
+            && $scope !== null && filled($scope['division_id'])
+            && (string) $scope['department_id'] === $document->recipient_department_id
+            && (string) $scope['division_id'] === $document->recipient_division_id;
+    }
+
+    public function note(PropertyAccountabilityDocument $document, User $actor, ?string $remarks = null): PropertyAccountabilityDocument
+    {
+        return DB::transaction(function () use ($document, $actor, $remarks): PropertyAccountabilityDocument {
+            $locked = PropertyAccountabilityDocument::query()
+                ->whereKey($document->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+            abort_unless($this->canNote($locked, $actor), 403);
+
+            $attestation = 'I note the acknowledged receipt and accountability of the listed equipment within my division.';
+            $locked->update([
+                'status' => 'active',
+                'noted_by_user_id' => $actor->id,
+                'noted_by_name' => $actor->name,
+                'noter_attestation' => $attestation,
+                'noted_at' => now(),
+            ]);
+            $this->recordAction($locked, $actor, 'note', 'pending_note', 'active', $attestation, $remarks);
+
+            return $locked->refresh();
+        });
+    }
+
+    /** @return Builder<PropertyAccountabilityDocument> */
+    public function visibleTo(User $user): Builder
+    {
+        $query = PropertyAccountabilityDocument::query();
+
+        if ($user->canManageInventory()) {
+            return $query;
+        }
+
+        $scope = app(TemporaryHeadApprovalAccess::class)->jurisdiction($user);
+
+        return $query->where(function (Builder $query) use ($user, $scope): void {
+            $query->where('issued_by_user_id', $user->id)
+                ->orWhere('noted_by_user_id', $user->id)
+                ->orWhereHas('actions', fn (Builder $query) => $query->where('actor_user_id', $user->id));
+
+            if ($user->hris_reference_id !== null) {
+                $query->orWhere('recipient_reference_id', $user->hris_reference_id);
+            }
+
+            if ($scope !== null && filled($scope['division_id'])) {
+                $query->orWhere(fn (Builder $query) => $query
+                    ->where('document_type', 'ARE')
+                    ->where('status', 'pending_note')
+                    ->where('recipient_department_id', (string) $scope['department_id'])
+                    ->where('recipient_division_id', (string) $scope['division_id']));
+            }
         });
     }
 
@@ -250,7 +332,7 @@ class PropertyAccountabilityService
                 ->with(['asset', 'custodianAssignment'])
                 ->firstOrFail();
 
-            if (! in_array($lockedDocument->status, ['active', 'pending_recipient'], true)) {
+            if (! in_array($lockedDocument->status, ['active', 'pending_note', 'pending_recipient'], true)) {
                 throw ValidationException::withMessages([
                     'action' => 'Only a current document may be renewed.',
                 ]);
@@ -291,7 +373,7 @@ class PropertyAccountabilityService
         string $reason,
     ): void {
         $documents = $asset->accountabilityDocuments()
-            ->whereIn('status', ['pending_recipient', 'active'])
+            ->whereIn('status', ['pending_recipient', 'pending_note', 'active'])
             ->lockForUpdate()
             ->get();
 
@@ -328,12 +410,13 @@ class PropertyAccountabilityService
                 ->with('asset')
                 ->firstOrFail();
 
-            if ($lockedDocument->status !== 'pending_recipient') {
+            if (! in_array($lockedDocument->status, ['pending_recipient', 'pending_note'], true)) {
                 throw ValidationException::withMessages([
-                    'action' => 'Only an unacknowledged document may be cancelled.',
+                    'action' => 'Only an incomplete accountability document may be cancelled.',
                 ]);
             }
 
+            $from = $lockedDocument->status;
             $lockedDocument->update([
                 'status' => 'cancelled',
                 'closed_at' => now(),
@@ -344,7 +427,7 @@ class PropertyAccountabilityService
                 $lockedDocument,
                 $actor,
                 'cancel',
-                'pending_recipient',
+                $from,
                 'cancelled',
                 'I certify that this document was cancelled for the stated reason.',
                 $reason,

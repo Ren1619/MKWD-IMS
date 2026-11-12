@@ -20,7 +20,6 @@ class InventoryReturnFactory extends Factory
             'source_mode' => 'legacy',
             'returned_by_name' => fake()->name(),
             'department_name' => 'Operations',
-            'endorsement_reference' => 'ENDORSE-1',
             'legacy_issue_reference' => 'LEGACY-IS-1',
             'reason' => 'Unused project materials.',
             'status' => 'submitted',

@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 /**
  * @property CarbonInterface $issued_at
  * @property CarbonInterface|null $acknowledged_at
+ * @property CarbonInterface|null $noted_at
  * @property string $acquisition_cost
  * @property CarbonInterface|null $acquisition_date
  * @property CarbonInterface|null $closed_at
@@ -28,6 +29,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'issued_by_name', 'issuer_attestation', 'recipient_attestation', 'issued_at', 'acknowledged_at',
     'renewal_due_at', 'closed_at', 'closure_reason',
     'value_class', 'sequence_no', 'accountability_expires_at',
+    'notation_required', 'recipient_department_id', 'recipient_division_id', 'recipient_division_name',
+    'noted_by_user_id', 'noted_by_name', 'noter_attestation', 'noted_at',
 ])]
 class PropertyAccountabilityDocument extends Model
 {
@@ -47,6 +50,8 @@ class PropertyAccountabilityDocument extends Model
             'closed_at' => 'datetime',
             'sequence_no' => 'integer',
             'accountability_expires_at' => 'date',
+            'notation_required' => 'boolean',
+            'noted_at' => 'datetime',
         ];
     }
 

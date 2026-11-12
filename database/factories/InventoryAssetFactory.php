@@ -26,7 +26,7 @@ class InventoryAssetFactory extends Factory
             ])->getKey(),
             'serial_number' => fake()->unique()->bothify('SN-########'),
             'property_number' => fake()->unique()->bothify('PROP-######'),
-            'name' => fake()->words(3, true),
+            'item_description' => fake()->words(3, true),
             'unit_of_measure' => 'unit',
             'brand' => fake()->company(),
             'model' => fake()->bothify('Model-##??'),

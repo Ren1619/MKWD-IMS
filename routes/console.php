@@ -12,3 +12,6 @@ Schedule::command('inventory:expire-low-value-accountabilities')
     ->dailyAt('00:30')
     ->onOneServer()
     ->withoutOverlapping();
+Schedule::command('ims:sync-hris')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();

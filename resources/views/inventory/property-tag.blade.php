@@ -28,15 +28,15 @@
     </style>
 </head>
 <body>
+<x-print-layout compact>
     <div class="toolbar">
         <span>Permanent QR property tag</span>
         <button type="button" onclick="window.print()">Print tag</button>
     </div>
     <main class="tag tag-{{ strtolower($tagColor) }}">
-        <div class="qr"><img src="{{ $qrCodeDataUri }}" alt="QR code for {{ $asset->name }}"></div>
+        <div class="qr"><img src="{{ $qrCodeDataUri }}" alt="QR code for {{ $asset->item_description }}"></div>
         <div>
-            <p class="agency">{{ config('app.name') }}</p>
-            <h1 class="title">{{ $asset->name }}</h1>
+            <h1 class="title">{{ $asset->item_description }}</h1>
             <span class="classification">{{ $asset->accounting_classification->label() }} / {{ $tagColor }} tag</span>
             <dl>
                 <dt>Property no.</dt><dd>{{ $asset->property_number ?: 'Not assigned' }}</dd>
@@ -52,5 +52,6 @@
         </div>
         <p class="scan">Scan to verify this property record. Tag ID: {{ $asset->property_tag_uuid }}</p>
     </main>
+</x-print-layout>
 </body>
 </html>

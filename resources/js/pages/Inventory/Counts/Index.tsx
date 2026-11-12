@@ -2,6 +2,8 @@ import { Head, Link, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -9,6 +11,7 @@ import {
     TableHead,
     TableHeader,
     TableRow,
+    TableRowLink,
 } from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -46,7 +49,7 @@ export default function CountsIndex({
     return (
         <>
             <Head title="Physical counts" />
-            <div className="flex flex-col gap-6 p-4 md:p-6">
+            <PageContainer>
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-semibold">
@@ -86,14 +89,18 @@ export default function CountsIndex({
                         </TableHeader>
                         <TableBody>
                             {sessions.data.map((session) => (
-                                <TableRow key={session.id}>
+                                <TableRowLink
+                                    key={session.id}
+                                    href={show.url(session.id)}
+                                >
                                     <TableCell>
-                                        <Link
-                                            className="font-medium underline underline-offset-4"
-                                            href={show(session.id)}
-                                        >
+                                        <span className="font-medium">
                                             {session.document_no}
-                                        </Link>
+                                            <RecordChangeBadge
+                                                collection="sessions"
+                                                record={session}
+                                            />
+                                        </span>
                                         <p className="mt-1 whitespace-normal text-muted-foreground">
                                             {session.title}
                                         </p>
@@ -107,7 +114,7 @@ export default function CountsIndex({
                                         </Badge>
                                     </TableCell>
                                     <TableCell>{session.lines_count}</TableCell>
-                                </TableRow>
+                                </TableRowLink>
                             ))}
                             {sessions.data.length === 0 && (
                                 <TableRow>
@@ -124,7 +131,7 @@ export default function CountsIndex({
                     </Table>
                 </div>
                 <DataPagination links={sessions.links} />
-            </div>
+            </PageContainer>
             <Dialog
                 open={planning}
                 onOpenChange={(open) => {
@@ -147,6 +154,7 @@ export default function CountsIndex({
                         </DialogDescription>
                     </DialogHeader>
                     <form
+                        noValidate
                         className="grid gap-4"
                         onSubmit={(event) => {
                             event.preventDefault();
@@ -159,6 +167,7 @@ export default function CountsIndex({
                             <Label htmlFor="count-title">Count title</Label>
                             <Input
                                 id="count-title"
+                                aria-invalid={!!form.errors.title}
                                 required
                                 maxLength={255}
                                 value={form.data.title}
@@ -166,6 +175,7 @@ export default function CountsIndex({
                                     form.setData('title', event.target.value)
                                 }
                             />
+                            <InputError message={form.errors.title} />
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="count-scheduled">
@@ -173,12 +183,14 @@ export default function CountsIndex({
                             </Label>
                             <DatePicker
                                 id="count-scheduled"
+                                aria-invalid={!!form.errors.scheduled_date}
                                 required
                                 value={form.data.scheduled_date}
                                 onChange={(value) =>
                                     form.setData('scheduled_date', value)
                                 }
                             />
+                            <InputError message={form.errors.scheduled_date} />
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="count-memo">
@@ -186,6 +198,9 @@ export default function CountsIndex({
                             </Label>
                             <Input
                                 id="count-memo"
+                                aria-invalid={
+                                    !!form.errors.memorandum_reference
+                                }
                                 required
                                 maxLength={120}
                                 value={form.data.memorandum_reference}
@@ -196,6 +211,9 @@ export default function CountsIndex({
                                     )
                                 }
                             />
+                            <InputError
+                                message={form.errors.memorandum_reference}
+                            />
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="count-team">
@@ -205,6 +223,7 @@ export default function CountsIndex({
                                 rows={3}
                                 className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 id="count-team"
+                                aria-invalid={!!form.errors.team_details}
                                 required
                                 maxLength={3000}
                                 value={form.data.team_details}
@@ -216,6 +235,7 @@ export default function CountsIndex({
                                 }
                                 placeholder="Counters, checkers, validators, witnesses, locations, and schedule"
                             />
+                            <InputError message={form.errors.team_details} />
                         </div>
                         <label className="flex items-start gap-2 text-sm">
                             <input
@@ -231,12 +251,8 @@ export default function CountsIndex({
                             I confirm this plan follows the approved inventory
                             memorandum.
                         </label>
-                        {Object.entries(form.errors).map(([key, error]) => (
-                            <InputError key={key} message={error} />
-                        ))}
-                        <Button
-                            disabled={form.processing || !form.data.attested}
-                        >
+                        <InputError message={form.errors.attested} />
+                        <Button type="submit" disabled={form.processing}>
                             Create count session
                         </Button>
                     </form>

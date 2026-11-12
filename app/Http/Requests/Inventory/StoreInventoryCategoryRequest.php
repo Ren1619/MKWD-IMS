@@ -2,13 +2,13 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\Http\Requests\ValidatedFormRequest;
 use App\InventoryCategoryType;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
-class StoreInventoryCategoryRequest extends FormRequest
+class StoreInventoryCategoryRequest extends ValidatedFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.

@@ -1,7 +1,10 @@
 import { Head, Link, useForm } from '@inertiajs/react';
+import { ArrowLeft, Check } from 'lucide-react';
 import { useState } from 'react';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -31,7 +34,7 @@ import {
 } from '@/routes/inventory/counts';
 import type { Paginated } from '@/types/inventory';
 import { statusLabel } from './types';
-import type { CountLine, CountSession } from './types';
+import type { CountLine, CountSession, CountWarehouse } from './types';
 
 type CountAction = {
     actor_name: string;
@@ -53,18 +56,26 @@ const labels: Record<string, string> = {
 function ObservationDialog({
     session,
     line,
+    warehouses,
     close,
 }: {
     session: CountSession;
     line: CountLine;
+    warehouses: CountWarehouse[];
     close: () => void;
 }) {
     const latest = line.latest_entry;
+    const registeredLocation = warehouses.some(
+        (warehouse) => warehouse.name === latest?.location,
+    );
     const form = useForm({
         latest_entry_id: latest?.id ?? null,
         quantity: '',
         condition: latest?.condition ?? 'good',
-        location: latest?.location ?? '',
+        location: registeredLocation ? (latest?.location ?? '') : '',
+        other_location: registeredLocation ? '' : (latest?.location ?? ''),
+        location_type:
+            latest === null || registeredLocation ? 'stockroom' : 'other',
         aisle: latest?.aisle ?? '',
         bin: latest?.bin ?? '',
         counter_name: latest?.counter_name ?? '',
@@ -147,9 +158,75 @@ function ObservationDialog({
                                 </option>
                             </FormSelect>
                         </div>
+                        <div className="grid gap-2 sm:col-span-2">
+                            <Label htmlFor="count-location-type">
+                                Found at
+                            </Label>
+                            <FormSelect
+                                id="count-location-type"
+                                value={form.data.location_type}
+                                onChange={(event) => {
+                                    const locationType = event.target.value;
+                                    form.setData('location_type', locationType);
+                                    form.setData('location', '');
+                                    form.setData('other_location', '');
+                                }}
+                            >
+                                <option value="stockroom">
+                                    Registered stockroom
+                                </option>
+                                <option value="other">Other location</option>
+                            </FormSelect>
+                        </div>
+                        {form.data.location_type === 'stockroom' ? (
+                            <div className="grid gap-2 sm:col-span-2">
+                                <Label htmlFor="count-stockroom">
+                                    Stockroom
+                                </Label>
+                                <FormSelect
+                                    id="count-stockroom"
+                                    required
+                                    value={form.data.location}
+                                    onChange={(event) =>
+                                        form.setData(
+                                            'location',
+                                            event.target.value,
+                                        )
+                                    }
+                                >
+                                    <option value="">Select a stockroom</option>
+                                    {warehouses.map((warehouse) => (
+                                        <option
+                                            key={warehouse.id}
+                                            value={warehouse.name}
+                                        >
+                                            {warehouse.name}
+                                        </option>
+                                    ))}
+                                </FormSelect>
+                            </div>
+                        ) : (
+                            <div className="grid gap-2 sm:col-span-2">
+                                <Label htmlFor="count-other-location">
+                                    Other location
+                                </Label>
+                                <Input
+                                    id="count-other-location"
+                                    required
+                                    maxLength={255}
+                                    placeholder="Describe where the item was found"
+                                    value={form.data.other_location}
+                                    onChange={(event) =>
+                                        form.setData(
+                                            'other_location',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </div>
+                        )}
                         {(
                             [
-                                'location',
                                 'aisle',
                                 'bin',
                                 'counter_name',
@@ -261,7 +338,10 @@ function ObservationDialog({
                     {Object.entries(form.errors).map(([key, error]) => (
                         <InputError key={key} message={error} />
                     ))}
-                    <Button disabled={form.processing || !form.data.attested}>
+                    <Button
+                        type="submit"
+                        disabled={form.processing || !form.data.attested}
+                    >
                         Save observation
                     </Button>
                 </form>
@@ -509,6 +589,7 @@ function ActionDialog({
                         <InputError key={key} message={error} />
                     ))}
                     <Button
+                        type="submit"
                         variant={
                             action === 'cancel' ? 'destructive' : 'default'
                         }
@@ -524,17 +605,30 @@ function ActionDialog({
 
 export default function CountShow({
     session,
+    warehouses,
     lines,
     actions,
     summary,
     allowedActions,
 }: {
     session: CountSession;
+    warehouses: CountWarehouse[];
     lines: Paginated<CountLine>;
     actions: CountAction[];
     summary: { items: number; counted: number };
     allowedActions: string[];
 }) {
+    const [activityOpen, setActivityOpen] = useState(false);
+    const workflowStages = [
+        { status: 'planned', label: 'Plan' },
+        { status: 'counting', label: 'Count & reconcile' },
+        { status: 'submitted', label: 'Verification' },
+        { status: 'verified', label: 'Approval' },
+        { status: 'approved', label: 'Completed' },
+    ];
+    const currentStage = workflowStages.findIndex(
+        (stage) => stage.status === session.status,
+    );
     const [observation, setObservation] = useState<CountLine | null>(null);
     const [decision, setDecision] = useState<{
         action: string;
@@ -544,17 +638,22 @@ export default function CountShow({
     return (
         <>
             <Head title={session.document_no} />
-            <div className="flex flex-col gap-6 p-4 md:p-6">
+            <PageContainer>
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <Link
                             href={index()}
-                            className="text-sm text-muted-foreground underline"
+                            className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
                         >
-                            Physical counts
+                            <ArrowLeft className="size-4" aria-hidden="true" />
+                            Back to physical counts
                         </Link>
                         <h1 className="mt-2 text-2xl font-semibold">
                             {session.title}
+                            <RecordChangeBadge
+                                collection="session"
+                                record={session}
+                            />
                         </h1>
                         <p className="mt-1 text-sm text-muted-foreground">
                             {session.document_no} · Memorandum{' '}
@@ -565,6 +664,89 @@ export default function CountShow({
                         {statusLabel(session.status)}
                     </Badge>
                 </div>
+                <nav
+                    aria-label="Count session sections"
+                    className="sticky top-0 z-10 flex flex-wrap gap-2 rounded-lg border bg-background p-2 shadow-sm"
+                >
+                    {[
+                        ['overview', 'Overview'],
+                        ['worksheet', `Item worksheet (${summary.items})`],
+                        [
+                            'activity',
+                            `Activity & approvals (${actions.length})`,
+                        ],
+                    ].map(([section, label]) => (
+                        <Button
+                            key={section}
+                            variant="ghost"
+                            render={<a href={`#count-${section}`} />}
+                            onClick={() => {
+                                if (section === 'activity') {
+                                    setActivityOpen(true);
+                                }
+                            }}
+                        >
+                            {label}
+                        </Button>
+                    ))}
+                </nav>
+                <section
+                    id="count-overview"
+                    aria-label="Count overview"
+                    className="scroll-mt-24 rounded-lg border bg-background p-4"
+                >
+                    <h2 className="mb-4 text-sm font-semibold">
+                        Count progress
+                    </h2>
+                    {session.status === 'cancelled' ? (
+                        <p className="text-sm text-muted-foreground">
+                            This count was cancelled.
+                        </p>
+                    ) : (
+                        <ol
+                            className="grid gap-3 sm:grid-cols-5"
+                            aria-label="Count workflow"
+                        >
+                            {workflowStages.map((stage, position) => (
+                                <li
+                                    key={stage.status}
+                                    aria-current={
+                                        position === currentStage
+                                            ? 'step'
+                                            : undefined
+                                    }
+                                    className="flex items-center gap-2 text-sm"
+                                >
+                                    <span
+                                        className={
+                                            position <= currentStage
+                                                ? 'flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground'
+                                                : 'flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground'
+                                        }
+                                    >
+                                        {position < currentStage ? (
+                                            <Check
+                                                className="size-4"
+                                                aria-label="Completed"
+                                            />
+                                        ) : (
+                                            position + 1
+                                        )}
+                                    </span>
+                                    <span
+                                        className={
+                                            position === currentStage
+                                                ? 'font-semibold'
+                                                : 'text-muted-foreground'
+                                        }
+                                    >
+                                        {stage.label}
+                                    </span>
+                                </li>
+                            ))}
+                        </ol>
+                    )}
+                </section>
                 <div className="rounded-lg border bg-muted/30 p-4 text-sm">
                     <p>
                         {summary.counted} of {summary.items} items counted.{' '}
@@ -622,166 +804,206 @@ export default function CountShow({
                             reconciliation.
                         </p>
                     )}
-                <div className="overflow-x-auto rounded-lg border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Item / tag</TableHead>
-                                <TableHead>Book at cut-off</TableHead>
-                                <TableHead>Expected at count</TableHead>
-                                <TableHead>Reconciled physical count</TableHead>
-                                <TableHead>Variance</TableHead>
-                                <TableHead>Cut-off movements</TableHead>
-                                <TableHead>Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {lines.data.map((line) => {
-                                const expected =
-                                    line.book_quantity -
-                                    line.before_count_issues;
-                                const variance = line.latest_entry
-                                    ? line.latest_entry.quantity - expected
-                                    : null;
+                <div id="count-worksheet" className="scroll-mt-24">
+                    <h2 className="mb-3 text-lg font-semibold">
+                        Item worksheet
+                    </h2>
+                    <div className="overflow-x-auto rounded-lg border">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Item / tag</TableHead>
+                                    <TableHead>Book at cut-off</TableHead>
+                                    <TableHead>Expected at count</TableHead>
+                                    <TableHead>
+                                        Reconciled physical count
+                                    </TableHead>
+                                    <TableHead>Variance</TableHead>
+                                    <TableHead>Cut-off movements</TableHead>
+                                    <TableHead>Actions</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {lines.data.map((line) => {
+                                    const expected =
+                                        line.book_quantity -
+                                        line.before_count_issues;
+                                    const variance = line.latest_entry
+                                        ? line.latest_entry.quantity - expected
+                                        : null;
 
-                                return (
-                                    <TableRow key={line.id}>
-                                        <TableCell>
-                                            <p className="font-medium">
-                                                {line.item_name}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {line.stock_number} ·{' '}
-                                                {line.tag_no}
-                                            </p>
-                                        </TableCell>
-                                        <TableCell>
-                                            {line.book_quantity}{' '}
-                                            {line.unit_of_measure}
-                                        </TableCell>
-                                        <TableCell>{expected}</TableCell>
-                                        <TableCell>
-                                            {line.latest_entry?.quantity ??
-                                                'Not counted'}
-                                        </TableCell>
+                                    return (
+                                        <TableRow key={line.id}>
+                                            <TableCell>
+                                                <p className="font-medium">
+                                                    {line.item_name}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {line.stock_number} ·{' '}
+                                                    {line.tag_no}
+                                                </p>
+                                            </TableCell>
+                                            <TableCell>
+                                                {line.book_quantity}{' '}
+                                                {line.unit_of_measure}
+                                            </TableCell>
+                                            <TableCell>{expected}</TableCell>
+                                            <TableCell>
+                                                {line.latest_entry?.quantity ??
+                                                    'Not counted'}
+                                            </TableCell>
+                                            <TableCell
+                                                className={
+                                                    variance !== null &&
+                                                    variance !== 0
+                                                        ? 'font-medium text-amber-700 dark:text-amber-400'
+                                                        : ''
+                                                }
+                                            >
+                                                {variance === null
+                                                    ? '—'
+                                                    : variance > 0
+                                                      ? `+${variance}`
+                                                      : variance}
+                                            </TableCell>
+                                            <TableCell>
+                                                <p>
+                                                    {line.before_count_issues}{' '}
+                                                    before /{' '}
+                                                    {line.after_count_issues}{' '}
+                                                    after
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {line.segregated_receipts}{' '}
+                                                    segregated receipts
+                                                </p>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {session.status ===
+                                                        'counting' && (
+                                                        <>
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    setObservation(
+                                                                        line,
+                                                                    )
+                                                                }
+                                                            >
+                                                                {line.latest_entry
+                                                                    ? 'Recount'
+                                                                    : 'Record count'}
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() =>
+                                                                    setDecision(
+                                                                        {
+                                                                            action: 'emergency_issue',
+                                                                            line,
+                                                                        },
+                                                                    )
+                                                                }
+                                                            >
+                                                                Emergency issue
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() =>
+                                                                    setDecision(
+                                                                        {
+                                                                            action: 'segregated_receipt',
+                                                                            line,
+                                                                        },
+                                                                    )
+                                                                }
+                                                            >
+                                                                Segregated
+                                                                receipt
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                                <details className="mt-2 text-xs">
+                                                    <summary className="cursor-pointer">
+                                                        Observation history (
+                                                        {line.entries.length})
+                                                    </summary>
+                                                    {line.entries.map(
+                                                        (entry) => (
+                                                            <p
+                                                                key={entry.id}
+                                                                className="mt-2 whitespace-normal"
+                                                            >
+                                                                #{entry.id}:{' '}
+                                                                {entry.observed_quantity ??
+                                                                    entry.quantity}{' '}
+                                                                {
+                                                                    line.unit_of_measure
+                                                                }
+                                                                ;{' '}
+                                                                {
+                                                                    entry.after_count_issues_at_observation
+                                                                }{' '}
+                                                                after-count
+                                                                issues;{' '}
+                                                                reconciled count{' '}
+                                                                {entry.quantity}
+                                                                ;{' '}
+                                                                {
+                                                                    entry.condition
+                                                                }
+                                                                ;{' '}
+                                                                {entry.location}
+                                                                .{' '}
+                                                                {
+                                                                    entry.counter_name
+                                                                }{' '}
+                                                                /{' '}
+                                                                {
+                                                                    entry.checker_name
+                                                                }{' '}
+                                                                /{' '}
+                                                                {
+                                                                    entry.validator_name
+                                                                }
+                                                                .{' '}
+                                                                {entry.remarks}
+                                                            </p>
+                                                        ),
+                                                    )}
+                                                </details>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                                {lines.data.length === 0 && (
+                                    <TableRow>
                                         <TableCell
-                                            className={
-                                                variance !== null &&
-                                                variance !== 0
-                                                    ? 'font-medium text-amber-700 dark:text-amber-400'
-                                                    : ''
-                                            }
+                                            colSpan={7}
+                                            className="py-12 text-center text-muted-foreground"
                                         >
-                                            {variance === null
-                                                ? '—'
-                                                : variance > 0
-                                                  ? `+${variance}`
-                                                  : variance}
-                                        </TableCell>
-                                        <TableCell>
-                                            <p>
-                                                {line.before_count_issues}{' '}
-                                                before /{' '}
-                                                {line.after_count_issues} after
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {line.segregated_receipts}{' '}
-                                                segregated receipts
-                                            </p>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex flex-wrap gap-2">
-                                                {session.status ===
-                                                    'counting' && (
-                                                    <>
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                setObservation(
-                                                                    line,
-                                                                )
-                                                            }
-                                                        >
-                                                            {line.latest_entry
-                                                                ? 'Recount'
-                                                                : 'Record count'}
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={() =>
-                                                                setDecision({
-                                                                    action: 'emergency_issue',
-                                                                    line,
-                                                                })
-                                                            }
-                                                        >
-                                                            Emergency issue
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={() =>
-                                                                setDecision({
-                                                                    action: 'segregated_receipt',
-                                                                    line,
-                                                                })
-                                                            }
-                                                        >
-                                                            Segregated receipt
-                                                        </Button>
-                                                    </>
-                                                )}
-                                            </div>
-                                            <details className="mt-2 text-xs">
-                                                <summary className="cursor-pointer">
-                                                    Observation history (
-                                                    {line.entries.length})
-                                                </summary>
-                                                {line.entries.map((entry) => (
-                                                    <p
-                                                        key={entry.id}
-                                                        className="mt-2 whitespace-normal"
-                                                    >
-                                                        #{entry.id}:{' '}
-                                                        {entry.observed_quantity ??
-                                                            entry.quantity}{' '}
-                                                        {line.unit_of_measure};{' '}
-                                                        {
-                                                            entry.after_count_issues_at_observation
-                                                        }{' '}
-                                                        after-count issues;{' '}
-                                                        reconciled count{' '}
-                                                        {entry.quantity};{' '}
-                                                        {entry.condition};{' '}
-                                                        {entry.location}.{' '}
-                                                        {entry.counter_name} /{' '}
-                                                        {entry.checker_name} /{' '}
-                                                        {entry.validator_name}.{' '}
-                                                        {entry.remarks}
-                                                    </p>
-                                                ))}
-                                            </details>
+                                            Start this session to generate the
+                                            item worksheet and numbered tags.
                                         </TableCell>
                                     </TableRow>
-                                );
-                            })}
-                            {lines.data.length === 0 && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={7}
-                                        className="py-12 text-center text-muted-foreground"
-                                    >
-                                        Start this session to generate the item
-                                        worksheet and numbered tags.
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                    <DataPagination links={lines.links} />
                 </div>
-                <DataPagination links={lines.links} />
-                <details className="rounded-lg border p-4">
+                <details
+                    id="count-activity"
+                    open={activityOpen}
+                    onToggle={(event) =>
+                        setActivityOpen(event.currentTarget.open)
+                    }
+                    className="scroll-mt-24 rounded-lg border p-4"
+                >
                     <summary className="cursor-pointer font-medium">
                         Activity and approvals
                     </summary>
@@ -803,12 +1025,13 @@ export default function CountShow({
                         ))}
                     </ul>
                 </details>
-            </div>
+            </PageContainer>
             {observation && (
                 <ObservationDialog
                     key={observation.id}
                     session={session}
                     line={observation}
+                    warehouses={warehouses}
                     close={() => setObservation(null)}
                 />
             )}
@@ -824,6 +1047,9 @@ export default function CountShow({
         </>
     );
 }
-CountShow.layout = {
-    breadcrumbs: [{ title: 'Physical counts', href: index() }],
-};
+CountShow.layout = ({ session }: { session: CountSession }) => ({
+    breadcrumbs: [
+        { title: 'Physical counts', href: index() },
+        { title: session.title },
+    ],
+});

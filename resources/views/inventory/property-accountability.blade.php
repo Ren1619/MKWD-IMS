@@ -21,6 +21,7 @@
         .number { text-align: right; }
         .attestation { margin-top: 18px; padding: 10px; border: 1px solid #111; line-height: 1.45; }
         .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; margin-top: 56px; text-align: center; }
+        .signatures.are { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
         .signature-line { padding-top: 5px; border-top: 1px solid #111; }
         .history { margin-top: 28px; font-size: 9px; }
         .footer { display: flex; justify-content: space-between; margin-top: 22px; font-size: 8px; }
@@ -28,14 +29,14 @@
     </style>
 </head>
 <body>
+<x-print-layout>
     <div class="toolbar">
         <span>{{ $document->document_no }} - {{ ucfirst(str_replace('_', ' ', $document->status)) }}</span>
         <button type="button" onclick="window.print()">Print / Save as PDF</button>
     </div>
     <header>
+        <h1>{{ match ($document->document_type) { 'ARE' => 'ACKNOWLEDGMENT RECEIPT FOR EQUIPMENT', 'PAR' => 'PROPERTY ACKNOWLEDGMENT RECEIPT', default => 'INVENTORY CUSTODIAN SLIP' } }}</h1>
         <p>Republic of the Philippines</p>
-        <p>{{ $document->entity_name }}</p>
-        <h1>{{ $document->document_type === 'PAR' ? 'PROPERTY ACKNOWLEDGMENT RECEIPT' : 'INVENTORY CUSTODIAN SLIP' }}</h1>
     </header>
     <section class="meta">
         <div><strong>Entity Name:</strong> {{ $document->entity_name }}</div>
@@ -55,7 +56,7 @@
                 <th>Quantity</th>
                 <th>Unit</th>
                 <th>Description</th>
-                <th>{{ $document->document_type === 'PAR' ? 'Property Number' : 'Item Number' }}</th>
+                <th>{{ $document->document_type !== 'ICS' ? 'Property Number' : 'Item Number' }}</th>
                 <th>Date Acquired</th>
                 <th>Amount</th>
                 @if($document->document_type === 'ICS')<th>Estimated Useful Life</th>@endif
@@ -84,23 +85,32 @@
     <section class="attestation">
         <strong>Accountability:</strong> The recipient acknowledges custody of the listed government property and responsibility for its official use, safekeeping, maintenance, and return or authorized transfer. This document does not transfer ownership.
     </section>
-    <section class="signatures">
+    <section class="signatures{{ $document->document_type === 'ARE' ? ' are' : '' }}">
         <div>
             <div class="signature-line">
                 <strong>{{ $document->issued_by_name }}</strong><br>
-                Property / Supply Custodian<br>
+                {{ $document->document_type === 'ARE' ? 'Prepared by — Senior Supply Officer' : 'Property / Supply Custodian' }}<br>
                 Issued {{ $document->issued_at->format('Y-m-d H:i') }}
             </div>
         </div>
         <div>
             <div class="signature-line">
                 <strong>{{ $document->recipient_name }}</strong><br>
+                @if($document->document_type === 'ARE')Acknowledged by — End User<br>@endif
                 {{ $document->recipient_code ?: 'Recipient / End-user' }}<br>
                 @if($document->recipient_position){{ $document->recipient_position }}<br>@endif
                 @if($document->recipient_office){{ $document->recipient_office }}<br>@endif
                 {{ $document->acknowledged_at ? 'Digitally acknowledged '.$document->acknowledged_at->format('Y-m-d H:i') : 'Recipient acknowledgment pending' }}
             </div>
         </div>
+        @if($document->document_type === 'ARE')
+            <div><div class="signature-line"><strong>{{ $document->noted_by_name ?? ($document->notation_required ? 'Pending' : 'Not applicable') }}</strong><br>Noted by — Division Manager<br>
+                @if($document->noted_at)Digitally noted {{ $document->noted_at->format('Y-m-d H:i') }}
+                @elseif($document->notation_required)Awaiting division-manager notation
+                @else No division assigned — notation not required
+                @endif
+            </div></div>
+        @endif
     </section>
     <section class="history">
         <strong>Digital control history</strong>
@@ -123,5 +133,6 @@
         <span>System-generated accountability document - verify its status before reliance.</span>
         <span>Capitalization threshold applied: &#8369;{{ number_format((float) config('inventory.ppe.capitalization_threshold'), 2) }}</span>
     </footer>
+</x-print-layout>
 </body>
 </html>

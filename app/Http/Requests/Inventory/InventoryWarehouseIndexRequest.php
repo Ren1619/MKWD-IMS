@@ -2,9 +2,9 @@
 
 namespace App\Http\Requests\Inventory;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\ValidatedFormRequest;
 
-class InventoryWarehouseIndexRequest extends FormRequest
+class InventoryWarehouseIndexRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {
@@ -16,6 +16,7 @@ class InventoryWarehouseIndexRequest extends FormRequest
     {
         return [
             'search' => ['nullable', 'string', 'max:150'], 'warehouse' => ['nullable', 'string', 'max:150'],
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'placement' => ['nullable', 'in:unplaced,placed'], 'include_depleted' => ['nullable', 'boolean'], 'page' => ['nullable', 'integer', 'min:1'],
         ];
     }

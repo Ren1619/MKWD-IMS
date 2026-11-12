@@ -15,7 +15,7 @@ use LogicException;
  * @property int $observed_quantity
  * @property array<string,mixed> $source_details
  */
-#[Fillable(['inventory_item_batch_id', 'version', 'warehouse', 'area', 'rack', 'bin', 'observed_quantity', 'source_evidence_reference', 'source_details', 'remarks', 'recorded_by_user_id', 'recorded_by_name'])]
+#[Fillable(['inventory_item_batch_id', 'version', 'warehouse_id', 'warehouse', 'area', 'rack', 'bin', 'observed_quantity', 'source_evidence_reference', 'source_details', 'remarks', 'recorded_by_user_id', 'recorded_by_name'])]
 class InventoryBatchPlacement extends Model
 {
     /** @use HasFactory<InventoryBatchPlacementFactory> */

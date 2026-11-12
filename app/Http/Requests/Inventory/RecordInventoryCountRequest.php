@@ -2,10 +2,10 @@
 
 namespace App\Http\Requests\Inventory;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\ValidatedFormRequest;
 use Illuminate\Validation\Rule;
 
-class RecordInventoryCountRequest extends FormRequest
+class RecordInventoryCountRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {
@@ -19,7 +19,9 @@ class RecordInventoryCountRequest extends FormRequest
             'quantity' => ['required', 'integer', 'min:0', 'max:1000000'],
             'latest_entry_id' => ['nullable', 'integer', 'min:1'],
             'condition' => ['required', Rule::in(['good', 'defective'])],
-            'location' => ['required', 'string', 'max:255'],
+            'location_type' => ['required', Rule::in(['stockroom', 'other'])],
+            'location' => ['required', 'string', 'max:255', Rule::when($this->input('location_type') === 'stockroom', ['exists:warehouses,name'])],
+            'other_location' => ['nullable', 'string', 'max:255'],
             'aisle' => ['nullable', 'string', 'max:255'],
             'bin' => ['nullable', 'string', 'max:255'],
             'counter_name' => ['required', 'string', 'max:255'],
@@ -30,5 +32,12 @@ class RecordInventoryCountRequest extends FormRequest
             'valuation_basis' => ['nullable', 'string', 'max:3000'],
             'attested' => ['accepted'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if ($this->input('location_type') === 'other') {
+            $this->merge(['location' => $this->input('other_location')]);
+        }
     }
 }

@@ -2,11 +2,11 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\Http\Requests\ValidatedFormRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class SupplyRequestIndexRequest extends FormRequest
+class SupplyRequestIndexRequest extends ValidatedFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -26,7 +26,7 @@ class SupplyRequestIndexRequest extends FormRequest
         return [
             'search' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', Rule::in([
-                'submitted', 'approved', 'awaiting_replenishment', 'ready_for_release',
+                'submitted', 'division_approved', 'approved', 'awaiting_replenishment', 'ready_for_release',
                 'partially_released', 'released', 'rejected', 'cancelled',
             ])],
             'queue' => ['nullable', Rule::in(['needs_action', 'completed', 'awaiting_liquidation'])],

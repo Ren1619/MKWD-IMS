@@ -57,7 +57,7 @@ class InventoryDisposalService
                 $snapshot = $asset !== null ? $this->snapshot($asset) : null;
                 $document->lines()->create([
                     'inventory_asset_id' => $asset?->getKey(), 'quantity' => $input['quantity'],
-                    'unit' => $asset !== null ? $asset->unit_of_measure : $input['unit'], 'description' => $asset !== null ? $asset->name : $input['description'],
+                    'unit' => $asset !== null ? $asset->unit_of_measure : $input['unit'], 'description' => $asset !== null ? $asset->item_description : $input['description'],
                     'source_reference' => $input['source_reference'], 'source_snapshot' => $snapshot,
                     'source_hash' => $snapshot !== null ? $this->hash($snapshot) : null,
                 ]);
@@ -202,7 +202,7 @@ class InventoryDisposalService
     private function assertDisposable(InventoryAsset $asset): void
     {
         if ($asset->trashed() || $asset->current_custodian_reference_id !== null || $asset->activeBorrowing()->exists()
-            || $asset->accountabilityDocuments()->whereIn('status', ['active', 'pending_recipient'])->exists()
+            || $asset->accountabilityDocuments()->whereIn('status', ['active', 'pending_note', 'pending_recipient'])->exists()
             || in_array($asset->lifecycle_status, [AssetLifecycleStatus::Disposed, AssetLifecycleStatus::Lost, AssetLifecycleStatus::TransferredOut], true)
             || $asset->accounting_status === AssetAccountingStatus::Derecognized
             || ($asset->condition_status !== AssetConditionStatus::NonUsable && ! in_array($asset->lifecycle_status, [AssetLifecycleStatus::ForDisposal, AssetLifecycleStatus::Retired], true))
@@ -214,7 +214,7 @@ class InventoryDisposalService
     /** @return array<string,mixed> */
     private function snapshot(InventoryAsset $asset): array
     {
-        return [...array_intersect_key($asset->getAttributes(), array_flip(['property_number', 'serial_number', 'name', 'description', 'quantity_per_property_card', 'unit_of_measure', 'location', 'acquisition_cost', 'acquisition_date', 'accounting_classification', 'condition_status', 'lifecycle_status', 'accounting_status', 'appraised_value', 'physical_status'])),
+        return [...array_intersect_key($asset->historicalSnapshotAttributes(), array_flip(['property_number', 'serial_number', 'name', 'description', 'quantity_per_property_card', 'unit_of_measure', 'location', 'acquisition_cost', 'acquisition_date', 'accounting_classification', 'condition_status', 'lifecycle_status', 'accounting_status', 'appraised_value', 'physical_status'])),
             'latest_event_id' => $asset->events()->max('id')];
     }
 

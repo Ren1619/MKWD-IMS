@@ -1,6 +1,8 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { DataPagination } from '@/components/data-pagination';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -8,6 +10,7 @@ import {
     TableHead,
     TableHeader,
     TableRow,
+    TableRowLink,
 } from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,14 +19,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { create, index, show } from '@/routes/inventory/returns';
 import type { Paginated } from '@/types/inventory';
+import PrepareRmsDialog from './PrepareRmsDialog';
+import type { PrepareRmsProps } from './PrepareRmsDialog';
 import { label } from './types';
 import type { ReturnDocument } from './types';
 
 export default function ReturnsIndex({
     documents,
     filters,
+    preparation,
 }: {
     documents: Paginated<ReturnDocument>;
+    preparation?: PrepareRmsProps;
     filters: { search?: string; status?: string };
 }) {
     const [search, setSearch] = useState(filters.search ?? '');
@@ -32,7 +39,8 @@ export default function ReturnsIndex({
     return (
         <>
             <Head title="Return to stock" />
-            <div className="flex flex-col gap-6 p-4 md:p-6">
+            {preparation && <PrepareRmsDialog {...preparation} />}
+            <PageContainer>
                 <div className="flex flex-wrap justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-semibold">
@@ -82,6 +90,8 @@ export default function ReturnsIndex({
                             <option value="">All statuses</option>
                             {[
                                 'submitted',
+                                'noted',
+                                'received',
                                 'verified',
                                 'approved',
                                 'rejected',
@@ -93,7 +103,9 @@ export default function ReturnsIndex({
                             ))}
                         </FormSelect>
                     </div>
-                    <Button className="self-end">Apply filters</Button>
+                    <Button type="submit" className="self-end">
+                        Apply filters
+                    </Button>
                 </form>
                 <div className="grid gap-3 md:hidden">
                     {documents.data.map((document) => (
@@ -107,6 +119,10 @@ export default function ReturnsIndex({
                                     className="font-medium underline"
                                 >
                                     {document.document_no}
+                                    <RecordChangeBadge
+                                        collection="documents"
+                                        record={document}
+                                    />
                                 </Link>
                                 <Badge variant="secondary">
                                     {label(document.status)}
@@ -136,14 +152,18 @@ export default function ReturnsIndex({
                         </TableHeader>
                         <TableBody>
                             {documents.data.map((document) => (
-                                <TableRow key={document.id}>
+                                <TableRowLink
+                                    key={document.id}
+                                    href={show.url(document.id)}
+                                >
                                     <TableCell>
-                                        <Link
-                                            href={show(document.id)}
-                                            className="font-medium underline underline-offset-4"
-                                        >
+                                        <span className="font-medium">
                                             {document.document_no}
-                                        </Link>
+                                            <RecordChangeBadge
+                                                collection="documents"
+                                                record={document}
+                                            />
+                                        </span>
                                     </TableCell>
                                     <TableCell>
                                         {document.return_date.slice(0, 10)}
@@ -162,7 +182,7 @@ export default function ReturnsIndex({
                                             {label(document.status)}
                                         </Badge>
                                     </TableCell>
-                                </TableRow>
+                                </TableRowLink>
                             ))}
                         </TableBody>
                     </Table>
@@ -173,7 +193,7 @@ export default function ReturnsIndex({
                     </p>
                 )}
                 <DataPagination links={documents.links} />
-            </div>
+            </PageContainer>
         </>
     );
 }

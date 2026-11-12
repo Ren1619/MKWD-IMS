@@ -36,13 +36,13 @@ class InventoryMonthlyReportController extends Controller
         $category = $request->integer('series_category_id') ?: null;
         $zero = $request->has('include_zero') ? $request->boolean('include_zero') : true;
         $fund = $request->validated('fund_cluster') ?? '01';
-        $built = $this->builder->build($month, $category, $zero, $fund);
+        $built = $this->builder->build($month, $category, $zero, $fund, $request->validated('selected_report'));
 
         return Inertia::render('Inventory/MonthlyReports/Create', [
-            'selection' => ['period_month' => $month, 'series_category_id' => $category, 'include_zero' => $zero, 'fund_cluster' => $fund],
+            'selection' => ['selected_report' => $request->validated('selected_report'), 'period_month' => $month, 'series_category_id' => $category, 'include_zero' => $zero, 'fund_cluster' => $fund],
             'readiness' => $built['readiness'], 'catalog' => InventoryMonthlyReportBuilder::catalog(),
             'categories' => InventorySeriesCategory::query()->orderBy('name')->get(['inv_series_cat_id', 'name']),
-            'signatories' => User::query()->where('is_active', true)->whereIn('role', ['inventory_manager', 'super_admin'])->with('employee')->orderBy('name')->get()->map(fn (User $user): array => [...($user->employee?->toSelectionOption() ?? ['name' => $user->name, 'type' => 'employee', 'code' => null]), 'id' => $user->id]),
+            'signatories' => User::query()->where('is_active', true)->with('employee')->orderBy('name')->get()->map(fn (User $user): array => [...($user->employee?->toSelectionOption() ?? ['name' => $user->name, 'type' => 'employee', 'code' => null]), 'id' => $user->id]),
             'preparer' => ['id' => $request->user()->id, 'name' => $request->user()->name]]);
     }
 
@@ -56,8 +56,9 @@ class InventoryMonthlyReportController extends Controller
 
     public function show(InventoryMonthlyReport $report): Response
     {
+        $this->authorizeParticipant($report);
         $report->load(['snapshot', 'actions' => fn ($query) => $query->orderBy('id'), 'supersedes:id,document_no']);
-        $current = in_array($report->status, ['approved', 'transmitted', 'cancelled'], true) ? null : $this->builder->build($report->period_month->format('Y-m'), $report->series_category_id, $report->include_zero, $report->fund_cluster);
+        $current = in_array($report->status, ['approved', 'transmitted', 'cancelled'], true) ? null : $this->builder->build($report->period_month->format('Y-m'), $report->series_category_id, $report->include_zero, $report->fund_cluster, $report->snapshot->payload['selected_report'] ?? null);
 
         return Inertia::render('Inventory/MonthlyReports/Show', ['document' => $report, 'allowedActions' => $this->monthly->allowedActions($report, auth()->user()), 'currentReadiness' => $current['readiness'] ?? null, 'isStale' => $current !== null && $current['hash'] !== $report->snapshot->source_hash]);
     }
@@ -72,9 +73,18 @@ class InventoryMonthlyReportController extends Controller
 
     public function print(InventoryMonthlyReport $report, string $document): View
     {
+        $this->authorizeParticipant($report);
         $report->load(['snapshot', 'actions' => fn ($query) => $query->orderBy('id'), 'supersedes:id,document_no']);
+        abort_unless(in_array($document, ['packet', 'transmittal'], true) || isset($report->snapshot->payload['reports'][$document]), 404);
         abort_if($document === 'transmittal' && ! in_array($report->status, ['approved', 'transmitted'], true), 404);
 
         return view('inventory.monthly-report', ['packet' => $report, 'document' => $document, 'tables' => $document === 'packet' ? $report->snapshot->payload['reports'] : [$document => $report->snapshot->payload['reports'][$document] ?? null]]);
+    }
+
+    private function authorizeParticipant(InventoryMonthlyReport $report): void
+    {
+        $user = auth()->user();
+        abort_unless($user !== null && $user->is_active && ($user->can('manage-inventory')
+            || in_array($user->id, [$report->checked_by_user_id, $report->noted_by_user_id, $report->approved_by_user_id], true)), 403);
     }
 }

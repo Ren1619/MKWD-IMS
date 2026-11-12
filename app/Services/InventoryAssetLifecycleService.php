@@ -351,7 +351,7 @@ class InventoryAssetLifecycleService
                 ...($data['details'] ?? []),
                 'property_snapshot' => [
                     'property_number' => $asset->property_number,
-                    'name' => $asset->name,
+                    'name' => $asset->item_description,
                     'unit_of_measure' => $asset->unit_of_measure,
                     'quantity' => $asset->quantity_per_property_card,
                     'acquisition_cost' => $asset->acquisition_cost,

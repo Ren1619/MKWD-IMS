@@ -3,6 +3,7 @@
 <head><meta charset="utf-8"><title>{{ $transfer->document_no }} — Property Transfer Report</title>
 <style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px}h1{text-align:center;font-size:20px}table{border-collapse:collapse;width:100%;margin:16px 0}th,td{border:1px solid #333;padding:8px;text-align:left}.status{text-align:center;font-weight:bold}.signatures{display:flex;gap:24px}.signatures>div{flex:1}button{margin:12px}@media print{button{display:none}@page{size:A4 landscape;margin:12mm}body{margin:0}}</style></head>
 <body>
+<x-print-layout>
 <button onclick="window.print()">Print</button>
 <h1>PROPERTY TRANSFER REPORT</h1>
 <p class="status">{{ strtoupper($transfer->status) }}@if($transfer->status !== 'completed') — NOT A COMPLETED HANDOVER @endif</p>
@@ -17,18 +18,24 @@
 <p>Resulting PAR/ICS: {{ $transfer->isExternal() ? 'Receiving agency accountability is evidenced by its signed receipt; no internal PAR/ICS is issued.' : ($transfer->replacementDocument?->document_no ?? 'Not issued') }}</p>
 @php($approval = $transfer->actions->firstWhere('action','approve'))
 @php($handover = $transfer->actions->firstWhere('action','complete'))
+@php($receipt = $transfer->actions->firstWhere('action','acknowledge_receipt'))
+@if($receipt)
+<p>Receipt digitally acknowledged by {{ $receipt->actor_name }} on {{ $receipt->created_at->format('Y-m-d H:i') }}. Date received: {{ data_get($receipt, 'evidence.handover_date') }}.</p>
+<p>{{ $receipt->attestation }}</p>
+@endif
 @if($transfer->isExternal())
 <p>Transfer authority: {{ data_get($approval,'evidence.authority_reference','Not recorded') }} · Accounting clearance: {{ data_get($approval,'evidence.accounting_clearance_reference','Not recorded') }}</p>
 <p>Accounting Unit posting reference: {{ data_get($handover,'evidence.accounting_reference','Not recorded') }}</p>
 @endif
 <div class="signatures">
 <div><strong>Released / issued by</strong><p>{{ $transfer->source_snapshot['recipient_name'] }}</p><p>{{ $transfer->source_snapshot['recipient_position'] ?? '' }}</p><p>Signature: ____________________</p><p>Evidence: {{ data_get($handover,'evidence.release_reference','Not recorded') }}</p></div>
-<div><strong>Received by</strong><p>{{ $transfer->recipient_snapshot['name'] }}</p><p>{{ $transfer->recipient_snapshot['position'] ?? '' }}</p><p>Signature: ____________________</p><p>Evidence: {{ data_get($handover,'evidence.receipt_reference','Not recorded') }}</p></div>
+<div><strong>Received by</strong><p>{{ $transfer->recipient_snapshot['name'] }}</p><p>{{ $transfer->recipient_snapshot['position'] ?? '' }}</p><p>{{ $receipt ? 'Digitally acknowledged by '.$receipt->actor_name : 'Signature: ____________________' }}</p><p>Evidence: {{ $receipt ? $transfer->document_no.'-RECEIPT-'.$receipt->getKey() : data_get($handover,'evidence.receipt_reference','Not recorded') }}</p></div>
 <div><strong>Approved by</strong><p>{{ $approval?->actor_name ?? 'Not approved' }}</p><p>Date: {{ $approval?->created_at?->toDateString() ?? '' }}</p><p>Signature: ____________________</p></div>
 </div>
 <p>Joint inspection reference: {{ data_get($handover,'evidence.inspection_reference','Not recorded') }} · Physical handover date: {{ data_get($handover,'evidence.handover_date','Not recorded') }}</p>
 <table><thead><tr><th>Recorded at</th><th>Decision</th><th>IMS officer</th><th>Attestation</th></tr></thead><tbody>
 @foreach($transfer->actions as $action)<tr><td>{{ $action->created_at }}</td><td>{{ ucfirst($action->action) }}</td><td>{{ $action->actor_name }}</td><td>{{ $action->attestation }}</td></tr>@endforeach
 </tbody></table>
-<p>Physical signatures and inspection remain staff actions. Evidence references and IMS attestations record their completion.</p>
+<p>Receipt may be acknowledged by the named end user in IMS. Other physical signatures and inspection remain staff actions recorded through evidence references and attestations.</p>
+</x-print-layout>
 </body></html>

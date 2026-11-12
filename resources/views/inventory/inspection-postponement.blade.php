@@ -2,6 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ data_get($notice->metadata, 'notice_no') }} — Notice of Postponement</title>
 <style>@page{size:A4;margin:18mm}body{font:13px Arial,sans-serif;line-height:1.5;color:#111}h1{font-size:18px;text-align:center}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px;text-align:left}dl{display:grid;grid-template-columns:160px 1fr;gap:6px}dd{margin:0}.signatures{display:flex;gap:30px;margin-top:30px}.signatures>div{flex:1}button{margin-bottom:16px}@media print{button{display:none}}</style></head><body>
+<x-print-layout>
 <button onclick="window.print()">Print / Save as PDF</button>
 <h1>NOTICE OF POSTPONEMENT OF DELIVERY INSPECTION</h1>
 <p>Reference: <strong>{{ data_get($notice->metadata, 'notice_no') }}</strong><br>Date: {{ data_get($notice->metadata, 'notice_date') }}<br>Recorded: {{ $notice->created_at->timezone('Asia/Manila')->format('Y-m-d H:i') }}</p>
@@ -22,4 +23,5 @@
 <p>Cc: Inspectorate Team Members; {{ $delivery->receiving_department }}; Procurement Unit; Records/File.</p>
 <p>Supplier notification / transmittal evidence: {{ data_get($notice->metadata, 'notice_sent_reference') }}</p>
 <p><small>This preserved notice records signed evidence and a tentative schedule. Supplier confirmation and actual inspection remain staff actions; acceptance and inventory posting require the delivery workflow.</small></p>
+</x-print-layout>
 </body></html>

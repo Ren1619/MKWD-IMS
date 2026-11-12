@@ -7,7 +7,7 @@ use App\Http\Requests\Inventory\DepartmentAllocationRequest;
 use App\Http\Requests\Inventory\StoreDepartmentLiquidationRequest;
 use App\Http\Requests\Inventory\TransitionDepartmentLiquidationRequest;
 use App\Models\DepartmentLiquidation;
-use App\Models\SupplyRequest;
+use App\Models\IssuanceSlip;
 use App\Services\DepartmentLiquidationService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -19,9 +19,8 @@ class DepartmentLiquidationController extends Controller
 {
     public function allocations(DepartmentAllocationRequest $request, DepartmentLiquidationService $service): JsonResponse
     {
-        $supplyRequest = SupplyRequest::query()->with('lines')->findOrFail($request->integer('supply_request_id'));
-        abort_if($supplyRequest->isf_no === null, 422);
-        $allocation = $service->allocation($supplyRequest, $request->string('date')->toString());
+        $slip = IssuanceSlip::query()->with('supplyRequest')->findOrFail($request->integer('issuance_slip_id'));
+        $allocation = $service->allocation($slip, $request->string('date')->toString());
 
         return response()->json(['lines' => $allocation['lines'] ?? []]);
     }

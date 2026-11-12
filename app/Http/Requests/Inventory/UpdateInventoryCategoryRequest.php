@@ -2,14 +2,14 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\Http\Requests\ValidatedFormRequest;
 use App\InventoryCategoryType;
 use App\Models\InventoryAssetCategory;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
-class UpdateInventoryCategoryRequest extends FormRequest
+class UpdateInventoryCategoryRequest extends ValidatedFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.

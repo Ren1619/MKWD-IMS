@@ -19,6 +19,8 @@ use App\Http\Controllers\Inventory\PropertyAccountabilityController;
 use App\Http\Controllers\Inventory\PropertyTagController;
 use App\Http\Controllers\Inventory\SemiExpendablePropertyEventController;
 use App\Http\Controllers\Inventory\SupplyRequestController;
+use App\Http\Controllers\Inventory\SupplyRequestDocumentController;
+use App\Http\Controllers\Inventory\WarehouseRegistryController;
 use App\Services\InventoryMonthlyReportBuilder;
 use App\Services\InventoryReportService;
 use Illuminate\Support\Facades\Route;
@@ -28,7 +30,11 @@ Route::prefix('inventory')->name('inventory.')->group(function () {
     Route::get('items', [InventoryItemController::class, 'index'])->name('items.index');
     Route::get('items/{item}', [InventoryItemController::class, 'show'])->withTrashed()->name('items.show');
     Route::get('assets', [InventoryAssetController::class, 'index'])->name('assets.index');
+    Route::get('assets/ares', [PropertyAccountabilityController::class, 'ppeIndex'])->name('assets.ares.index');
     Route::get('semi-expendable-property', [InventoryAssetController::class, 'semiExpendableIndex'])->name('semi_expendable.index');
+    Route::get('assets/{asset}/lapsing-schedule', [InventoryAssetController::class, 'lapsingSchedule'])->withTrashed()->name('assets.lapsing_schedule');
+    Route::get('assets/{asset}', [InventoryAssetController::class, 'show'])->withTrashed()->name('assets.show');
+    Route::get('semi-expendable-property/{asset}', [InventoryAssetController::class, 'showSemiExpendable'])->withTrashed()->name('semi_expendable.show');
     Route::middleware('can:view-property-governance')->group(function () {
         Route::get('reports', [InventoryReportController::class, 'index'])->name('reports.index');
         Route::get('reports/export', [InventoryReportController::class, 'export'])->name('reports.export');
@@ -36,12 +42,24 @@ Route::prefix('inventory')->name('inventory.')->group(function () {
             ->whereIn('document', InventoryReportService::documentKeys())
             ->name('reports.print');
         Route::get('accountability', [PropertyAccountabilityController::class, 'index'])->name('accountability.index');
-        Route::patch('accountability/{document}/transition', [PropertyAccountabilityController::class, 'transition'])->name('accountability.transition');
-        Route::get('accountability/{document}/print', [PropertyAccountabilityController::class, 'print'])->name('accountability.print');
     });
+    Route::patch('accountability/{document}/transition', [PropertyAccountabilityController::class, 'transition'])->name('accountability.transition');
+    Route::get('accountability/{document}/print', [PropertyAccountabilityController::class, 'print'])->name('accountability.print');
+    Route::get('property-transfers', [InventoryPropertyTransferController::class, 'index'])->name('transfers.index');
+    Route::get('property-transfers/{transfer}', [InventoryPropertyTransferController::class, 'show'])->name('transfers.show');
+    Route::patch('property-transfers/{transfer}/transition', [InventoryPropertyTransferController::class, 'transition'])->name('transfers.transition');
+    Route::get('property-transfers/{transfer}/print', [InventoryPropertyTransferController::class, 'print'])->name('transfers.print');
     Route::get('requests', [SupplyRequestController::class, 'index'])->name('requests.index');
+    Route::get('requests/{supplyRequest}/print', [SupplyRequestDocumentController::class, 'request'])->name('requests.print');
+    Route::get('issuance-slips/{slip}/print', [SupplyRequestDocumentController::class, 'slip'])->name('issuance_slips.print');
     Route::get('issuance-slips/{slip}/liquidation/print', [IssuanceLiquidationController::class, 'print'])->name('liquidations.print');
     Route::post('requests', [SupplyRequestController::class, 'store'])->name('requests.store');
+    Route::patch('requests/{supplyRequest}/transition', [SupplyRequestController::class, 'transition'])->name('requests.transition');
+
+    Route::get('monthly-reports/create', [InventoryMonthlyReportController::class, 'create'])->middleware('can:manage-inventory')->name('monthly_reports.create');
+    Route::get('monthly-reports/{report}', [InventoryMonthlyReportController::class, 'show'])->name('monthly_reports.show');
+    Route::patch('monthly-reports/{report}/transition', [InventoryMonthlyReportController::class, 'transition'])->name('monthly_reports.transition');
+    Route::get('monthly-reports/{report}/print/{document}', [InventoryMonthlyReportController::class, 'print'])->whereIn('document', ['packet', 'transmittal', ...array_keys(InventoryMonthlyReportBuilder::catalog())])->name('monthly_reports.print');
 
     Route::middleware('can:manage-inventory')->group(function () {
         Route::get('disposals', [InventoryDisposalController::class, 'index'])->name('disposals.index');
@@ -49,21 +67,17 @@ Route::prefix('inventory')->name('inventory.')->group(function () {
         Route::get('disposals/{document}', [InventoryDisposalController::class, 'show'])->name('disposals.show');
         Route::patch('disposals/{document}/transition', [InventoryDisposalController::class, 'transition'])->name('disposals.transition');
         Route::get('disposals/{document}/print', [InventoryDisposalController::class, 'print'])->name('disposals.print');
-        Route::get('property-transfers', [InventoryPropertyTransferController::class, 'index'])->name('transfers.index');
         Route::post('property-transfers', [InventoryPropertyTransferController::class, 'store'])->name('transfers.store');
-        Route::get('property-transfers/{transfer}', [InventoryPropertyTransferController::class, 'show'])->name('transfers.show');
-        Route::patch('property-transfers/{transfer}/transition', [InventoryPropertyTransferController::class, 'transition'])->name('transfers.transition');
-        Route::get('property-transfers/{transfer}/print', [InventoryPropertyTransferController::class, 'print'])->name('transfers.print');
+        Route::get('warehouse/registry', [WarehouseRegistryController::class, 'index'])->name('warehouse.registry.index');
+        Route::post('warehouse/registry', [WarehouseRegistryController::class, 'store'])->name('warehouse.registry.store');
+        Route::patch('warehouse/registry/{warehouse}', [WarehouseRegistryController::class, 'update'])->name('warehouse.registry.update');
+        Route::delete('warehouse/registry/{warehouse}', [WarehouseRegistryController::class, 'destroy'])->name('warehouse.registry.destroy');
         Route::get('warehouse', [InventoryWarehouseController::class, 'index'])->name('warehouse.index');
         Route::get('warehouse/batches/{batch}', [InventoryWarehouseController::class, 'show'])->name('warehouse.show');
         Route::post('warehouse/batches/{batch}/placements', [InventoryWarehouseController::class, 'store'])->name('warehouse.store');
         Route::get('warehouse/batches/{batch}/label', [InventoryWarehouseController::class, 'label'])->name('warehouse.label');
         Route::get('monthly-reports', [InventoryMonthlyReportController::class, 'index'])->name('monthly_reports.index');
-        Route::get('monthly-reports/create', [InventoryMonthlyReportController::class, 'create'])->name('monthly_reports.create');
         Route::post('monthly-reports', [InventoryMonthlyReportController::class, 'store'])->name('monthly_reports.store');
-        Route::get('monthly-reports/{report}', [InventoryMonthlyReportController::class, 'show'])->name('monthly_reports.show');
-        Route::patch('monthly-reports/{report}/transition', [InventoryMonthlyReportController::class, 'transition'])->name('monthly_reports.transition');
-        Route::get('monthly-reports/{report}/print/{document}', [InventoryMonthlyReportController::class, 'print'])->whereIn('document', ['packet', 'transmittal', ...array_keys(InventoryMonthlyReportBuilder::catalog())])->name('monthly_reports.print');
         Route::get('returns', [InventoryReturnController::class, 'index'])->name('returns.index');
         Route::get('returns/create', [InventoryReturnController::class, 'create'])->name('returns.create');
         Route::post('returns', [InventoryReturnController::class, 'store'])->name('returns.store');
@@ -82,7 +96,6 @@ Route::prefix('inventory')->name('inventory.')->group(function () {
         Route::get('department-liquidations/{document}/print', [DepartmentLiquidationController::class, 'print'])->name('department_liquidations.print');
         Route::patch('issuance-slips/{slip}/liquidation', [IssuanceLiquidationController::class, 'transition'])->name('liquidations.transition');
         Route::post('assets/{asset}/accountability', [PropertyAccountabilityController::class, 'issue'])->name('accountability.issue');
-        Route::patch('requests/{supplyRequest}/transition', [SupplyRequestController::class, 'transition'])->name('requests.transition');
         Route::patch('requests/{supplyRequest}/return-slip', [SupplyRequestController::class, 'recordReturnSlip'])->name('requests.return_slip');
         Route::get('procurement', [ProcurementRequestController::class, 'index'])->name('procurement.index');
         Route::get('deliveries', [ProcurementDeliveryController::class, 'index'])->name('deliveries.index');

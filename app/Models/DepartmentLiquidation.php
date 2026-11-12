@@ -10,6 +10,8 @@ use Illuminate\Support\Carbon;
 /**
  * @property int $id
  * @property int|null $supply_request_id
+ * @property int|null $issuance_slip_id
+ * @property string|null $is_no
  * @property string $department
  * @property string $document_no
  * @property string $status
@@ -18,10 +20,23 @@ use Illuminate\Support\Carbon;
  * @property list<array{supply_request_line_id?: int, inventory_item_id: int|null, item_description: string, unit_of_measure: string, quantity_issued: int, previously_utilized: int, quantity_utilized: int, balance: int, usage_details: string|null, source_stock_out_ids: list<int>}> $lines
  * @property list<array{action: string, actor_user_id: int, actor_name: string, at: string, remarks: string|null}> $history
  */
-#[Fillable(['document_no', 'liquidation_date', 'department', 'active_department', 'supply_request_id', 'active_supply_request_id', 'isf_no', 'return_slip_no', 'return_slip_date', 'charge_code', 'requested_by_user_id', 'requested_by_name', 'status', 'lines', 'history'])]
+#[Fillable(['document_no', 'liquidation_date', 'department', 'active_department', 'supply_request_id', 'active_supply_request_id', 'irf_no', 'issuance_slip_id', 'active_issuance_slip_id', 'is_no', 'return_slip_no', 'return_slip_date', 'charge_code', 'requested_by_user_id', 'requested_by_name', 'status', 'lines', 'history'])]
 class DepartmentLiquidation extends Model
 {
     protected $attributes = ['status' => 'submitted'];
+
+    protected $appends = ['source_supply_request_id'];
+
+    public function getSourceSupplyRequestIdAttribute(): ?int
+    {
+        return $this->issuanceSlip?->supply_request_id ?? $this->supply_request_id;
+    }
+
+    /** @return BelongsTo<IssuanceSlip, $this> */
+    public function issuanceSlip(): BelongsTo
+    {
+        return $this->belongsTo(IssuanceSlip::class);
+    }
 
     /** @return array<string, string> */
     protected function casts(): array

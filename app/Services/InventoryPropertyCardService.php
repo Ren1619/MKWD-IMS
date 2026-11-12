@@ -99,7 +99,7 @@ class InventoryPropertyCardService
                     $onHand = 0;
                 }
                 $snapshot = data_get($event->details, 'property_snapshot');
-                $name = is_array($snapshot) ? ($snapshot['name'] ?? $asset->name) : ($source->asset_name ?? $asset->name);
+                $name = is_array($snapshot) ? ($snapshot['name'] ?? $asset->item_description) : ($source->asset_name ?? $asset->item_description);
                 $number = is_array($snapshot) ? ($snapshot['property_number'] ?? $asset->property_number) : ($source->property_number ?? $asset->property_number);
                 $unit = is_array($snapshot) ? ($snapshot['unit_of_measure'] ?? $asset->unit_of_measure) : ($source->unit_of_measure ?? $asset->unit_of_measure);
                 $reference = $event->reference_no;
@@ -127,7 +127,7 @@ class InventoryPropertyCardService
                 $hasEvidence = $events->contains(fn (InventoryAssetEvent $event): bool => $event->event_date->toDateString() <= $filters['as_of']);
                 $last = $events->filter(fn (InventoryAssetEvent $event): bool => $event->event_date->toDateString() <= $filters['as_of'])->last();
                 $metadata = data_get($last?->details, 'property_snapshot', []);
-                $assetRows[] = [$metadata['property_number'] ?? $asset->property_number, $metadata['name'] ?? $asset->name,
+                $assetRows[] = [$metadata['property_number'] ?? $asset->property_number, $metadata['name'] ?? $asset->item_description,
                     min($filters['to'] ?? $filters['as_of'], $filters['as_of']), null, $hasEvidence ? 'Closing balance (no period movement)' : 'Legacy opening record', 0, 0, 0, $quantity, $onHand,
                     $metadata['unit_of_measure'] ?? $asset->unit_of_measure, $cost, null, $officer === null ? null : implode(' / ', array_filter([$officer, $office])),
                     $location, $documentNo, $count, $hasEvidence ? 'Balance derived from recorded transactions before this period.' : 'No lifecycle transaction evidence recorded.',

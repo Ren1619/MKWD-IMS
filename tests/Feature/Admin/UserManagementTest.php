@@ -2,8 +2,10 @@
 
 use App\Models\AuditLog;
 use App\Models\HrisReference;
+use App\Models\SupplyRequest;
 use App\Models\User;
 use App\UserRole;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('only super admins can view user management', function () {
@@ -147,4 +149,95 @@ test('a super admin can update account access but cannot remove their own access
 
     expect($admin->refresh()->isSuperAdmin())->toBeTrue()
         ->and($admin->is_active)->toBeTrue();
+});
+
+test('editing an account with empty required fields returns errors without changing the account', function () {
+    $admin = User::factory()->superAdmin()->create();
+    $managedUser = User::factory()->create();
+    $original = $managedUser->refresh()->getAttributes();
+
+    $this->actingAs($admin)
+        ->from(route('admin.users.index'))
+        ->patch(route('admin.users.update', $managedUser), [
+            'name' => '',
+            'email' => '',
+            'role' => '',
+            'is_active' => '',
+            'password' => '',
+            'password_confirmation' => '',
+        ])
+        ->assertRedirectToRoute('admin.users.index')
+        ->assertSessionHasErrors(['name', 'email', 'role', 'is_active'])
+        ->assertSessionDoesntHaveErrors(['password', 'password_confirmation']);
+
+    expect($managedUser->refresh()->getAttributes())->toBe($original);
+});
+
+test('account forms expose submit actions and password visibility controls', function () {
+    $source = file_get_contents(resource_path('js/pages/Admin/Users/Index.tsx'));
+
+    expect(substr_count($source, '<Button type="submit" disabled={processing}>'))->toBe(2)
+        ->and(substr_count($source, '<PasswordInput'))->toBe(2)
+        ->and($source)->toContain('message={errors.name}', 'message={errors.email}', 'message={errors.password}', 'message={errors.password_confirmation}');
+});
+
+test('a super admin can delete an IMS account while retaining its employee reference and audit trail', function () {
+    $admin = User::factory()->superAdmin()->create();
+    $employee = HrisReference::factory()->create();
+    $managedUser = User::factory()->create(['hris_reference_id' => $employee->id]);
+    $token = $managedUser->createToken('test')->accessToken;
+    DB::table('sessions')->insert([
+        'id' => 'managed-user-session', 'user_id' => $managedUser->id,
+        'payload' => '', 'last_activity' => time(),
+    ]);
+    DB::table('password_reset_tokens')->insert([
+        'email' => $managedUser->email, 'token' => 'reset-token', 'created_at' => now(),
+    ]);
+
+    $this->actingAs($admin)->delete(route('admin.users.destroy', $managedUser))
+        ->assertRedirectToRoute('admin.users.index')->assertSessionHasNoErrors();
+
+    $this->assertModelMissing($managedUser);
+    $this->assertModelExists($employee);
+    $this->assertModelMissing($token);
+    $this->assertDatabaseMissing('sessions', ['id' => 'managed-user-session']);
+    $this->assertDatabaseMissing('password_reset_tokens', ['email' => $managedUser->email]);
+    expect(AuditLog::query()->where('user_id', $admin->id)->where('event', 'deleted')
+        ->where('auditable_type', User::class)->where('auditable_id', $managedUser->id)->exists())->toBeTrue();
+});
+
+test('only super admins can delete IMS accounts', function (UserRole $role) {
+    $actor = User::factory()->create(['role' => $role]);
+    $managedUser = User::factory()->create();
+
+    $this->actingAs($actor)->delete(route('admin.users.destroy', $managedUser))->assertForbidden();
+
+    $this->assertModelExists($managedUser);
+})->with([UserRole::Employee, UserRole::InventoryManager]);
+
+test('super admins cannot delete themselves', function () {
+    $admin = User::factory()->superAdmin()->create();
+
+    $this->actingAs($admin)->from(route('admin.users.index'))
+        ->delete(route('admin.users.destroy', $admin))
+        ->assertRedirectToRoute('admin.users.index')->assertSessionHasErrors('user');
+
+    $this->assertModelExists($admin);
+});
+
+test('accounts required by inventory transactions cannot be deleted and retain their tokens', function () {
+    $admin = User::factory()->superAdmin()->create();
+    $managedUser = User::factory()->create();
+    $supplyRequest = SupplyRequest::factory()->create(['requester_user_id' => $managedUser->id]);
+    $token = $managedUser->createToken('test')->accessToken;
+
+    $this->actingAs($admin)->from(route('admin.users.index'))
+        ->delete(route('admin.users.destroy', $managedUser))
+        ->assertRedirectToRoute('admin.users.index')->assertSessionHasErrors('user');
+
+    $this->assertModelExists($managedUser);
+    $this->assertModelExists($supplyRequest);
+    $this->assertModelExists($token);
+    expect(AuditLog::query()->where('event', 'deleted')->where('auditable_type', User::class)
+        ->where('auditable_id', $managedUser->id)->exists())->toBeFalse();
 });

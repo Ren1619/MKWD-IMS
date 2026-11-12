@@ -2,11 +2,11 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\Http\Requests\ValidatedFormRequest;
 use App\Models\InventoryAsset;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 
-class UpdateInventoryAssetAccountingRequest extends FormRequest
+class UpdateInventoryAssetAccountingRequest extends ValidatedFormRequest
 {
     protected function prepareForValidation(): void
     {

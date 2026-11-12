@@ -1,6 +1,9 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, useForm } from '@inertiajs/react';
 import { useState } from 'react';
+import { HrisReferenceCombobox } from '@/components/hris-reference-combobox';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -11,6 +14,8 @@ import {
 } from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
     Dialog,
     DialogContent,
@@ -21,15 +26,21 @@ import {
 import { FormSelect } from '@/components/ui/form-select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { WorkflowStatus } from '@/components/workflow-status';
 import {
     index,
     print as printReturn,
     transition,
 } from '@/routes/inventory/returns';
-import { label, money } from './types';
+import type { HrisReference } from '@/types/inventory';
+import RmsFormView from './RmsFormView';
+import { label, money, todayInManila } from './types';
 import type { ReturnDocument } from './types';
 
+type Stockroom = { id: number; name: string };
 const titles: Record<string, string> = {
+    note: 'Record Department Manager acknowledgment',
+    receive: 'Receive at PMMD',
     verify: 'Inspect and verify return',
     approve: 'Approve and post accepted stock',
     reject: 'Reject return',
@@ -42,15 +53,21 @@ function DecisionDialog({
     document,
     action,
     close,
+    warehouses,
+    references,
 }: {
     document: ReturnDocument;
     action: string;
     close: () => void;
+    warehouses: Stockroom[];
+    references: HrisReference[];
 }) {
     const form = useForm({
         action,
         remarks: '',
         attested: false,
+        manager_reference_id: '',
+        received_date: todayInManila(),
         inspection_reference: '',
         accounting_reference: '',
         accounting_recipient: '',
@@ -58,6 +75,7 @@ function DecisionDialog({
             line_id: line.id,
             quantity_accepted: '',
             condition: 'good',
+            warehouse_id: '',
             storage_location: '',
             inspection_remarks: '',
         })),
@@ -67,6 +85,7 @@ function DecisionDialog({
         field:
             | 'quantity_accepted'
             | 'condition'
+            | 'warehouse_id'
             | 'storage_location'
             | 'inspection_remarks',
         value: string,
@@ -96,51 +115,138 @@ function DecisionDialog({
                         stock.
                     </DialogDescription>
                 </DialogHeader>
+                <RmsFormView
+                    document={{
+                        ...document,
+                        lines: document.lines.map((line, i) =>
+                            action === 'verify'
+                                ? {
+                                      ...line,
+                                      condition: form.data.lines[i].condition,
+                                      inspection_remarks:
+                                          form.data.lines[i]
+                                              .inspection_remarks || null,
+                                  }
+                                : line,
+                        ),
+                    }}
+                />
                 <form
+                    noValidate
                     className="space-y-4"
                     onSubmit={(event) => {
                         event.preventDefault();
                         form.transform((data) =>
-                            action === 'verify'
+                            action === 'note'
                                 ? {
                                       action: data.action,
                                       remarks: data.remarks,
                                       attested: data.attested,
-                                      inspection_reference:
-                                          data.inspection_reference,
-                                      lines: data.lines,
+                                      manager_reference_id:
+                                          data.manager_reference_id,
                                   }
-                                : action === 'endorse_accounting'
+                                : action === 'receive'
                                   ? {
                                         action: data.action,
                                         remarks: data.remarks,
                                         attested: data.attested,
-                                        accounting_reference:
-                                            data.accounting_reference,
-                                        accounting_recipient:
-                                            data.accounting_recipient,
+                                        received_date: data.received_date,
                                     }
-                                  : {
-                                        action: data.action,
-                                        remarks: data.remarks,
-                                        attested: data.attested,
-                                    },
+                                  : action === 'verify'
+                                    ? {
+                                          action: data.action,
+                                          remarks: data.remarks,
+                                          attested: data.attested,
+                                          inspection_reference:
+                                              data.inspection_reference,
+                                          lines: data.lines,
+                                      }
+                                    : action === 'endorse_accounting'
+                                      ? {
+                                            action: data.action,
+                                            remarks: data.remarks,
+                                            attested: data.attested,
+                                            accounting_reference:
+                                                data.accounting_reference,
+                                            accounting_recipient:
+                                                data.accounting_recipient,
+                                        }
+                                      : {
+                                            action: data.action,
+                                            remarks: data.remarks,
+                                            attested: data.attested,
+                                        },
                         );
                         form.patch(transition.url(document.id), {
                             onSuccess: close,
                         });
                     }}
                 >
-                    <InputError message={form.errors.action} />
+                    {Object.keys(form.errors).length > 0 && (
+                        <div role="alert" className="space-y-1">
+                            {[...new Set(Object.values(form.errors))].map(
+                                (error) => (
+                                    <InputError key={error} message={error} />
+                                ),
+                            )}
+                        </div>
+                    )}
+                    {action === 'note' && (
+                        <div className="space-y-2">
+                            <Label htmlFor="rms-manager">
+                                Noted by (Department Manager)
+                            </Label>
+                            <HrisReferenceCombobox
+                                id="rms-manager"
+                                name="manager_reference_id"
+                                references={references}
+                                value={form.data.manager_reference_id}
+                                onValueChange={(value) =>
+                                    form.setData('manager_reference_id', value)
+                                }
+                            />
+                            <p className="text-sm text-muted-foreground">
+                                Record the manager who acknowledged this RMS.
+                                Your attestation and remarks record the
+                                supporting acknowledgment; selecting a name does
+                                not create their digital signature.
+                            </p>
+                            <InputError
+                                message={form.errors.manager_reference_id}
+                            />
+                        </div>
+                    )}
+                    {action === 'receive' && (
+                        <div className="space-y-2">
+                            <Label htmlFor="rms-received-date">
+                                Received by PMMD (physical receipt date)
+                            </Label>
+                            <DatePicker
+                                id="rms-received-date"
+                                value={form.data.received_date}
+                                max={todayInManila()}
+                                onChange={(value) =>
+                                    form.setData('received_date', value)
+                                }
+                            />
+                            <p className="text-sm text-muted-foreground">
+                                The signed-in staff member is recorded as the
+                                PMMD receiver. Receipt does not add usable
+                                stock.
+                            </p>
+                            <InputError message={form.errors.received_date} />
+                        </div>
+                    )}
                     {action === 'verify' && (
                         <>
                             <div className="space-y-2">
                                 <Label htmlFor="inspection-reference">
-                                    Inspection reference
+                                    External inspection report reference
+                                    (optional)
                                 </Label>
                                 <Input
                                     id="inspection-reference"
-                                    required
+                                    placeholder={document.document_no}
                                     value={form.data.inspection_reference}
                                     onChange={(event) =>
                                         form.setData(
@@ -154,10 +260,12 @@ function DecisionDialog({
                                 />
                             </div>
                             <p className="text-sm text-muted-foreground">
-                                Enter accepted quantities explicitly. Use zero
-                                for rejected materials. Accept only serviceable,
-                                unexpired materials and assign their storage
-                                location.
+                                Inspection is recorded on this RMS; leave the
+                                external reference blank when there is no
+                                separate report. Enter accepted quantities
+                                explicitly. Use zero for rejected materials.
+                                Accept only serviceable, unexpired materials and
+                                assign their storage location.
                             </p>
                             {form.data.lines.map((line, i) => (
                                 <section
@@ -234,9 +342,53 @@ function DecisionDialog({
                                     </div>
                                     <div className="space-y-2">
                                         <Label
+                                            htmlFor={`stockroom-${line.line_id}`}
+                                        >
+                                            Receiving stockroom
+                                        </Label>
+                                        <FormSelect
+                                            id={`stockroom-${line.line_id}`}
+                                            value={line.warehouse_id}
+                                            onChange={(event) =>
+                                                updateLine(
+                                                    i,
+                                                    'warehouse_id',
+                                                    event.target.value,
+                                                )
+                                            }
+                                        >
+                                            <option value="">
+                                                Select stockroom
+                                            </option>
+                                            {warehouses.map((warehouse) => (
+                                                <option
+                                                    key={warehouse.id}
+                                                    value={String(warehouse.id)}
+                                                >
+                                                    {warehouse.name}
+                                                </option>
+                                            ))}
+                                        </FormSelect>
+                                        <InputError
+                                            message={
+                                                form.errors[
+                                                    `lines.${i}.warehouse_id`
+                                                ]
+                                            }
+                                        />
+                                        {warehouses.length === 0 && (
+                                            <p className="text-sm text-muted-foreground">
+                                                Register a stockroom in Storage
+                                                &amp; Batches before accepting
+                                                materials.
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label
                                             htmlFor={`location-${line.line_id}`}
                                         >
-                                            Storage location
+                                            Shelf / bin / area (optional)
                                         </Label>
                                         <Input
                                             id={`location-${line.line_id}`}
@@ -368,7 +520,7 @@ function DecisionDialog({
                         >
                             Cancel
                         </Button>
-                        <Button disabled={form.processing}>
+                        <Button type="submit" disabled={form.processing}>
                             {titles[action]}
                         </Button>
                     </div>
@@ -380,23 +532,28 @@ function DecisionDialog({
 export default function ReturnShow({
     document,
     allowedActions,
+    warehouses,
+    references,
 }: {
     document: ReturnDocument;
     allowedActions: string[];
+    warehouses: Stockroom[];
+    references: HrisReference[];
 }) {
     const [action, setAction] = useState<string | null>(null);
 
     return (
         <>
             <Head title={document.document_no} />
-            <div className="space-y-6 p-4 sm:p-6">
+            <PageContainer>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                        <Link className="text-sm underline" href={index()}>
-                            Return to Stock
-                        </Link>
                         <h1 className="text-2xl font-semibold">
                             {document.document_no}
+                            <RecordChangeBadge
+                                collection="document"
+                                record={document}
+                            />
                         </h1>
                         <Badge variant="outline">
                             {label(document.status)}
@@ -413,110 +570,100 @@ export default function ReturnShow({
                             />
                         }
                     >
-                        Print RMS / MRS
+                        Print RMS
                     </Button>
                 </div>
-                <section className="space-y-3 rounded-lg border p-4">
-                    <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                        <div>
-                            <dt className="text-muted-foreground">
-                                Returned by / department
-                            </dt>
-                            <dd>
-                                {document.returned_by_name} /{' '}
-                                {document.department_name}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt className="text-muted-foreground">
-                                Physical return date
-                            </dt>
-                            <dd>{document.return_date.slice(0, 10)}</dd>
-                        </div>
-                        <div>
-                            <dt className="text-muted-foreground">
-                                Endorsement reference
-                            </dt>
-                            <dd>{document.endorsement_reference}</dd>
-                        </div>
-                        <div>
-                            <dt className="text-muted-foreground">
-                                Issue evidence
-                            </dt>
-                            <dd>
-                                {document.source_mode === 'linked'
-                                    ? 'Linked issued batches'
-                                    : document.legacy_issue_reference}
-                            </dd>
-                        </div>
-                    </dl>
-                    <p className="text-sm">{document.reason}</p>
-                    <p className="text-sm font-medium">
-                        {document.approved_at
-                            ? `Stock posted: ${new Date(document.approved_at).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}`
-                            : 'Stock has not been posted.'}
-                    </p>
-                </section>
-                <div className="space-y-3 md:hidden">
-                    {document.lines?.map((line) => (
-                        <section
-                            key={line.id}
-                            className="space-y-2 rounded-lg border p-4"
-                        >
-                            <p className="font-medium">{line.item_name}</p>
-                            <p className="text-sm">
-                                {line.stock_number} / {line.unit_of_measure} /{' '}
-                                {line.source_issue_reference}
-                            </p>
-                            <p className="text-sm">
-                                Declared: {line.quantity_declared} · Accepted:{' '}
-                                {line.quantity_accepted ?? 'Pending'} · Unit
-                                cost: {money(line.unit_cost)}
-                            </p>
-                            <p className="text-sm">
-                                {line.condition
-                                    ? label(line.condition)
-                                    : 'Awaiting inspection'}{' '}
-                                / {line.storage_location ?? 'Location pending'}
-                            </p>
-                            <p className="text-sm">{line.inspection_remarks}</p>
-                            {line.expiration_date && (
-                                <p className="text-sm">
-                                    Expires: {line.expiration_date.slice(0, 10)}
-                                </p>
-                            )}
-                            {line.valuation_basis && (
-                                <p className="text-sm">
-                                    Valuation basis: {line.valuation_basis}
-                                </p>
-                            )}
-                        </section>
-                    ))}
-                </div>
-                <div className="hidden md:block">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Material / issue</TableHead>
-                                <TableHead>Declared</TableHead>
-                                <TableHead>Accepted</TableHead>
-                                <TableHead>Unit cost</TableHead>
-                                <TableHead>Inspection / location</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {document.lines?.map((line) => (
-                                <TableRow key={line.id}>
-                                    <TableCell>
+                <WorkflowStatus
+                    steps={
+                        document.workflow_version >= 2
+                            ? [
+                                  'submitted',
+                                  'noted',
+                                  'received',
+                                  'verified',
+                                  'approved',
+                              ]
+                            : ['submitted', 'verified', 'approved']
+                    }
+                    current={document.status}
+                    terminal={['rejected', 'cancelled']}
+                />
+                <RmsFormView document={document} />
+                <details className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 text-slate-900">
+                    <summary className="cursor-pointer font-medium">
+                        Inspection, storage and stock posting details
+                    </summary>
+                    <section className="space-y-3">
+                        <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                            <div>
+                                <dt className="text-slate-600">
+                                    Returned by / department
+                                </dt>
+                                <dd>
+                                    {document.returned_by_name} /{' '}
+                                    {document.department_name}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-slate-600">
+                                    Physical return date
+                                </dt>
+                                <dd>{document.return_date.slice(0, 10)}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-slate-600">
+                                    Issue evidence
+                                </dt>
+                                <dd>
+                                    {document.source_mode === 'linked'
+                                        ? 'Linked issued batches'
+                                        : document.legacy_issue_reference}
+                                </dd>
+                            </div>
+                        </dl>
+                        <p className="text-sm">{document.reason}</p>
+                        <p className="text-sm font-medium">
+                            {document.approved_at
+                                ? `Stock posted: ${new Date(document.approved_at).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}`
+                                : 'Stock has not been posted.'}
+                        </p>
+                    </section>
+                    <Card className="overflow-hidden border-slate-200 bg-white text-slate-900">
+                        <CardContent className="p-0">
+                            <div className="divide-y md:hidden">
+                                {document.lines?.map((line) => (
+                                    <section
+                                        key={line.id}
+                                        className="space-y-2 p-4"
+                                    >
                                         <p className="font-medium">
                                             {line.item_name}
                                         </p>
-                                        <p className="text-xs text-muted-foreground">
+                                        <p className="text-sm">
                                             {line.stock_number} /{' '}
+                                            {line.unit_of_measure} /{' '}
                                             {line.source_issue_reference}
                                         </p>
+                                        <p className="text-sm">
+                                            Declared: {line.quantity_declared} ·
+                                            Accepted:{' '}
+                                            {line.quantity_accepted ??
+                                                'Pending'}{' '}
+                                            · Unit cost: {money(line.unit_cost)}
+                                        </p>
+                                        <p className="text-sm">
+                                            {line.condition
+                                                ? label(line.condition)
+                                                : 'Awaiting inspection'}{' '}
+                                            /{' '}
+                                            {line.storage_location ??
+                                                'Location pending'}
+                                        </p>
+                                        <p className="text-sm">
+                                            {line.inspection_remarks}
+                                        </p>
                                         {line.expiration_date && (
-                                            <p className="text-xs">
+                                            <p className="text-sm">
                                                 Expires:{' '}
                                                 {line.expiration_date.slice(
                                                     0,
@@ -525,43 +672,110 @@ export default function ReturnShow({
                                             </p>
                                         )}
                                         {line.valuation_basis && (
-                                            <p className="text-xs">
-                                                Valuation:{' '}
+                                            <p className="text-sm">
+                                                Valuation basis:{' '}
                                                 {line.valuation_basis}
                                             </p>
                                         )}
-                                    </TableCell>
-                                    <TableCell>
-                                        {line.quantity_declared}{' '}
-                                        {line.unit_of_measure}
-                                    </TableCell>
-                                    <TableCell>
-                                        {line.quantity_accepted ?? 'Pending'}
-                                        {line.quantity_accepted !== null && (
-                                            <p className="text-xs">
-                                                Rejected:{' '}
-                                                {line.quantity_declared -
-                                                    line.quantity_accepted}
-                                            </p>
-                                        )}
-                                    </TableCell>
-                                    <TableCell>
-                                        {money(line.unit_cost)}
-                                    </TableCell>
-                                    <TableCell>
-                                        {line.condition
-                                            ? label(line.condition)
-                                            : 'Pending'}
-                                        <p>{line.storage_location}</p>
-                                        <p className="text-xs">
-                                            {line.inspection_remarks}
-                                        </p>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
+                                    </section>
+                                ))}
+                            </div>
+                            <div className="hidden md:block">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-white hover:bg-white data-[state=selected]:bg-white">
+                                            <TableHead className="text-slate-900">
+                                                Material / issue
+                                            </TableHead>
+                                            <TableHead className="text-slate-900">
+                                                Declared
+                                            </TableHead>
+                                            <TableHead className="text-slate-900">
+                                                Accepted
+                                            </TableHead>
+                                            <TableHead className="text-slate-900">
+                                                Unit cost
+                                            </TableHead>
+                                            <TableHead className="text-slate-900">
+                                                Inspection / location
+                                            </TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {document.lines?.map((line) => (
+                                            <TableRow
+                                                key={line.id}
+                                                className="bg-white hover:bg-white data-[state=selected]:bg-white"
+                                            >
+                                                <TableCell>
+                                                    <p className="font-medium">
+                                                        {line.item_name}
+                                                    </p>
+                                                    <p className="text-xs text-slate-600">
+                                                        {line.stock_number} /{' '}
+                                                        {
+                                                            line.source_issue_reference
+                                                        }
+                                                    </p>
+                                                    {line.expiration_date && (
+                                                        <p className="text-xs">
+                                                            Expires:{' '}
+                                                            {line.expiration_date.slice(
+                                                                0,
+                                                                10,
+                                                            )}
+                                                        </p>
+                                                    )}
+                                                    {line.valuation_basis && (
+                                                        <p className="text-xs">
+                                                            Valuation:{' '}
+                                                            {
+                                                                line.valuation_basis
+                                                            }
+                                                        </p>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {line.quantity_declared}{' '}
+                                                    {line.unit_of_measure}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {line.quantity_accepted ??
+                                                        'Pending'}
+                                                    {line.quantity_accepted !==
+                                                        null && (
+                                                        <p className="text-xs">
+                                                            Rejected:{' '}
+                                                            {line.quantity_declared -
+                                                                line.quantity_accepted}
+                                                        </p>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {money(line.unit_cost)}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {line.condition
+                                                        ? label(line.condition)
+                                                        : 'Pending'}
+                                                    <p>
+                                                        {line.warehouse_name}{' '}
+                                                        {line.storage_location}
+                                                    </p>
+                                                    <p className="text-xs">
+                                                        {
+                                                            line.inspection_remarks
+                                                        }
+                                                    </p>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </details>
                 {allowedActions.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                         {allowedActions.map((value) => (
@@ -616,11 +830,13 @@ export default function ReturnShow({
                     <DecisionDialog
                         key={`${document.id}-${action}`}
                         document={document}
+                        warehouses={warehouses}
+                        references={references}
                         action={action}
                         close={() => setAction(null)}
                     />
                 )}
-            </div>
+            </PageContainer>
         </>
     );
 }

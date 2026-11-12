@@ -12,6 +12,8 @@ import type { FormEvent, ReactNode } from 'react';
 import { DataPagination } from '@/components/data-pagination';
 import { FormErrorSummary } from '@/components/form-error-summary';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -1000,7 +1002,7 @@ export default function ProcurementIndex({
                 context={requestFormContext}
                 accounts={chargeAccounts}
             />
-            <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-6 p-4 sm:p-6 lg:p-8">
+            <PageContainer>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                         <p className="text-sm font-medium text-primary">
@@ -2255,6 +2257,10 @@ export default function ProcurementIndex({
                                         >
                                             <TableCell className="font-medium">
                                                 {record.pr_no}
+                                                <RecordChangeBadge
+                                                    collection="procurementRequests"
+                                                    record={record}
+                                                />
                                             </TableCell>
                                             <TableCell>
                                                 {record.creator.name}
@@ -2328,6 +2334,10 @@ export default function ProcurementIndex({
                                     <CardTitle className="flex items-center gap-2">
                                         <FileCheck2 className="size-5" />{' '}
                                         {record.pr_no}
+                                        <RecordChangeBadge
+                                            collection="procurementRequests"
+                                            record={record}
+                                        />
                                     </CardTitle>
                                     <span className="w-fit rounded-full border px-3 py-1 text-xs font-medium capitalize">
                                         {statusLabel(
@@ -2592,7 +2602,7 @@ export default function ProcurementIndex({
                     )}
                 </div>
                 <DataPagination links={procurementRequests.links} />
-            </div>
+            </PageContainer>
 
             <Dialog
                 open={selectedProcurement !== null}

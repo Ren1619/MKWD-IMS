@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\InventoryAssetService;
 use App\Services\InventoryPropertyTransferService;
 use App\Services\InventoryReportService;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -23,6 +24,21 @@ beforeEach(function () {
     app(InventoryAssetService::class)->assign($this->asset, $this->outgoing, $this->requestor);
     $this->source = $this->asset->accountabilityDocuments()->sole();
     $this->workflow = app(InventoryPropertyTransferService::class);
+});
+
+test('PTR request and search buttons render as submit controls and preserve the empty-property guard', function () {
+    $result = Process::path(base_path())->timeout(60)->run(['node', base_path('tests/PropertyTransferForm.mjs')]);
+    expect($result->successful())->toBeTrue($result->errorOutput());
+    $pages = json_decode($result->output(), true, flags: JSON_THROW_ON_ERROR);
+
+    foreach ($pages as $state => $html) {
+        $document = new DOMDocument;
+        @$document->loadHTML($html);
+        $xpath = new DOMXPath($document);
+        expect($xpath->query('//form[@method="get"]//button[@type="submit" and normalize-space(.)="Search"]')->length)->toBe(1)
+            ->and($xpath->query('//form[@method="post"]//button[@type="submit" and normalize-space(.)="Submit PTR request"]')->length)->toBe(1)
+            ->and($xpath->query('//form[@method="post"]//button[@type="submit" and @disabled]')->length)->toBe($state === 'empty' ? 1 : 0);
+    }
 });
 
 function propertyTransferInput(array $overrides = []): array
@@ -150,10 +166,10 @@ test('approved relocation preserves the accountable officer and document', funct
         ->and($this->asset->fresh()->location)->toBe('Pump station');
 });
 
-test('employee accounts cannot prepare decide view or print manager transfer evidence', function () {
+test('unrelated employee accounts see no transfers and cannot prepare decide view or print manager transfer evidence', function () {
     $transfer = $this->workflow->create(propertyTransferInput(), $this->requestor);
     $this->actingAs(User::factory()->create());
-    $this->get(route('inventory.transfers.index'))->assertForbidden();
+    $this->get(route('inventory.transfers.index'))->assertSuccessful()->assertInertia(fn (Assert $page) => $page->has('transfers.data', 0)->where('canManage', false));
     $this->get(route('inventory.transfers.show', $transfer))->assertForbidden();
     $this->get(route('inventory.transfers.print', $transfer))->assertForbidden();
     $this->post(route('inventory.transfers.store'), propertyTransferInput())->assertForbidden();
@@ -161,10 +177,10 @@ test('employee accounts cannot prepare decide view or print manager transfer evi
 });
 
 test('direct reassignment is blocked while initial custody assignment remains available', function () {
-    $this->actingAs($this->requestor)->post(route('inventory.assets.assign', $this->asset), ['hris_reference_id' => $this->incoming->id])->assertSessionHasErrors('hris_reference_id');
+    $this->actingAs($this->requestor)->post(route('inventory.assets.assign', $this->asset), ['attested' => true, 'hris_reference_id' => $this->incoming->id])->assertSessionHasErrors('hris_reference_id');
     expect($this->asset->fresh()->current_custodian_reference_id)->toBe($this->outgoing->id);
     $new = InventoryAsset::factory()->create(['acquisition_cost' => 60000]);
-    $this->post(route('inventory.assets.assign', $new), ['hris_reference_id' => $this->incoming->id])->assertSessionHasNoErrors();
+    $this->post(route('inventory.assets.assign', $new), ['attested' => true, 'hris_reference_id' => $this->incoming->id])->assertSessionHasNoErrors();
     expect($new->fresh()->current_custodian_reference_id)->toBe($this->incoming->id);
 });
 

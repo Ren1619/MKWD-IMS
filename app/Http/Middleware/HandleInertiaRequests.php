@@ -38,6 +38,13 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'realtime' => $request->user() ? [
+                'enabled' => (bool) config('realtime.enabled'),
+                'key' => config('realtime.key'),
+                'host' => config('realtime.host'),
+                'port' => config('realtime.port'),
+                'scheme' => config('realtime.scheme'),
+            ] : null,
             'auth' => [
                 'user' => $request->user(),
                 'permissions' => [

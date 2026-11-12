@@ -2,9 +2,9 @@
 
 namespace App\Http\Requests\Inventory;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\ValidatedFormRequest;
 
-class StoreInventoryCountRequest extends FormRequest
+class StoreInventoryCountRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {
@@ -20,6 +20,30 @@ class StoreInventoryCountRequest extends FormRequest
             'memorandum_reference' => ['required', 'string', 'max:120'],
             'team_details' => ['required', 'string', 'max:3000'],
             'attested' => ['accepted'],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'title.required' => 'Enter a count title.',
+            'scheduled_date.required' => 'Select a scheduled date.',
+            'scheduled_date.date_format' => 'Select a valid scheduled date.',
+            'memorandum_reference.required' => 'Enter the approved memorandum reference.',
+            'team_details.required' => 'Enter the team and counting arrangements.',
+            'attested.accepted' => 'Confirm that this plan follows the approved inventory memorandum.',
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function attributes(): array
+    {
+        return [
+            'title' => 'count title',
+            'scheduled_date' => 'scheduled date',
+            'memorandum_reference' => 'approved memorandum reference',
+            'team_details' => 'team and counting arrangements',
         ];
     }
 

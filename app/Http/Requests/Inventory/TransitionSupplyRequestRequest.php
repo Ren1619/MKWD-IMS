@@ -2,14 +2,21 @@
 
 namespace App\Http\Requests\Inventory;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\ValidatedFormRequest;
+use App\Models\SupplyRequest;
+use App\Services\TemporaryHeadApprovalAccess;
 use Illuminate\Validation\Rule;
 
-class TransitionSupplyRequestRequest extends FormRequest
+class TransitionSupplyRequestRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('manage-inventory') ?? false;
+        $user = $this->user();
+        $record = $this->route('supplyRequest');
+
+        return $user !== null && (($this->input('action') !== 'approve' && $user->can('manage-inventory'))
+            || ($record instanceof SupplyRequest && in_array($this->input('action'), ['approve', 'reject'], true)
+                && app(TemporaryHeadApprovalAccess::class)->canApprove($user, $record)));
     }
 
     public function rules(): array

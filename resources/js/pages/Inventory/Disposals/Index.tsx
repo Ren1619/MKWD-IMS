@@ -1,8 +1,10 @@
-import { Form, Head, Link } from '@inertiajs/react';
+import { Form, Head } from '@inertiajs/react';
 import { useState } from 'react';
 import { DataPagination } from '@/components/data-pagination';
 import { HrisReferenceCombobox } from '@/components/hris-reference-combobox';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -10,6 +12,7 @@ import {
     TableHead,
     TableHeader,
     TableRow,
+    TableRowLink,
 } from '@/components/shared/data-table';
 import { Button } from '@/components/ui/button';
 import { FormSelect } from '@/components/ui/form-select';
@@ -21,7 +24,7 @@ import { label } from './types';
 import type { Disposal } from './types';
 type PropertyOption = {
     inventory_asset_id: number;
-    name: string;
+    item_description: string;
     property_number: string | null;
     unit_of_measure: string;
     quantity_per_property_card: number;
@@ -39,10 +42,11 @@ export default function DisposalsIndex({
 }) {
     const [lines, setLines] = useState([{ key: 0, asset: '' }]);
     const [nextKey, setNextKey] = useState(1);
+
     return (
         <>
             <Head title="Disposal / Waste materials" />
-            <div className="flex flex-col gap-6 p-4 md:p-6">
+            <PageContainer>
                 <div>
                     <h1 className="text-2xl font-semibold">
                         Disposal / Waste materials
@@ -104,20 +108,21 @@ export default function DisposalsIndex({
                         </TableHeader>
                         <TableBody>
                             {documents.data.map((d) => (
-                                <TableRow key={d.id}>
+                                <TableRowLink key={d.id} href={show.url(d.id)}>
                                     <TableCell>
-                                        <Link
-                                            className="underline"
-                                            href={show(d.id)}
-                                        >
+                                        <span className="font-medium">
                                             {d.document_no}
-                                        </Link>
+                                            <RecordChangeBadge
+                                                collection="documents"
+                                                record={d}
+                                            />
+                                        </span>
                                     </TableCell>
                                     <TableCell>{d.place_of_storage}</TableCell>
                                     <TableCell>{label(d.method)}</TableCell>
                                     <TableCell>{label(d.status)}</TableCell>
                                     <TableCell>{d.lines_count}</TableCell>
-                                </TableRow>
+                                </TableRowLink>
                             ))}
                             {documents.data.length === 0 && (
                                 <TableRow>
@@ -227,6 +232,7 @@ export default function DisposalsIndex({
                                         a.inventory_asset_id.toString() ===
                                         line.asset,
                                 );
+
                                 return (
                                     <fieldset
                                         key={line.key}
@@ -275,7 +281,7 @@ export default function DisposalsIndex({
                                                         }
                                                     >
                                                         {a.property_number} —{' '}
-                                                        {a.name}
+                                                        {a.item_description}
                                                     </option>
                                                 ))}
                                             </FormSelect>
@@ -351,7 +357,7 @@ export default function DisposalsIndex({
                                                                     '')
                                                                   : name ===
                                                                       'description'
-                                                                    ? (property?.name ??
+                                                                    ? (property?.item_description ??
                                                                       '')
                                                                     : ''
                                                         }
@@ -431,7 +437,7 @@ export default function DisposalsIndex({
                         </>
                     )}
                 </Form>
-            </div>
+            </PageContainer>
         </>
     );
 }

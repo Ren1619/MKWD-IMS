@@ -3,14 +3,14 @@
 namespace App\Http\Requests\Inventory;
 
 use App\AssetAccountingClassification;
+use App\Http\Requests\ValidatedFormRequest;
 use App\Models\InventoryAsset;
 use Brick\Math\BigDecimal;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
-class UpdateInventoryAssetRequest extends FormRequest
+class UpdateInventoryAssetRequest extends ValidatedFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -38,7 +38,7 @@ class UpdateInventoryAssetRequest extends FormRequest
             'serial_number' => ['nullable', 'required_without:property_number', 'string', 'max:100', Rule::unique('inventory_assets', 'serial_number')->ignore($this->route('asset'))],
             'property_number' => ['nullable', 'required_without:serial_number', 'string', 'max:100', Rule::unique('inventory_assets', 'property_number')->ignore($this->route('asset'))],
             'account_code' => ['nullable', 'string', 'max:50'],
-            'name' => ['required', 'string', 'max:255'],
+            'item_description' => ['required', 'string', 'max:255'],
             'unit_of_measure' => ['required', 'string', 'max:50'],
             'fund_cluster' => ['nullable', 'string', 'max:100'],
             'brand' => ['nullable', 'string', 'max:255'],
@@ -109,7 +109,7 @@ class UpdateInventoryAssetRequest extends FormRequest
 
             if (
                 $nextClassification !== $asset->accounting_classification
-                && $asset->accountabilityDocuments()->whereIn('status', ['pending_recipient', 'active'])->exists()
+                && $asset->accountabilityDocuments()->whereIn('status', ['pending_recipient', 'pending_note', 'active'])->exists()
             ) {
                 $validator->errors()->add(
                     'acquisition_cost',

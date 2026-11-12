@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
+ * @property int $workflow_version
  * @property int $id
  * @property string $document_no
  * @property CarbonInterface $document_date
@@ -19,7 +20,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int|null $returned_by_reference_id
  * @property string $returned_by_name
  * @property string $department_name
- * @property string $endorsement_reference
  * @property string|null $legacy_issue_reference
  * @property string $reason
  * @property string $status
@@ -32,17 +32,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property CarbonInterface|null $approved_at
  * @property CarbonInterface|null $accounting_endorsed_at
  */
-#[Fillable(['document_no', 'document_date', 'daily_number', 'return_date', 'source_mode', 'returned_by_reference_id', 'returned_by_name', 'department_name', 'endorsement_reference', 'legacy_issue_reference', 'reason', 'status', 'created_by_user_id', 'verified_by_user_id', 'approved_by_user_id', 'idempotency_key', 'request_hash', 'inspection_reference', 'approved_at', 'accounting_endorsed_at'])]
+#[Fillable(['workflow_version', 'document_no', 'document_date', 'daily_number', 'return_date', 'source_mode', 'returned_by_reference_id', 'returned_by_name', 'department_name', 'legacy_issue_reference', 'reason', 'status', 'created_by_user_id', 'verified_by_user_id', 'approved_by_user_id', 'idempotency_key', 'request_hash', 'inspection_reference', 'approved_at', 'accounting_endorsed_at'])]
 class InventoryReturn extends Model
 {
     /** @use HasFactory<InventoryReturnFactory> */
     use HasFactory;
 
-    protected $attributes = ['status' => 'submitted'];
+    protected $attributes = ['status' => 'submitted', 'workflow_version' => 1];
 
     protected function casts(): array
     {
-        return ['document_date' => 'date', 'return_date' => 'date', 'daily_number' => 'integer', 'approved_at' => 'datetime', 'accounting_endorsed_at' => 'datetime'];
+        return ['workflow_version' => 'integer', 'document_date' => 'date', 'return_date' => 'date', 'daily_number' => 'integer', 'approved_at' => 'datetime', 'accounting_endorsed_at' => 'datetime'];
     }
 
     /** @return HasMany<InventoryReturnLine, $this> */

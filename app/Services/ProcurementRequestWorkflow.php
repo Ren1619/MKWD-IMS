@@ -243,7 +243,7 @@ class ProcurementRequestWorkflow
                 'category_id' => $line->asset_category_id,
                 'subcategory_id' => $line->asset_subcategory_id,
                 'property_number' => sprintf('%s-L%d-%03d', $request->pr_no, $line->getKey(), $sequence),
-                'name' => $line->item_name,
+                'item_description' => $line->item_name,
                 'unit_of_measure' => $line->unit_of_measure,
                 'description' => $line->specifications,
                 'specifications' => $line->specifications,

@@ -2,10 +2,10 @@
 
 namespace App\Http\Requests\Inventory;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\ValidatedFormRequest;
 use Illuminate\Validation\Rule;
 
-class InventoryReturnIndexRequest extends FormRequest
+class InventoryReturnIndexRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {
@@ -17,7 +17,7 @@ class InventoryReturnIndexRequest extends FormRequest
     {
         return [
             'search' => ['nullable', 'string', 'max:150'],
-            'status' => ['nullable', Rule::in(['submitted', 'verified', 'approved', 'rejected', 'cancelled'])],
+            'status' => ['nullable', Rule::in(['submitted', 'noted', 'received', 'verified', 'approved', 'rejected', 'cancelled'])],
             'supply_request_id' => ['nullable', 'integer', 'exists:supply_requests,id'],
             'page' => ['nullable', 'integer', 'min:1'],
         ];

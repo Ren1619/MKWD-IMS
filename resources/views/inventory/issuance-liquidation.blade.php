@@ -20,10 +20,10 @@
     </style>
 </head>
 <body>
+<x-print-layout>
 <button class="print-button" onclick="window.print()">Print</button>
 @foreach (array_chunk($slip->lines, 30) as $pageLines)
 <div class="sheet">
-    <h2>METRO KIDAPAWAN WATER DISTRICT</h2>
     <h1>I S LIQUIDATION</h1>
     <div class="fields"><span>DEPARTMENT: {{ $slip->snapshot['department'] }}</span><span>DATE: {{ $slip->liquidation_date?->format('m/d/Y') }}</span></div>
     <p>ISSUANCE SLIP NO.: <strong>{{ $slip->slip_no }}</strong> &nbsp; (Issued {{ $slip->issued_at->format('m/d/Y') }})</p>
@@ -46,5 +46,6 @@
     <div class="footer"><span>FM - GSD - 043</span><span>00</span><span>8-16-2023</span></div>
 </div>
 @endforeach
+</x-print-layout>
 </body>
 </html>

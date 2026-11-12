@@ -6,6 +6,7 @@ use App\Contracts\HrisAuthenticator;
 use App\Contracts\HrisReferenceSource;
 use App\Integrations\Hris\HrisApiAuthenticator;
 use App\Integrations\Hris\HrisApiClient;
+use App\Listeners\TrackRecordChanges;
 use App\Models\HrisIntegrationSetting;
 use App\Models\InventoryAsset;
 use App\Models\InventoryAssetBorrowing;
@@ -32,6 +33,7 @@ use App\Observers\AuditObserver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -55,6 +57,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
         $this->configureAuthorization();
         $this->configureAuditing();
+        Event::listen(['eloquent.created: *', 'eloquent.updated: *', 'eloquent.deleted: *', 'eloquent.restored: *'], [TrackRecordChanges::class, 'handle']);
     }
 
     protected function configureAuthorization(): void

@@ -40,7 +40,7 @@ class InventoryTransferReportService
             }
             $propertyDocument = $destination ?? $source;
             $recordedClassification = data_get($event->details, 'property_snapshot.accounting_classification')
-                ?? ($propertyDocument !== null ? ($propertyDocument->document_type === 'PAR' ? AssetAccountingClassification::Ppe->value : AssetAccountingClassification::SemiExpendable->value) : $asset->accounting_classification->value);
+                ?? ($propertyDocument !== null ? (in_array($propertyDocument->document_type, ['PAR', 'ARE'], true) ? AssetAccountingClassification::Ppe->value : AssetAccountingClassification::SemiExpendable->value) : $asset->accounting_classification->value);
             if ($classification !== null && $classification->value !== $recordedClassification) {
                 continue;
             }
@@ -60,7 +60,7 @@ class InventoryTransferReportService
                 $this->cell(data_get($transferEvidence, 'transfer_type')) ?? ($custodyTransfer ? 'Reassignment' : 'Location transfer'),
                 $this->cell(data_get($snapshot, 'acquisition_date', $propertyDocument?->acquisition_date?->toDateString())),
                 $this->cell(data_get($snapshot, 'property_number', $propertyDocument->property_number ?? $asset->property_number)),
-                $this->cell(data_get($snapshot, 'name', $propertyDocument->asset_name ?? $asset->name)),
+                $this->cell(data_get($snapshot, 'name', $propertyDocument->asset_name ?? $asset->item_description)),
                 $this->cell(data_get($snapshot, 'serial_number', $propertyDocument?->serial_number)),
                 $this->cell(data_get($snapshot, 'acquisition_cost', $propertyDocument?->acquisition_cost)),
                 $event->condition_status->value ?? $this->cell(data_get($snapshot, 'condition_status')) ?? 'Not recorded',

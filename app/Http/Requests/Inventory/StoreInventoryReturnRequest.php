@@ -2,10 +2,10 @@
 
 namespace App\Http\Requests\Inventory;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\ValidatedFormRequest;
 use Illuminate\Validation\Rule;
 
-class StoreInventoryReturnRequest extends FormRequest
+class StoreInventoryReturnRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {
@@ -17,12 +17,12 @@ class StoreInventoryReturnRequest extends FormRequest
     {
         return [
             'idempotency_key' => ['required', 'uuid'],
-            'source_mode' => ['required', Rule::in(['linked', 'legacy'])],
+            'supply_request_id' => ['nullable', 'integer', 'exists:supply_requests,id'],
+            'source_mode' => ['required', Rule::in($this->filled('supply_request_id') ? ['linked'] : ['linked', 'legacy'])],
             'return_date' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.now('Asia/Manila')->toDateString()],
             'department_name' => ['required', 'string', 'max:255'],
             'returned_by_reference_id' => ['nullable', 'integer', Rule::exists('hris_references', 'id')->where('type', 'employee')->where('is_active', true)],
             'returned_by_name' => [Rule::requiredIf($this->input('source_mode') === 'legacy' && ! $this->filled('returned_by_reference_id')), 'nullable', 'string', 'max:255'],
-            'endorsement_reference' => ['required', 'string', 'max:120'],
             'legacy_issue_reference' => ['required_if:source_mode,legacy', 'nullable', 'string', 'max:120'],
             'reason' => ['required', 'string', 'max:3000'],
             'attested' => ['accepted'],

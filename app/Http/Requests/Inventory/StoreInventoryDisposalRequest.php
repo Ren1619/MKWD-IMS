@@ -2,11 +2,11 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\Http\Requests\ValidatedFormRequest;
 use App\Models\HrisReference;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class StoreInventoryDisposalRequest extends FormRequest
+class StoreInventoryDisposalRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {

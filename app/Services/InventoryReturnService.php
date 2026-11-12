@@ -8,9 +8,11 @@ use App\Models\InventoryItemStockOutAllocation;
 use App\Models\InventoryReturn;
 use App\Models\InventoryReturnLine;
 use App\Models\User;
+use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 class InventoryReturnService
@@ -19,19 +21,20 @@ class InventoryReturnService
         private InventoryStockGuard $guard,
         private InventoryStockService $stock,
         private AuditLogger $audit,
+        private InventoryWarehouseService $warehouses,
     ) {}
 
     /** @return list<string> */
     public static function committedStatuses(): array
     {
-        return ['submitted', 'verified', 'approved'];
+        return ['submitted', 'noted', 'received', 'verified', 'approved'];
     }
 
     /** @return Builder<InventoryItemStockOutAllocation> */
     public function sources(?int $supplyRequestId = null, ?string $search = null): Builder
     {
         return InventoryItemStockOutAllocation::query()
-            ->with(['batch', 'stockOut.item' => fn ($query) => $query->withTrashed()])
+            ->with(['batch', 'stockOut.issuanceSlip', 'stockOut.item' => fn ($query) => $query->withTrashed()])
             ->withSum(['returnLines as committed_quantity' => fn ($query) => $query->whereHas('document', fn ($documents) => $documents->whereIn('status', self::committedStatuses()))], 'quantity_committed')
             ->whereHas('stockOut', function ($query) use ($supplyRequestId, $search): void {
                 if ($supplyRequestId !== null) {
@@ -39,6 +42,7 @@ class InventoryReturnService
                 }
                 if (filled($search)) {
                     $query->where(fn ($nested) => $nested->where('ris_no', 'like', '%'.$search.'%')
+                        ->orWhereHas('issuanceSlip', fn ($slips) => $slips->where('slip_no', 'like', '%'.$search.'%'))
                         ->orWhere('recipient_name', 'like', '%'.$search.'%')
                         ->orWhereHas('item', fn ($items) => $items->withoutGlobalScope(SoftDeletingScope::class)->where('name', 'like', '%'.$search.'%')));
                 }
@@ -49,6 +53,10 @@ class InventoryReturnService
     /** @param array<string, mixed> $data */
     public function create(array $data, User $actor): InventoryReturn
     {
+        if (filled($data['supply_request_id'] ?? null) && $data['source_mode'] !== 'linked') {
+            throw ValidationException::withMessages(['source_mode' => 'Use recorded issue batches for a supply-request return.']);
+        }
+
         return DB::transaction(function () use ($data, $actor): InventoryReturn {
             $this->guard->lock();
             $requestHash = hash('sha256', json_encode($data, JSON_THROW_ON_ERROR));
@@ -60,12 +68,22 @@ class InventoryReturnService
 
                 return $previous;
             }
+            if (filled($data['supply_request_id'] ?? null) && InventoryReturnLine::query()
+                ->where('source_supply_request_id', (int) $data['supply_request_id'])
+                ->whereHas('document', fn ($query) => $query->whereIn('status', self::committedStatuses()))
+                ->exists()) {
+                throw ValidationException::withMessages(['supply_request_id' => 'This supply request already has a return slip awaiting completion.']);
+            }
             $lineData = [];
             $party = null;
             foreach ($data['lines'] as $input) {
                 if ($data['source_mode'] === 'linked') {
                     $source = InventoryItemStockOutAllocation::query()->whereKey($input['source_allocation_id'])
-                        ->with(['batch', 'stockOut.item' => fn ($query) => $query->withTrashed(), 'stockOut.supplyRequestLine'])->lockForUpdate()->firstOrFail();
+                        ->with(['batch', 'stockOut.issuanceSlip', 'stockOut.item' => fn ($query) => $query->withTrashed(), 'stockOut.supplyRequestLine', 'stockOut.issuanceSlip'])->lockForUpdate()->firstOrFail();
+                    if (filled($data['supply_request_id'] ?? null)
+                        && $source->stockOut->supplyRequestLine?->supply_request_id !== (int) $data['supply_request_id']) {
+                        throw ValidationException::withMessages(['lines' => 'Select only issued batches from the selected supply request.']);
+                    }
                     $available = $source->quantity - $this->committedQuantity($source->getKey());
                     if ($input['quantity'] > $available) {
                         throw ValidationException::withMessages(['lines' => "Only {$available} issued units remain returnable from this batch."]);
@@ -89,7 +107,7 @@ class InventoryReturnService
                     $lineData[] = [
                         'inventory_item_id' => $item->getKey(), 'source_allocation_id' => $source->getKey(),
                         'source_supply_request_id' => $issue->supplyRequestLine?->supply_request_id,
-                        'source_issue_reference' => $issue->ris_no ?? 'ISSUE-'.$issue->getKey(),
+                        'source_issue_reference' => $issue->issuanceSlip->slip_no ?? $issue->ris_no ?? 'ISSUE-'.$issue->getKey(),
                         'stock_number' => $item->stock_number, 'item_name' => $item->name, 'unit_of_measure' => $item->unit_of_measure,
                         'quantity_declared' => $input['quantity'], 'quantity_committed' => $input['quantity'],
                         'unit_cost' => $source->unit_cost, 'expiration_date' => $source->batch->expiration_date?->toDateString(),
@@ -109,11 +127,12 @@ class InventoryReturnService
             $number = (int) InventoryReturn::query()->whereDate('document_date', $date)->max('daily_number') + 1;
             $returnedByName = $party !== null ? $party['name'] : ($reference !== null ? $reference->name : $data['returned_by_name']);
             $document = InventoryReturn::query()->create([
+                'workflow_version' => 2,
                 'document_no' => sprintf('RMS-%s-%04d', now('Asia/Manila')->format('m-d-y'), $number),
                 'document_date' => $date, 'daily_number' => $number, 'return_date' => $data['return_date'],
                 'source_mode' => $data['source_mode'], 'returned_by_name' => $returnedByName,
                 'returned_by_reference_id' => $party['reference_id'] ?? $reference?->id,
-                'department_name' => $data['department_name'], 'reason' => $data['reason'], 'endorsement_reference' => $data['endorsement_reference'],
+                'department_name' => $data['department_name'], 'reason' => $data['reason'],
                 'legacy_issue_reference' => $data['source_mode'] === 'legacy' ? $data['legacy_issue_reference'] : null,
                 'created_by_user_id' => $actor->id, 'idempotency_key' => $data['idempotency_key'], 'request_hash' => $requestHash,
             ]);
@@ -127,16 +146,20 @@ class InventoryReturnService
     /** @param array<string, mixed> $data */
     public function transition(InventoryReturn $document, array $data, User $actor): void
     {
+        Gate::forUser($actor)->authorize('manage-inventory');
+
         DB::transaction(function () use ($document, $data, $actor): void {
             $this->guard->lock();
             $document = InventoryReturn::query()->whereKey($document->id)->with(['lines.item', 'lines.sourceAllocation.batch'])->lockForUpdate()->firstOrFail();
             $from = $document->status;
             $action = $data['action'];
             $allowed = match ($action) {
-                'verify' => ['submitted'],
+                'note' => $document->workflow_version >= 2 ? ['submitted'] : [],
+                'receive' => ['noted'],
+                'verify' => $document->workflow_version >= 2 ? ['received'] : ['submitted'],
                 'approve' => ['verified'],
-                'reject' => ['submitted', 'verified'],
-                'cancel' => ['submitted', 'verified'],
+                'reject' => ['submitted', 'noted', 'received', 'verified'],
+                'cancel' => ['submitted', 'noted', 'received', 'verified'],
                 'endorse_accounting' => ['approved'],
                 default => [],
             };
@@ -144,10 +167,27 @@ class InventoryReturnService
                 throw ValidationException::withMessages(['action' => 'This return action is unavailable at its current stage.']);
             }
             $isReturningActor = $this->isReturningActor($document, $actor);
-            if (in_array($action, ['verify', 'approve'], true) && ($document->created_by_user_id === $actor->id || $isReturningActor || ($action === 'approve' && $document->verified_by_user_id === $actor->id))) {
-                throw ValidationException::withMessages(['action' => 'The recorder, accountable person, verifier, and approver must remain independent.']);
+            $isSubmittingActor = $document->created_by_user_id === $actor->id && ! $actor->isSuperAdmin();
+            if (in_array($action, ['verify', 'approve'], true) && ($isSubmittingActor || $isReturningActor || ($action === 'approve' && $document->verified_by_user_id === $actor->id))) {
+                throw ValidationException::withMessages(['action' => 'The accountable person cannot verify or approve, and the verifier cannot approve the same return.']);
             }
-            if ($action === 'verify') {
+            if ($action === 'note') {
+                $manager = HrisReference::query()->whereKey($data['manager_reference_id'])->where('type', 'employee')->where('is_active', true)->firstOrFail();
+                if (($document->returned_by_reference_id !== null && $document->returned_by_reference_id === $manager->id)
+                    || mb_strtolower(trim($document->returned_by_name)) === mb_strtolower(trim($manager->name))) {
+                    throw ValidationException::withMessages(['manager_reference_id' => 'The returning end-user cannot acknowledge their own return as Department Manager.']);
+                }
+                $data['manager_name'] = $manager->name;
+                $document->update(['status' => 'noted']);
+            } elseif ($action === 'receive') {
+                if ($isReturningActor) {
+                    throw ValidationException::withMessages(['action' => 'The returning end-user cannot acknowledge PMMD receipt of their own return.']);
+                }
+                if ($data['received_date'] < $document->return_date->toDateString()) {
+                    throw ValidationException::withMessages(['received_date' => 'PMMD receipt cannot precede the declared physical return date.']);
+                }
+                $document->update(['status' => 'received']);
+            } elseif ($action === 'verify') {
                 $this->verify($document, $data, $actor);
             } elseif ($action === 'approve') {
                 $this->approve($document, $actor);
@@ -166,11 +206,16 @@ class InventoryReturnService
     /** @return list<string> */
     public function allowedActions(InventoryReturn $document, User $actor): array
     {
-        $independent = $document->created_by_user_id !== $actor->id
+        if (! $actor->can('manage-inventory')) {
+            return [];
+        }
+        $independent = ($document->created_by_user_id !== $actor->id || $actor->isSuperAdmin())
             && ! $this->isReturningActor($document, $actor);
 
         return match ($document->status) {
-            'submitted' => [...($independent ? ['verify'] : []), 'reject', 'cancel'],
+            'submitted' => [...($document->workflow_version >= 2 ? ['note'] : ($independent ? ['verify'] : [])), 'reject', 'cancel'],
+            'noted' => [...(! $this->isReturningActor($document, $actor) ? ['receive'] : []), 'reject', 'cancel'],
+            'received' => [...($independent ? ['verify'] : []), 'reject', 'cancel'],
             'verified' => [...($independent && $document->verified_by_user_id !== $actor->id ? ['approve'] : []), 'reject', 'cancel'],
             'approved' => $document->accounting_endorsed_at === null ? ['endorse_accounting'] : [],
             default => [],
@@ -205,7 +250,12 @@ class InventoryReturnService
             if ($accepted > $line->quantity_declared) {
                 throw ValidationException::withMessages(['lines' => 'Accepted quantity cannot exceed the declared return quantity.']);
             }
-            if ($accepted > 0 && ($inspection['condition'] !== 'good' || blank($inspection['storage_location'] ?? null))) {
+            $warehouse = filled($inspection['warehouse_id'] ?? null)
+                ? Warehouse::query()->whereKey($inspection['warehouse_id'])->lockForUpdate()->first() : null;
+            if ($accepted > 0 && $document->workflow_version >= 2 && $warehouse === null) {
+                throw ValidationException::withMessages(['lines' => 'Select a registered stockroom for every accepted material.']);
+            }
+            if ($accepted > 0 && ($inspection['condition'] !== 'good' || ($document->workflow_version < 2 && $warehouse === null && blank($inspection['storage_location'] ?? null)))) {
                 throw ValidationException::withMessages(['lines' => 'Only serviceable quantities with an assigned storage location may be accepted.']);
             }
             if ($accepted > 0 && $line->expiration_date !== null && $line->expiration_date->toDateString() < now('Asia/Manila')->toDateString()) {
@@ -213,12 +263,13 @@ class InventoryReturnService
             }
             $line->update([
                 'quantity_accepted' => $accepted, 'quantity_committed' => $accepted,
+                'warehouse_id' => $warehouse?->id, 'warehouse_name' => $warehouse?->name,
                 'condition' => $inspection['condition'], 'storage_location' => $inspection['storage_location'] ?? null,
                 'inspection_remarks' => $inspection['inspection_remarks'],
             ]);
             $acceptedAny = $acceptedAny || $accepted > 0;
         }
-        $document->update(['status' => $acceptedAny ? 'verified' : 'rejected', 'verified_by_user_id' => $actor->id, 'inspection_reference' => $data['inspection_reference']]);
+        $document->update(['status' => $acceptedAny ? 'verified' : 'rejected', 'verified_by_user_id' => $actor->id, 'inspection_reference' => filled($data['inspection_reference'] ?? null) ? $data['inspection_reference'] : $document->document_no]);
     }
 
     private function approve(InventoryReturn $document, User $actor): void
@@ -243,6 +294,15 @@ class InventoryReturnService
                 'reference_no' => $document->document_no, 'source' => 'Return to stock',
                 'batch_notes' => $line->inspection_remarks.'; Location: '.$line->storage_location,
             ]);
+            if ($line->warehouse_id !== null) {
+                $this->warehouses->place($batch, [
+                    'warehouse_id' => $line->warehouse_id, 'latest_placement_id' => null,
+                    'area' => $line->storage_location ?: 'Receiving area',
+                    'observed_quantity' => $line->quantity_accepted,
+                    'source_evidence_reference' => $document->document_no,
+                    'remarks' => $line->inspection_remarks,
+                ], $actor);
+            }
             $line->posting()->create(['inventory_item_batch_id' => $batch->getKey(), 'quantity' => $line->quantity_accepted, 'unit_cost' => $line->unit_cost]);
         }
         $document->update(['status' => 'approved', 'approved_by_user_id' => $actor->id, 'approved_at' => now()]);

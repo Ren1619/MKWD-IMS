@@ -30,7 +30,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('admin')->name('admin.')->group(function () {
         Route::resource('users', UserController::class)
-            ->only(['index', 'store', 'update'])
+            ->only(['index', 'store', 'update', 'destroy'])
             ->middleware('can:manage-users');
         Route::get('audit-logs', AuditLogController::class)
             ->middleware('can:view-audit-logs')

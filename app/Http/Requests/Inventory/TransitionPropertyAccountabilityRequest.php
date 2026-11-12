@@ -2,10 +2,10 @@
 
 namespace App\Http\Requests\Inventory;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\ValidatedFormRequest;
 use Illuminate\Validation\Rule;
 
-class TransitionPropertyAccountabilityRequest extends FormRequest
+class TransitionPropertyAccountabilityRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {
@@ -18,7 +18,7 @@ class TransitionPropertyAccountabilityRequest extends FormRequest
         return [
             'action' => [
                 'required',
-                Rule::in(['acknowledge', 'witnessed_acknowledge', 'renew', 'return', 'cancel']),
+                Rule::in(['acknowledge', 'note', 'witnessed_acknowledge', 'renew', 'return', 'cancel']),
             ],
             'attested' => ['accepted'],
             'remarks' => [

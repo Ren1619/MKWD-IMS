@@ -256,7 +256,7 @@ export type InventoryAsset = {
     old_property_number: string | null;
     account_code: string | null;
     property_tag_uuid: string;
-    name: string;
+    item_description: string;
     unit_of_measure: string;
     fund_cluster: string | null;
     quantity_per_property_card: number;

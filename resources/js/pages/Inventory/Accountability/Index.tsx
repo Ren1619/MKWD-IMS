@@ -10,6 +10,8 @@ import { useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormSelect } from '@/components/ui/form-select';
@@ -36,7 +38,9 @@ type AccountabilityAction = {
 type AccountabilityDocument = {
     id: number;
     document_no: string;
-    document_type: 'PAR' | 'ICS';
+    document_type: 'ARE' | 'PAR' | 'ICS';
+    can_note: boolean;
+    notation_required: boolean;
     status: string;
     asset_name: string;
     property_number: string | null;
@@ -50,7 +54,7 @@ type AccountabilityDocument = {
 };
 type UndocumentedAsset = {
     inventory_asset_id: number;
-    name: string;
+    item_description: string;
     property_number: string | null;
     serial_number: string;
     acquisition_cost: string | null;
@@ -83,12 +87,21 @@ function statusLabel(status: string): string {
     return status.replaceAll('_', ' ');
 }
 
-function nextAction(status: string): string {
+function nextAction(document: AccountabilityDocument): string {
+    if (
+        document.document_type === 'ARE' &&
+        document.status === 'pending_recipient'
+    ) {
+        return 'The named end user must personally acknowledge receipt before division-manager notation.';
+    }
+
     return (
         (
             {
                 pending_recipient:
                     'The named custodian must acknowledge receipt, or the property officer must record a witnessed acknowledgment.',
+                pending_note:
+                    'The end user has acknowledged receipt. The Division Manager must now note this ARE.',
                 active: 'Custody is active. Renew after verification or record the physical return of the property.',
                 superseded:
                     'Closed by a replacement accountability document. The history remains available.',
@@ -99,12 +112,12 @@ function nextAction(status: string): string {
                 transferred_out:
                     'Closed after permanent transfer to another agency. The PTR and signed agency receipt remain the evidence of handover.',
             } as Record<string, string>
-        )[status] ?? 'Review the control history for this document.'
+        )[document.status] ?? 'Review the control history for this document.'
     );
 }
 
-function managerActions(status: string): WorkflowAction[] {
-    if (status === 'pending_recipient') {
+function managerActions(document: AccountabilityDocument): WorkflowAction[] {
+    if (['pending_recipient', 'pending_note'].includes(document.status)) {
         return [
             {
                 action: 'witnessed_acknowledge',
@@ -131,14 +144,18 @@ function managerActions(status: string): WorkflowAction[] {
                 action: 'cancel',
                 label: 'Cancel and unassign',
                 description:
-                    'Cancel this unacknowledged document and reverse the custody assignment.',
+                    'Cancel this incomplete document and reverse the custody assignment.',
                 remarksRequired: true,
                 destructive: true,
             },
-        ];
+        ].filter(
+            (action) =>
+                action.action !== 'witnessed_acknowledge' ||
+                document.document_type !== 'ARE',
+        );
     }
 
-    if (status === 'active') {
+    if (document.status === 'active') {
         return [
             {
                 action: 'renew',
@@ -247,17 +264,18 @@ export default function AccountabilityIndex({
     return (
         <>
             <Head title="Property Accountability" />
-            <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-6 p-4 sm:p-6 lg:p-8">
+            <PageContainer>
                 <div>
                     <p className="text-sm font-medium text-primary">
-                        PAR and ICS controls
+                        ARE, PAR and ICS controls
                     </p>
                     <h1 className="text-2xl font-semibold sm:text-3xl">
                         Property accountability
                     </h1>
                     <p className="text-sm text-muted-foreground">
                         PPE at ₱{capitalizationThreshold.toLocaleString()} or
-                        more uses PAR; lower-valued durable property uses ICS.
+                        more uses ARE; lower-valued durable property uses ICS.
+                        Historical PARs remain available.
                     </p>
                 </div>
 
@@ -277,7 +295,7 @@ export default function AccountabilityIndex({
                                 >
                                     <div>
                                         <p className="font-medium">
-                                            {asset.name}
+                                            {asset.item_description}
                                         </p>
                                         <p className="text-xs text-muted-foreground">
                                             {asset.property_number ??
@@ -302,7 +320,7 @@ export default function AccountabilityIndex({
                                         Issue{' '}
                                         {Number(asset.acquisition_cost) >=
                                         capitalizationThreshold
-                                            ? 'PAR'
+                                            ? 'ARE'
                                             : 'ICS'}
                                     </Button>
                                 </div>
@@ -352,8 +370,9 @@ export default function AccountabilityIndex({
                                         })
                                     }
                                 >
-                                    <option value="">PAR and ICS</option>
+                                    <option value="">ARE, PAR and ICS</option>
                                     <option value="PAR">PAR</option>
+                                    <option value="ARE">ARE</option>
                                     <option value="ICS">ICS</option>
                                 </FormSelect>
                             </Field>
@@ -372,6 +391,7 @@ export default function AccountabilityIndex({
                                     <option value="">All statuses</option>
                                     {[
                                         ...workflowSteps,
+                                        'pending_note',
                                         ...terminalStatuses,
                                     ].map((status) => (
                                         <option key={status} value={status}>
@@ -402,7 +422,10 @@ export default function AccountabilityIndex({
                                 </FormSelect>
                             </Field>
                             <div className="flex gap-2 lg:items-end">
-                                <Button className="min-h-11 flex-1 lg:flex-none">
+                                <Button
+                                    type="submit"
+                                    className="min-h-11 flex-1 lg:flex-none"
+                                >
                                     Apply
                                 </Button>
                                 <Button
@@ -441,6 +464,10 @@ export default function AccountabilityIndex({
                                         <CardTitle className="flex items-center gap-2">
                                             <ClipboardSignature className="size-5" />{' '}
                                             {document.document_no}
+                                            <RecordChangeBadge
+                                                collection="documents"
+                                                record={document}
+                                            />
                                         </CardTitle>
                                         <div className="flex gap-2">
                                             <span className="rounded-full border px-3 py-1 text-xs font-medium">
@@ -454,7 +481,17 @@ export default function AccountabilityIndex({
                                 </CardHeader>
                                 <CardContent className="grid gap-4">
                                     <WorkflowStatus
-                                        steps={workflowSteps}
+                                        steps={
+                                            document.document_type === 'ARE' &&
+                                            document.notation_required
+                                                ? [
+                                                      'pending_recipient',
+                                                      'pending_note',
+                                                      'active',
+                                                      'returned',
+                                                  ]
+                                                : workflowSteps
+                                        }
                                         current={document.status}
                                         terminal={terminalStatuses}
                                     />
@@ -463,7 +500,7 @@ export default function AccountabilityIndex({
                                             What happens next
                                         </p>
                                         <p className="text-muted-foreground">
-                                            {nextAction(document.status)}
+                                            {nextAction(document)}
                                         </p>
                                     </div>
                                     <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -543,8 +580,22 @@ export default function AccountabilityIndex({
                                                 Acknowledge custody
                                             </Button>
                                         )}
+                                        {document.can_note && (
+                                            <Button
+                                                onClick={() =>
+                                                    openAction(document, {
+                                                        action: 'note',
+                                                        label: 'Note ARE',
+                                                        description:
+                                                            'Note the acknowledged equipment accountability within your division.',
+                                                    })
+                                                }
+                                            >
+                                                Note
+                                            </Button>
+                                        )}
                                         {canManage &&
-                                            managerActions(document.status).map(
+                                            managerActions(document).map(
                                                 (action) => (
                                                     <Button
                                                         key={action.action}
@@ -629,7 +680,7 @@ export default function AccountabilityIndex({
                     )}
                 </div>
                 <DataPagination links={documents.links} />
-            </div>
+            </PageContainer>
 
             <WorkflowActionDialog
                 key={
@@ -666,7 +717,7 @@ export default function AccountabilityIndex({
                 onOpenChange={(open) => !open && setSelectedAsset(null)}
                 title={
                     selectedAsset
-                        ? `Issue ${Number(selectedAsset.acquisition_cost) >= capitalizationThreshold ? 'PAR' : 'ICS'}: ${selectedAsset.name}`
+                        ? `Issue ${Number(selectedAsset.acquisition_cost) >= capitalizationThreshold ? 'PAR' : 'ICS'}: ${selectedAsset.item_description}`
                         : 'Issue accountability document'
                 }
                 description="Review the property and current custodian before issuing this versioned accountability document."

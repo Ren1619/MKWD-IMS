@@ -7,7 +7,8 @@ $observations=collect(data_get($action?->metadata,'lines',[]))->keyBy('line_id')
 @endphp
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ data_get($evaluation,'evaluation_no','Legacy inspection') }} — Inspection &amp; Evaluation Report</title>
-<style>@page{size:A4 landscape;margin:12mm}body{font:12px Arial,sans-serif;color:#111;line-height:1.5}h1{text-align:center;font-size:20px}table{width:100%;border-collapse:collapse;margin:14px 0}th,td{border:1px solid #333;padding:6px;text-align:left;vertical-align:top}.signatures{display:flex;gap:40px;margin-top:25px}.signatures>div{flex:1}.notice{padding:10px;border:1px solid #333}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Print / Save as PDF</button>
+<style>@page{size:A4 landscape;margin:12mm}body{font:12px Arial,sans-serif;color:#111;line-height:1.5}h1{text-align:center;font-size:20px}table{width:100%;border-collapse:collapse;margin:14px 0}th,td{border:1px solid #333;padding:6px;text-align:left;vertical-align:top}.signatures{display:flex;gap:40px;margin-top:25px}.signatures>div{flex:1}.notice{padding:10px;border:1px solid #333}@media print{button{display:none}}</style></head><body>
+<x-print-layout><button onclick="window.print()">Print / Save as PDF</button>
 <h1>INSPECTION &amp; EVALUATION REPORT</h1>
 
 @if(!isset($evaluation['evaluation_no']))<p class="notice">LEGACY INSPECTION — Structured evaluation dates, checklist and signatory evidence were not recorded. Blank fields do not attest completion.</p>@endif
@@ -29,4 +30,5 @@ $observations=collect(data_get($action?->metadata,'lines',[]))->keyBy('line_id')
 <p><strong>EVALUATION / FINDINGS:</strong><br>{{ $evaluation['evaluation_findings'] ?? $action?->remarks ?? 'Not recorded' }}</p>
 <p><strong>OTHERS / COMMENTS (sampling method, formula, etc.):</strong><br>{{ $evaluation['evaluation_comments'] ?? 'Not recorded' }}</p>
 <div class="signatures"><div>Inspected / evaluated by:<p>________________________<br>{{ data_get($evaluation,'evaluator.name','Not recorded') }}<br>{{ data_get($evaluation,'evaluator.position') }}</p><p>Signed evidence: {{ $evaluation['evaluator_signature_reference'] ?? 'Not recorded' }}</p></div><div>Noted by:<p>________________________<br>{{ data_get($evaluation,'evaluation_chair.name',$evaluation['chairperson_name'] ?? 'Not recorded') }}<br>Chairperson, Inspectorate Team</p><p>Signed evidence: {{ $evaluation['evaluation_chair_signature_reference'] ?? 'Not recorded' }}</p></div></div>
-<p><small>Inspection and evaluation do not post usable inventory. Conforming quantities require independent signed acceptance in the delivery workflow. Physical inspection and original signatures remain staff actions.</small></p></body></html>
+<p><small>Inspection and evaluation do not post usable inventory. Conforming quantities require independent signed acceptance in the delivery workflow. Physical inspection and original signatures remain staff actions.</small></p></x-print-layout>
+</body></html>

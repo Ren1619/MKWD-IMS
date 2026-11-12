@@ -9,6 +9,7 @@ paths:
   - app/Services/InventoryTransferReportService.php
   - app/Services/InventoryPropertyTransferService.php
   - app/Services/InventoryAssetService.php
+  - app/Services/TemporaryHeadApprovalAccess.php
 ---
 
 # Services
@@ -45,3 +46,15 @@ Agency transfers and donations use a frozen external agency/officer snapshot and
 
 ## Permanent agency transfers leave local balances without becoming disposals
 A Transfer event with server-owned transfer_evidence.external_ownership_transfer=true removes local card and inventory quantities, records physical quantity moved even if the old PAR/ICS already appeared in issuance, and shows the frozen receiving agency. Do not count it as disposal or create a replacement internal PAR/ICS. A following PPE Derecognition must not remove the quantity twice. Current physical registers exclude these events as of their posting date; earlier cards and source documents remain visible.
+
+## Allow Super Admins to advance submitted RMS records
+Super Admins may verify or approve an RMS they submitted, but the accountable returner remains barred from those decisions and the verifier cannot approve the same slip. Keep allowedActions() aligned with the server transition checks.
+
+## Temporary head approval is a scoped role exception
+The requested temporary exception permits active linked employee accounts matching <abbreviation>.head@obx.gov.ph, with department and optional division but no unit/section, to approve or reject submitted supply requests within their cached HRIS department/division IDs. Do not grant manage-inventory or stock review/release rights; preserve requested-for separation of duties. This explicit user requirement supersedes the general employee read-only mutation rule only for these decisions.
+
+## Separate supply-request head approvals supersede single approval
+Supply requests assigned to a division require division-head approval (submitted → division_approved) followed by a different department-head approval (→ approved). Department-only requesters go directly to their department head. Each decision records its stage and HRIS approver reference; admin/inventory-manager roles alone cannot approve. Scope queues and controls to the active stage, retain self-approval prohibition, and do not rewrite historical approvals. This supersedes the earlier single-stage temporary head exception.
+
+## Internal PTR receiving employees may acknowledge receipt in IMS
+Receiving end users may read only their own PTRs and retained action history, then personally acknowledge receipt of an approved internal PTR once using attestation and receipt date. This is a scoped exception to employee read-only rules, not inventory-management access. Store the receipt as an immutable PTR action without changing custody/status; manager completion must match its handover date and may use its generated receipt reference instead of paper receipt evidence. Preserve other inspection/release/approval controls and external agency signed-receipt requirements.

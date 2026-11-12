@@ -1,6 +1,13 @@
+export type Warehouse = {
+    id: number;
+    name: string;
+    address?: string | null;
+    description?: string | null;
+};
 export type Placement = {
     id: number;
     version: number;
+    warehouse_id: number | null;
     warehouse: string;
     area: string;
     rack: string | null;

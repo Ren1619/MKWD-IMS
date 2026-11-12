@@ -128,7 +128,7 @@ test('permanent transfer cannot be undone by internal reassignment return or a g
     $transfer = verifiedExternalTransfer();
     $this->workflow->transition($transfer, externalApproveInput(), $this->approver);
     $this->workflow->transition($transfer, externalHandoverInput(), $this->preparer);
-    $this->actingAs($this->preparer)->post(route('inventory.assets.assign', $this->asset), ['hris_reference_id' => $this->outgoing->id])->assertSessionHasErrors('hris_reference_id');
+    $this->actingAs($this->preparer)->post(route('inventory.assets.assign', $this->asset), ['attested' => true, 'hris_reference_id' => $this->outgoing->id])->assertSessionHasErrors('hris_reference_id');
     $this->post(route('inventory.assets.unassign', $this->asset))->assertSessionHasErrors('asset');
     expect(fn () => app(InventoryAssetService::class)->updateState($this->asset, ['lifecycle_status' => 'active', 'condition_status' => 'good'], $this->preparer))->toThrow(InvalidArgumentException::class);
     expect(fn () => app(InventoryAssetService::class)->updateDetails($this->asset, ['location' => 'Warehouse'], $this->preparer))->toThrow(InvalidArgumentException::class);

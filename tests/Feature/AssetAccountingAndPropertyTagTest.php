@@ -57,7 +57,7 @@ test('PPE registration requires depreciation inputs while semi-expendable proper
         'category_id' => $category->getKey(),
         'subcategory_id' => $subcategory->getKey(),
         'serial_number' => 'ACCOUNTING-TEST-001',
-        'name' => 'Accounting Test Asset',
+        'item_description' => 'Accounting Test Asset',
         'unit_of_measure' => 'unit',
         'acquisition_date' => '2026-08-01',
         'depreciation_useful_life_months' => 60,
@@ -353,7 +353,7 @@ test('an active accountability document prevents crossing the capitalization thr
         'acquisition_cost' => 49000,
     ]);
 
-    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), [
+    $this->actingAs($manager)->post(route('inventory.assets.assign', $asset), ['attested' => true,
         'hris_reference_id' => $reference->id,
     ]);
 
@@ -362,7 +362,7 @@ test('an active accountability document prevents crossing the capitalization thr
         'subcategory_id' => $asset->subcategory_id,
         'serial_number' => $asset->serial_number,
         'property_number' => $asset->property_number,
-        'name' => $asset->name,
+        'item_description' => $asset->item_description,
         'unit_of_measure' => $asset->unit_of_measure,
         'fund_cluster' => $asset->fund_cluster,
         'brand' => $asset->brand,

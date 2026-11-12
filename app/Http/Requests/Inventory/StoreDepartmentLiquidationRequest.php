@@ -2,10 +2,10 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\Http\Requests\ValidatedFormRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 
-class StoreDepartmentLiquidationRequest extends FormRequest
+class StoreDepartmentLiquidationRequest extends ValidatedFormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -23,10 +23,10 @@ class StoreDepartmentLiquidationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'supply_request_id' => ['required', 'integer', 'exists:supply_requests,id'],
+            'issuance_slip_id' => ['required', 'integer', 'exists:issuance_slips,id'],
             'liquidation_date' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.now('Asia/Manila')->toDateString()],
-            'return_slip_no' => ['nullable', 'string', 'max:100', 'required_with:return_slip_date'],
-            'return_slip_date' => ['nullable', 'date_format:Y-m-d', 'required_with:return_slip_no', 'before_or_equal:liquidation_date'],
+            'return_slip_no' => ['required', 'string', 'max:100'],
+            'return_slip_date' => ['required', 'date_format:Y-m-d', 'before_or_equal:liquidation_date'],
             'remarks' => ['nullable', 'string', 'max:2000'],
             'attested' => ['accepted'],
             'lines' => ['required', 'array', 'min:1'],

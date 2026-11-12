@@ -13,6 +13,8 @@ import { useState } from 'react';
 import type { ChangeEventHandler } from 'react';
 import { DataPagination } from '@/components/data-pagination';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableBody,
@@ -145,6 +147,10 @@ function ConsumableTable({ records }: { records: Paginated<InventoryItem> }) {
                         <TableRow key={item.inventory_item_id}>
                             <TableCell className="font-mono text-xs">
                                 {item.stock_number ?? '—'}
+                                <RecordChangeBadge
+                                    collection="records"
+                                    record={item}
+                                />
                             </TableCell>
                             <TableCell>
                                 <div className="font-medium">{item.name}</div>
@@ -256,10 +262,14 @@ function AssetTable({ records }: { records: Paginated<InventoryAsset> }) {
                             <TableRow key={asset.inventory_asset_id}>
                                 <TableCell className="font-mono text-xs">
                                     {asset.property_number ?? '—'}
+                                    <RecordChangeBadge
+                                        collection="records"
+                                        record={asset}
+                                    />
                                 </TableCell>
                                 <TableCell>
                                     <div className="font-medium">
-                                        {asset.name}
+                                        {asset.item_description}
                                     </div>
                                     <div className="text-xs text-muted-foreground">
                                         {asset.category?.name ??
@@ -395,7 +405,7 @@ export default function ReportsIndex({
     return (
         <>
             <Head title="Inventory Reports" />
-            <div className="mx-auto flex w-full max-w-[1700px] flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+            <PageContainer>
                 <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
                     <div>
                         <p className="text-sm font-medium text-primary">
@@ -970,7 +980,7 @@ export default function ReportsIndex({
                         </div>
                     </CardContent>
                 </Card>
-            </div>
+            </PageContainer>
         </>
     );
 }

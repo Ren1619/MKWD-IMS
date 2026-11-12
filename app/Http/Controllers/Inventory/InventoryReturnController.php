@@ -9,8 +9,11 @@ use App\Http\Requests\Inventory\TransitionInventoryReturnRequest;
 use App\Models\HrisReference;
 use App\Models\InventoryItem;
 use App\Models\InventoryReturn;
+use App\Models\SupplyRequest;
+use App\Models\Warehouse;
 use App\Services\InventoryReturnService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -33,14 +36,19 @@ class InventoryReturnController extends Controller
         ]);
     }
 
-    public function create(InventoryReturnIndexRequest $request): Response
+    public function create(InventoryReturnIndexRequest $request): Response|JsonResponse
     {
-        return Inertia::render('Inventory/Returns/Create', [
+        $supplyRequest = $request->filled('supply_request_id') ? SupplyRequest::query()->findOrFail($request->integer('supply_request_id')) : null;
+        $preparation = [
+            'supplyRequest' => $supplyRequest === null ? null : [
+                'id' => $supplyRequest->id, 'reference' => $supplyRequest->irf_no ?? $supplyRequest->ris_no,
+                'requester_name' => $supplyRequest->requester_name, 'office_name' => $supplyRequest->office_name,
+            ],
             'sources' => $this->returns->sources($request->integer('supply_request_id') ?: null, $request->validated('search'))->paginate(20)
                 ->through(fn ($source): array => [
                     'id' => $source->getKey(), 'item_name' => $source->stockOut->item->name,
                     'unit_of_measure' => $source->stockOut->item->unit_of_measure, 'stock_number' => $source->stockOut->item->stock_number,
-                    'issue_reference' => $source->stockOut->ris_no ?? 'ISSUE-'.$source->stockOut->getKey(),
+                    'issue_reference' => $source->stockOut->issuanceSlip->slip_no ?? $source->stockOut->ris_no ?? 'ISSUE-'.$source->stockOut->getKey(),
                     'issue_date' => $source->stockOut->stocked_out_at->toDateString(),
                     'recipient_name' => $source->stockOut->recipient_name, 'department_name' => $source->stockOut->department_name,
                     'batch_number' => $source->batch->batch_number, 'unit_cost' => $source->unit_cost,
@@ -51,13 +59,23 @@ class InventoryReturnController extends Controller
             'references' => HrisReference::query()->where('type', 'employee')->where('is_active', true)->orderBy('name')->get()
                 ->map(fn (HrisReference $reference): array => $reference->toSelectionOption()),
             'filters' => $request->safe()->only(['search', 'supply_request_id']),
-        ]);
+        ];
+
+        if ($request->expectsJson()) {
+            return response()->json($preparation);
+        }
+
+        return $this->index($request)->with('preparation', $preparation);
     }
 
     public function store(StoreInventoryReturnRequest $request): RedirectResponse
     {
         $document = $this->returns->create($request->validated(), $request->user());
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Return recorded for inspection. Stock will be posted after approval.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'RMS submitted for Department Manager acknowledgment. Stock will be posted after approval.']);
+
+        if ($request->header('X-RMS-Dialog') === 'true') {
+            return back();
+        }
 
         return to_route('inventory.returns.show', $document);
     }
@@ -67,6 +85,9 @@ class InventoryReturnController extends Controller
         return Inertia::render('Inventory/Returns/Show', [
             'document' => $document->load(['lines.posting', 'actions' => fn ($query) => $query->orderBy('id')]),
             'allowedActions' => $this->returns->allowedActions($document, auth()->user()),
+            'warehouses' => Warehouse::query()->orderBy('name')->get(['id', 'name']),
+            'references' => HrisReference::query()->where('type', 'employee')->where('is_active', true)->get()
+                ->map(fn (HrisReference $reference): array => $reference->toSelectionOption()),
         ]);
     }
 

@@ -1,6 +1,8 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import InputError from '@/components/input-error';
+import { PageContainer } from '@/components/page-container';
+import { RecordChangeBadge } from '@/components/record-change-badge';
 import {
     Table,
     TableHeader,
@@ -248,14 +250,18 @@ export default function MonthlyShow({
     return (
         <>
             <Head title={document.document_no} />
-            <div className="space-y-6 p-4 sm:p-6">
-                <div className="flex flex-wrap justify-between gap-3">
+            <PageContainer>
+                <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card p-5 shadow-sm sm:p-6">
                     <div>
                         <Link href={index()} className="text-sm underline">
                             Monthly report packages
                         </Link>
-                        <h1 className="text-2xl font-semibold">
+                        <h1 className="my-2 text-2xl font-semibold tracking-tight sm:text-3xl">
                             {document.document_no}
+                            <RecordChangeBadge
+                                collection="document"
+                                record={document}
+                            />
                         </h1>
                         <Badge variant="outline">
                             {label(document.status)}
@@ -298,8 +304,8 @@ export default function MonthlyShow({
                         )}
                     </div>
                 </div>
-                <section className="space-y-3 rounded-lg border p-4">
-                    <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                <section className="space-y-4 rounded-xl border bg-card p-5 shadow-sm sm:p-6">
+                    <dl className="grid gap-x-6 gap-y-5 text-sm sm:grid-cols-2 xl:grid-cols-3">
                         {[
                             [
                                 'Reporting month',
@@ -316,8 +322,10 @@ export default function MonthlyShow({
                                 document.classification_name,
                             ],
                             [
-                                'Zero balances',
-                                document.include_zero ? 'Included' : 'Excluded',
+                                'Stock master items',
+                                document.include_zero
+                                    ? 'With zero / all items'
+                                    : 'Without zero / monthly transactions only',
                             ],
                             ['Reporting fund label', document.fund_cluster],
                             [
@@ -327,7 +335,7 @@ export default function MonthlyShow({
                         ].map(([key, value]) => (
                             <div key={key}>
                                 <dt className="text-muted-foreground">{key}</dt>
-                                <dd>{value}</dd>
+                                <dd className="mt-1 font-medium">{value}</dd>
                             </div>
                         ))}
                     </dl>
@@ -364,22 +372,27 @@ export default function MonthlyShow({
                 <Readiness
                     data={currentReadiness ?? document.snapshot.readiness}
                 />
-                <section className="grid gap-3 rounded-lg border p-4 sm:grid-cols-2">
-                    <h2 className="font-semibold sm:col-span-2">
+                <section className="grid gap-4 rounded-xl border bg-card p-5 shadow-sm sm:grid-cols-2 sm:p-6 xl:grid-cols-4">
+                    <h2 className="font-semibold sm:col-span-2 xl:col-span-4">
                         Assigned signatories
                     </h2>
                     {Object.entries(document.signatories).map(
                         ([key, person]) => (
-                            <div key={key} className="text-sm">
+                            <div
+                                key={key}
+                                className="rounded-lg border bg-muted/20 p-4 text-sm"
+                            >
                                 <p className="text-muted-foreground">
                                     {person.role}
                                 </p>
-                                <p>{person.name}</p>
+                                <p className="mt-2 font-semibold">
+                                    {person.name}
+                                </p>
                             </div>
                         ),
                     )}
                 </section>
-                <section className="space-y-4">
+                <section className="space-y-5 rounded-xl border bg-card p-5 shadow-sm sm:p-6">
                     <div className="flex flex-wrap items-end justify-between gap-3">
                         <div className="w-full space-y-2 sm:max-w-xl">
                             <Label htmlFor="monthly-report-choice">
@@ -387,6 +400,7 @@ export default function MonthlyShow({
                             </Label>
                             <FormSelect
                                 id="monthly-report-choice"
+                                className="w-full"
                                 value={reportKey}
                                 onChange={(e) => setReportKey(e.target.value)}
                             >
@@ -433,7 +447,7 @@ export default function MonthlyShow({
                             </article>
                         ))}
                     </div>
-                    <div className="hidden md:block">
+                    <div className="hidden overflow-hidden rounded-lg border md:block">
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -495,6 +509,9 @@ export default function MonthlyShow({
                                                     0,
                                                     7,
                                                 ),
+                                            selected_report:
+                                                document.snapshot.payload
+                                                    .selected_report,
                                             fund_cluster: document.fund_cluster,
                                             series_category_id:
                                                 document.series_category_id ??
@@ -518,7 +535,7 @@ export default function MonthlyShow({
                     {document.actions.map((entry) => (
                         <article
                             key={entry.id}
-                            className="space-y-1 rounded-lg border p-3 text-sm"
+                            className="space-y-2 rounded-xl border border-l-4 border-l-primary/30 bg-card p-4 text-sm"
                         >
                             <p className="font-medium">
                                 {label(entry.action)} — {entry.actor_name}
@@ -554,7 +571,7 @@ export default function MonthlyShow({
                         close={() => setAction(null)}
                     />
                 )}
-            </div>
+            </PageContainer>
         </>
     );
 }

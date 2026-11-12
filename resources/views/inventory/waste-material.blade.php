@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{{ $document->document_no }} — Waste Materials Report</title>
 <style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px}h1{text-align:center;font-size:20px}table{border-collapse:collapse;width:100%;margin:15px 0}th,td{border:1px solid #333;padding:7px;text-align:left}.signatures{display:flex;gap:20px}.signatures>div{flex:1}.status{text-align:center;font-weight:bold}button{margin:10px}@media print{button{display:none}body{margin:0}@page{size:A4 landscape;margin:12mm}}</style></head><body>
+<x-print-layout>
 <button onclick="window.print()">Print</button><h1>WASTE MATERIALS REPORT</h1>
 <p class="status">{{ strtoupper($document->status) }} @if($document->status !== 'completed') — NOT A COMPLETED DISPOSITION CERTIFICATE @endif</p>
 @php($approval = $document->actions->firstWhere('action','approve'))
@@ -21,4 +22,5 @@
 <p>Disposition evidence: {{ data_get($completion,'evidence.disposition_reference','Not recorded') }} · Accounting posting / confirmation: {{ data_get($completion,'evidence.accounting_reference','Not recorded') }}</p>
 <table><thead><tr><th>Recorded at</th><th>Decision</th><th>IMS officer</th><th>Attestation</th></tr></thead><tbody>@foreach($document->actions as $action)<tr><td>{{ $action->created_at }}</td><td>{{ ucfirst($action->action) }}</td><td>{{ $action->actor_name }}</td><td>{{ $action->attestation }}</td></tr>@endforeach</tbody></table>
 <p>Physical inspection, sale or destruction, and signatures remain staff actions. This report records their evidence; IMS does not issue a financial JEV.</p>
+</x-print-layout>
 </body></html>

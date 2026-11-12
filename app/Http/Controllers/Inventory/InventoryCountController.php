@@ -9,6 +9,7 @@ use App\Http\Requests\Inventory\TransitionInventoryCountRequest;
 use App\Models\InventoryCountLine;
 use App\Models\InventoryCountSession;
 use App\Models\InventoryStockControl;
+use App\Models\Warehouse;
 use App\Services\InventoryCountService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -58,6 +59,7 @@ class InventoryCountController extends Controller
                 'items' => $session->lines()->count(),
                 'counted' => $session->lines()->has('entries')->count(),
             ],
+            'warehouses' => Warehouse::query()->orderBy('name')->get(['id', 'name']),
         ]);
     }
 

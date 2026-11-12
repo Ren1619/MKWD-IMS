@@ -2,13 +2,13 @@
 
 namespace App\Http\Requests\Inventory;
 
+use App\Http\Requests\ValidatedFormRequest;
 use App\UserRole;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
 
-class TransitionProcurementRequestRequest extends FormRequest
+class TransitionProcurementRequestRequest extends ValidatedFormRequest
 {
     public function authorize(): bool
     {
